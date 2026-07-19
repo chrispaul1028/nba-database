@@ -1,28 +1,34 @@
 // Vercel serverless function: fetches your Airtable base server-side and
-// returns players with contract history, shaped for the app.
+// returns ALL players (for the Player Hub) with bio, photo, and contract
+// history (for the Contracts tab).
 //
-// Robustness features:
-//  1. Link fields between tables are AUTO-DETECTED by following record ids,
-//     so the names of your link fields don't matter at all.
-//  2. Regular fields are matched case-insensitively, ignoring spaces and
-//     punctuation - "Contract Type", "contract type", "ContractType" all work.
+// Robustness:
+//  1. Link fields between tables are AUTO-DETECTED by record ids.
+//  2. Field names are matched fuzzily (case/space/punctuation-insensitive)
+//     against candidate lists below.
+//  3. Linked "Team Name" values (record ids) are resolved via the Teams table.
 //
-// Required env vars (Vercel > Project > Settings > Environment Variables):
-//   AIRTABLE_TOKEN, AIRTABLE_BASE_ID
+// Env vars required: AIRTABLE_TOKEN, AIRTABLE_BASE_ID
 
-// ── Table names (edit only if your TABS are named differently) ─────
 const TABLES = {
   players: "Players",
   contracts: "Contracts",
   years: "Contract Years",
+  teams: "Teams", // optional - used to resolve linked team names
 };
 
-// ── Field candidates: first match wins (normalized comparison) ─────
 const FIELDS = {
   playerName: ["Name", "Player Name", "Full Name"],
   playerPos: ["Position", "Pos"],
   playerNo: ["No.", "No", "Number", "Jersey", "Jersey Number"],
   playerTeamName: ["Team Name", "Team", "Current Team"],
+  playerPhoto: ["Photo", "Headshot", "Image", "Picture", "Attachment", "Attachments"],
+  playerHeight: ["Height"],
+  playerWeight: ["Weight"],
+  playerAge: ["Age"],
+  playerStatus: ["Status"],
+  teamName: ["Name", "Team Name", "Team"],
+  teamAbbr: ["Abbreviation", "Abbr", "Short Name", "Code"],
   cKind: ["Contract Type", "Kind", "Type", "Deal Type"],
   cStatus: ["Status", "Contract Status"],
   cTeam: ["Team", "Signing Team"],
@@ -45,8 +51,8 @@ const TYPE_MAP = {
   "rfa": "RFA",
 };
 
-// normalize "Contract Type" -> "contracttype"
 const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, "");
+const isRecId = (v) => typeof v === "string" && /^rec[a-zA-Z0-9]{14}$/.test(v);
 
 function getField(fields, candidates) {
   const keys = Object.keys(fields);
@@ -57,6 +63,28 @@ function getField(fields, candidates) {
     }
   }
   return undefined;
+}
+
+// Returns a clean string; resolves linked record ids via resolver map;
+// never lets a raw rec id through.
+function asText(val, resolver) {
+  if (val == null) return "";
+  if (Array.isArray(val)) {
+    const parts = val
+      .map((v) => asText(v, resolver))
+      .filter(Boolean);
+    return parts.join(", ");
+  }
+  if (isRecId(val)) return (resolver && resolver[val]) || "";
+  return String(val);
+}
+
+function photoUrl(val) {
+  if (Array.isArray(val) && val[0] && typeof val[0] === "object" && val[0].url) {
+    const att = val[0];
+    return (att.thumbnails && att.thumbnails.large && att.thumbnails.large.url) || att.url;
+  }
+  return null;
 }
 
 async function fetchAll(base, table, token) {
@@ -75,22 +103,17 @@ async function fetchAll(base, table, token) {
   return records;
 }
 
-// Find, among a record's fields, the first linked record id present in targetIds.
-// Airtable link fields are arrays of "rec..." strings - the field name is irrelevant.
 function findLink(fields, targetIds) {
   for (const val of Object.values(fields)) {
     if (Array.isArray(val)) {
       for (const item of val) {
-        if (typeof item === "string" && item.startsWith("rec") && targetIds.has(item)) {
-          return item;
-        }
+        if (isRecId(item) && targetIds.has(item)) return item;
       }
     }
   }
   return null;
 }
 
-// "2028-2029" -> "'29"
 function seasonLabel(s) {
   if (!s) return "";
   const parts = String(s).split("-");
@@ -112,6 +135,20 @@ export default async function handler(req, res) {
       fetchAll(base, TABLES.years, token),
     ]);
 
+    // Teams table is optional - used only to translate linked ids to names.
+    let teamNameById = {};
+    try {
+      const teams = await fetchAll(base, TABLES.teams, token);
+      for (const t of teams) {
+        teamNameById[t.id] =
+          asText(getField(t.fields, FIELDS.teamAbbr)) ||
+          asText(getField(t.fields, FIELDS.teamName)) ||
+          "";
+      }
+    } catch {
+      teamNameById = {};
+    }
+
     const playerIds = new Set(players.map((p) => p.id));
     const contractIds = new Set(contracts.map((c) => c.id));
 
@@ -120,15 +157,15 @@ export default async function handler(req, res) {
       const cid = findLink(y.fields, contractIds);
       if (!cid) continue;
       const rawSalary = getField(y.fields, FIELDS.ySalary);
-      const rawType = getField(y.fields, FIELDS.yType);
+      const rawType = asText(getField(y.fields, FIELDS.yType));
       const rawGtd = getField(y.fields, FIELDS.yGuaranteed);
-      const season = getField(y.fields, FIELDS.ySeason) || "";
+      const season = asText(getField(y.fields, FIELDS.ySeason));
       (yearsByContract[cid] ??= []).push({
         s: seasonLabel(season),
-        season: String(season),
+        season,
         salary: typeof rawSalary === "number" ? rawSalary / 1e6 : null,
-        type: TYPE_MAP[norm(rawType || "")] || rawType || "G",
-        decision: getField(y.fields, FIELDS.yDecision) || null,
+        type: TYPE_MAP[norm(rawType)] || rawType || "G",
+        decision: asText(getField(y.fields, FIELDS.yDecision)) || null,
         gtd: typeof rawGtd === "number" ? rawGtd / 1e6 : null,
       });
     }
@@ -148,9 +185,9 @@ export default async function handler(req, res) {
         if (!isNaN(d)) signed = d.getFullYear();
       }
       (contractsByPlayer[pid] ??= []).push({
-        kind: getField(c.fields, FIELDS.cKind) || "Contract",
-        team: getField(c.fields, FIELDS.cTeam) || "",
-        status: getField(c.fields, FIELDS.cStatus) || "Active",
+        kind: asText(getField(c.fields, FIELDS.cKind), teamNameById) || "Contract",
+        team: asText(getField(c.fields, FIELDS.cTeam), teamNameById),
+        status: asText(getField(c.fields, FIELDS.cStatus)) || "Active",
         signed,
         years: yrs,
       });
@@ -159,15 +196,19 @@ export default async function handler(req, res) {
     const out = players
       .map((p) => ({
         id: p.id,
-        name: getField(p.fields, FIELDS.playerName) || "Unknown",
-        pos: getField(p.fields, FIELDS.playerPos) || "",
-        no: getField(p.fields, FIELDS.playerNo) ?? "",
-        teamName: getField(p.fields, FIELDS.playerTeamName) || "",
+        name: asText(getField(p.fields, FIELDS.playerName)) || "Unknown",
+        pos: asText(getField(p.fields, FIELDS.playerPos)),
+        no: asText(getField(p.fields, FIELDS.playerNo)),
+        teamName: asText(getField(p.fields, FIELDS.playerTeamName), teamNameById),
+        photo: photoUrl(getField(p.fields, FIELDS.playerPhoto)),
+        height: asText(getField(p.fields, FIELDS.playerHeight)),
+        weight: asText(getField(p.fields, FIELDS.playerWeight)),
+        age: asText(getField(p.fields, FIELDS.playerAge)),
+        status: asText(getField(p.fields, FIELDS.playerStatus)),
         contracts: (contractsByPlayer[p.id] || []).sort(
           (a, b) => (b.signed || 0) - (a.signed || 0)
         ),
       }))
-      .filter((p) => p.contracts.length > 0)
       .sort((a, b) => a.name.localeCompare(b.name));
 
     res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
