@@ -27,6 +27,7 @@ const FIELDS = {
   playerWeight: ["Weight"],
   playerAge: ["Age"],
   playerStatus: ["Status"],
+  playerArchetype: ["Archetype", "Player Type", "Play Style", "Role"],
   teamName: ["Name", "Team Name", "Team"],
   teamAbbr: ["Abbreviation", "Abbr", "Short Name", "Code"],
   cKind: ["Contract Type", "Kind", "Type", "Deal Type"],
@@ -215,6 +216,7 @@ export default async function handler(req, res) {
         weight: asText(getField(p.fields, FIELDS.playerWeight)),
         age: asText(getField(p.fields, FIELDS.playerAge)),
         status: asText(getField(p.fields, FIELDS.playerStatus)),
+        archetype: asText(getField(p.fields, FIELDS.playerArchetype)),
         contracts: (contractsByPlayer[p.id] || []).sort(
           (a, b) => (b.signed || 0) - (a.signed || 0)
         ),

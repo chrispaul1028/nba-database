@@ -8,14 +8,17 @@ const HEADER_COLOR = "team";
 
 // Salary bar colors by year type - change any hex you like.
 const BAR_COLORS = {
-  G: "#f97316",    // guaranteed        (orange-500)
-  PO: "#fdba74",   // player option     (orange-300)
-  TO: "#fde68a",   // team option       (amber-200)
-  NG: "#fed7aa",   // non-guaranteed    (orange-200)
-  PG: "#fb923c",   // partially gtd     (orange-400)
+  G: "#2563eb",    // guaranteed        (blue-600)
+  PO: "#93c5fd",   // player option     (blue-300)
+  TO: "#bfdbfe",   // team option       (blue-200)
+  NG: "#dbeafe",   // non-guaranteed    (blue-100)
+  PG: "#3b82f6",   // partially gtd     (blue-500)
   UFA: "#e2e8f0",  // free agent stub   (slate-200)
   RFA: "#fecdd3",  // restricted stub   (rose-200)
 };
+// Accent for the Total tile + featured contract border.
+const ACCENT_TEXT = "text-blue-600";
+const ACCENT_BORDER = "border-blue-200";
 
 const TEAM_COLORS = {
   NY: "#1D428A", DAL: "#00538C", ATL: "#C8102E", OKC: "#007AC1",
@@ -71,6 +74,22 @@ const terms = (c) => salaried(c).length + " yrs / " + fmtM(total(c));
 const displayLine = (c) => terms(c) + (c.team ? " (" + c.team + ")" : "") + " · " + c.kind;
 const activeOf = (p) => p.contracts.find((c) => c.status === "Active") || p.contracts[0] || null;
 
+// Search matches player name, current team (full name or abbreviation),
+// or the active contract's team. "knicks", "NY", "jalen" all work.
+function matchesQuery(p, q) {
+  if (!q) return true;
+  const s = q.toLowerCase().trim();
+  if (p.name.toLowerCase().includes(s)) return true;
+  const team = String(p.teamName || "").toLowerCase();
+  if (team.includes(s)) return true;
+  const abbr = toAbbr(p.teamName) || (activeOf(p) && activeOf(p).team) || "";
+  if (String(abbr).toLowerCase().includes(s)) return true;
+  const actTeam = activeOf(p) ? String(activeOf(p).team).toLowerCase() : "";
+  if (actTeam.includes(s)) return true;
+  return false;
+}
+
+
 // ═══════════════ SHARED PIECES ═══════════════════════════════════
 function Avatar({ p, size }) {
   const px = size === "lg" ? "w-20 h-20 text-2xl" : "w-11 h-11 text-sm";
@@ -89,7 +108,7 @@ function Avatar({ p, size }) {
 function Tile({ value, label, accent }) {
   return (
     <div className="bg-white rounded-2xl border border-slate-200 px-2 py-4 text-center shadow-sm">
-      <div className={"text-2xl font-extrabold tracking-tight " + (accent ? "text-orange-500" : "text-slate-900")}>{value}</div>
+      <div className={"text-2xl font-extrabold tracking-tight " + (accent ? ACCENT_TEXT : "text-slate-900")}>{value}</div>
       <div className="text-[10px] font-semibold text-slate-400 tracking-widest uppercase mt-1">{label}</div>
     </div>
   );
@@ -120,7 +139,7 @@ function SalaryBars({ years }) {
 
 function ContractCard({ c, big }) {
   return (
-    <div className={"bg-white rounded-2xl border shadow-sm px-4 py-4 " + (big ? "border-orange-200" : "border-slate-200")}>
+    <div className={"bg-white rounded-2xl border shadow-sm px-4 py-4 " + (big ? ACCENT_BORDER : "border-slate-200")}>
       <div className="flex items-baseline justify-between gap-2">
         <div className="min-w-0">
           <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase truncate">
@@ -186,7 +205,7 @@ function PlayerDetail({ p, onBack, backLabel }) {
           <>
             <div className="grid grid-cols-3 gap-2">
               <Tile value={fmtM(total(act))} label="Total" accent />
-              <Tile value={fmtM(total(act) / salaried(act).length)} label="AAV" />
+              <Tile value={fmtM(total(act) / salaried(act).length)} label="Per Year" />
               <Tile value={salaried(act).length} label="Years" />
             </div>
             <div className="mt-4"><ContractCard c={act} big /></div>
@@ -225,7 +244,7 @@ function ListHeader({ title, q, setQ }) {
       <input
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="Search players…"
+        placeholder="Search players or teams…"
         className="mt-3 w-full rounded-xl px-4 py-2.5 text-sm text-slate-800 bg-white/95 placeholder-slate-400 outline-none"
       />
     </div>
@@ -245,10 +264,7 @@ function TeamPill({ team }) {
 // ═══════════════ TAB: PLAYER HUB ═════════════════════════════════
 function PlayersTab({ players, onSelect }) {
   const [q, setQ] = useState("");
-  const list = useMemo(
-    () => players.filter((p) => p.name.toLowerCase().includes(q.toLowerCase())),
-    [players, q]
-  );
+  const list = useMemo(() => players.filter((p) => matchesQuery(p, q)), [players, q]);
   return (
     <div>
       <ListHeader title="Players" q={q} setQ={setQ} />
@@ -260,7 +276,7 @@ function PlayersTab({ players, onSelect }) {
               <span className="flex-1 min-w-0">
                 <span className="block text-sm font-bold text-slate-900 truncate">{p.name}</span>
                 <span className="block text-[11px] text-slate-400 font-medium truncate">
-                  {[p.pos, cleanNo(p.no) ? "#" + cleanNo(p.no) : "", p.height, p.age ? p.age + " yrs" : ""]
+                  {[p.pos, p.archetype, p.age ? p.age + " yrs" : ""]
                     .filter(Boolean)
                     .join(" · ") || "—"}
                 </span>
@@ -283,7 +299,7 @@ function ContractsTab({ players, onSelect }) {
     () =>
       players
         .filter((p) => p.contracts.length > 0)
-        .filter((p) => p.name.toLowerCase().includes(q.toLowerCase())),
+        .filter((p) => matchesQuery(p, q)),
     [players, q]
   );
   return (
@@ -295,7 +311,7 @@ function ContractsTab({ players, onSelect }) {
             const act = activeOf(p);
             return (
               <button key={p.id} onClick={() => onSelect(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50">
-                <span className="text-[10px] font-bold text-slate-500 bg-slate-100 rounded-full px-2 py-1 w-9 text-center shrink-0">{p.pos || "—"}</span>
+                <Avatar p={p} />
                 <span className="flex-1 min-w-0">
                   <span className="block text-sm font-bold text-slate-900 truncate">{p.name}</span>
                   <span className="block text-[11px] text-slate-400 font-medium truncate">
