@@ -22,7 +22,7 @@ const FIELDS = {
   playerPos: ["Position", "Pos"],
   playerNo: ["No.", "No", "Number", "Jersey", "Jersey Number"],
   playerTeamName: ["Team Name", "Team", "Current Team"],
-  playerPhoto: ["Photo", "Headshot", "Image", "Picture", "Attachment", "Attachments"],
+  playerPhoto: ["Photo", "Headshot", "Headshots", "Player Photo", "Image", "Img", "Pic", "Picture", "Attachment", "Attachments"],
   playerHeight: ["Height"],
   playerWeight: ["Weight"],
   playerAge: ["Age"],
@@ -83,6 +83,16 @@ function photoUrl(val) {
   if (Array.isArray(val) && val[0] && typeof val[0] === "object" && val[0].url) {
     const att = val[0];
     return (att.thumbnails && att.thumbnails.large && att.thumbnails.large.url) || att.url;
+  }
+  return null;
+}
+
+// Fallback: scan every field for an attachment-shaped value (array of
+// objects with a url). Finds the headshot no matter what the field is named.
+function findAnyPhoto(fields) {
+  for (const val of Object.values(fields)) {
+    const url = photoUrl(val);
+    if (url) return url;
   }
   return null;
 }
@@ -200,7 +210,7 @@ export default async function handler(req, res) {
         pos: asText(getField(p.fields, FIELDS.playerPos)),
         no: asText(getField(p.fields, FIELDS.playerNo)),
         teamName: asText(getField(p.fields, FIELDS.playerTeamName), teamNameById),
-        photo: photoUrl(getField(p.fields, FIELDS.playerPhoto)),
+        photo: photoUrl(getField(p.fields, FIELDS.playerPhoto)) || findAnyPhoto(p.fields),
         height: asText(getField(p.fields, FIELDS.playerHeight)),
         weight: asText(getField(p.fields, FIELDS.playerWeight)),
         age: asText(getField(p.fields, FIELDS.playerAge)),

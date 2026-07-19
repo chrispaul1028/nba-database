@@ -1,10 +1,21 @@
 import { useState, useMemo, useEffect } from "react";
 
-// ═══════════════ THEME ═══════════════════════════════════════════
+// ═══════════════ THEME (edit these to restyle the app) ═══════════
 // Player detail header color:
-//   "team"   -> uses the team's color (current behavior)
-//   any hex  -> one fixed color for every player, e.g. "#1e293b" or "#2563eb"
+//   "team"   -> uses the player's CURRENT team color
+//   any hex  -> one fixed color for everyone, e.g. "#1e293b"
 const HEADER_COLOR = "team";
+
+// Salary bar colors by year type - change any hex you like.
+const BAR_COLORS = {
+  G: "#f97316",    // guaranteed        (orange-500)
+  PO: "#fdba74",   // player option     (orange-300)
+  TO: "#fde68a",   // team option       (amber-200)
+  NG: "#fed7aa",   // non-guaranteed    (orange-200)
+  PG: "#fb923c",   // partially gtd     (orange-400)
+  UFA: "#e2e8f0",  // free agent stub   (slate-200)
+  RFA: "#fecdd3",  // restricted stub   (rose-200)
+};
 
 const TEAM_COLORS = {
   NY: "#1D428A", DAL: "#00538C", ATL: "#C8102E", OKC: "#007AC1",
@@ -16,14 +27,44 @@ const TEAM_COLORS = {
   MEM: "#5D76A9", NOP: "#0C2340", PHX: "#E56020", SAC: "#5A2D81",
   POR: "#E03A3E", UTA: "#002B5C", UTAH: "#002B5C", LAC: "#C8102E",
 };
+
+// Full team names -> abbreviations, so a player's current team
+// (which may be stored as "New York Knicks") maps to its color.
+const NAME_TO_ABBR = {
+  "atlanta hawks": "ATL", "boston celtics": "BOS", "brooklyn nets": "BKN",
+  "charlotte hornets": "CHA", "chicago bulls": "CHI", "cleveland cavaliers": "CLE",
+  "dallas mavericks": "DAL", "denver nuggets": "DEN", "detroit pistons": "DET",
+  "golden state warriors": "GSW", "houston rockets": "HOU", "indiana pacers": "IND",
+  "los angeles clippers": "LAC", "la clippers": "LAC", "los angeles lakers": "LAL",
+  "memphis grizzlies": "MEM", "miami heat": "MIA", "milwaukee bucks": "MIL",
+  "minnesota timberwolves": "MIN", "new orleans pelicans": "NOP",
+  "new york knicks": "NY", "oklahoma city thunder": "OKC", "orlando magic": "ORL",
+  "philadelphia 76ers": "PHI", "phoenix suns": "PHX", "portland trail blazers": "POR",
+  "sacramento kings": "SAC", "san antonio spurs": "SAS", "toronto raptors": "TOR",
+  "utah jazz": "UTA", "washington wizards": "WSH",
+};
+
+function toAbbr(team) {
+  if (!team) return "";
+  const t = String(team).trim();
+  if (TEAM_COLORS[t.toUpperCase()]) return t.toUpperCase();
+  return NAME_TO_ABBR[t.toLowerCase()] || "";
+}
 const teamColor = (abbr) => TEAM_COLORS[String(abbr).toUpperCase()] || "#334155";
-const headerColor = (abbr) => (HEADER_COLOR === "team" ? teamColor(abbr) : HEADER_COLOR);
+// Current-team color first; falls back to the contract team if no current team.
+function playerHeaderColor(p) {
+  if (HEADER_COLOR !== "team") return HEADER_COLOR;
+  const current = toAbbr(p.teamName);
+  if (current) return teamColor(current);
+  const act = activeOf(p);
+  return teamColor(act?.team || "");
+}
 
 const TYPE_LABEL = { G: "Guaranteed", PO: "Player Option", TO: "Team Option", NG: "Non-Guaranteed", PG: "Partially Gtd", UFA: "Free Agent", RFA: "Restricted FA" };
-const BAR_STYLE = { G: "bg-orange-500", PO: "bg-orange-300", TO: "bg-amber-200", NG: "bg-orange-200", PG: "bg-orange-400", UFA: "bg-slate-200", RFA: "bg-rose-200" };
 const BADGE = { PO: "bg-orange-100 text-orange-700", TO: "bg-amber-100 text-amber-700", NG: "bg-orange-50 text-orange-500", PG: "bg-orange-100 text-orange-600", UFA: "bg-slate-100 text-slate-500", RFA: "bg-rose-100 text-rose-600" };
 
 const fmtM = (v) => "$" + v.toFixed(1) + "M";
+const cleanNo = (no) => String(no || "").replace(/^#+/, "");
 const salaried = (c) => c.years.filter((y) => y.salary != null);
 const total = (c) => salaried(c).reduce((a, y) => a + y.salary, 0);
 const terms = (c) => salaried(c).length + " yrs / " + fmtM(total(c));
@@ -32,14 +73,15 @@ const activeOf = (p) => p.contracts.find((c) => c.status === "Active") || p.cont
 
 // ═══════════════ SHARED PIECES ═══════════════════════════════════
 function Avatar({ p, size }) {
-  const px = size === "lg" ? "w-20 h-20" : "w-11 h-11";
+  const px = size === "lg" ? "w-20 h-20 text-2xl" : "w-11 h-11 text-sm";
   if (p.photo) {
     return <img src={p.photo} alt={p.name} className={px + " rounded-full object-cover object-top bg-slate-200 shrink-0"} />;
   }
-  const initials = p.name.split(" ").map((w) => w[0]).slice(0, 2).join("");
+  const no = cleanNo(p.no);
+  const label = no ? "#" + no : p.name.split(" ").map((w) => w[0]).slice(0, 2).join("");
   return (
-    <div className={px + " rounded-full bg-slate-200 text-slate-500 font-bold flex items-center justify-center shrink-0 " + (size === "lg" ? "text-xl" : "text-xs")}>
-      {initials}
+    <div className={px + " rounded-full bg-slate-200 text-slate-500 font-bold flex items-center justify-center shrink-0"}>
+      {label}
     </div>
   );
 }
@@ -63,8 +105,11 @@ function SalaryBars({ years }) {
             {y.salary == null ? y.type : fmtM(y.salary)}
           </div>
           <div
-            className={"w-full rounded-t-md " + (BAR_STYLE[y.type] || "bg-orange-500")}
-            style={{ height: y.salary == null ? "6px" : Math.max((y.salary / max) * 100, 8) + "%" }}
+            className="w-full rounded-t-md"
+            style={{
+              backgroundColor: BAR_COLORS[y.type] || BAR_COLORS.G,
+              height: y.salary == null ? "6px" : Math.max((y.salary / max) * 100, 8) + "%",
+            }}
           />
           <div className="text-[11px] font-semibold text-slate-400 mt-1">{y.s}</div>
         </div>
@@ -114,20 +159,20 @@ function BioRow({ k, v }) {
   );
 }
 
-// ═══════════════ PLAYER DETAIL (shared by both tabs) ═════════════
+// ═══════════════ PLAYER DETAIL ═══════════════════════════════════
 function PlayerDetail({ p, onBack, backLabel }) {
   const act = activeOf(p);
-  const abbr = act?.team || "";
   const past = p.contracts.filter((c) => c !== act);
+  const no = cleanNo(p.no);
   return (
     <div className="min-h-screen bg-slate-100 pb-24">
-      <div className="px-5 pt-5 pb-6 text-white" style={{ backgroundColor: headerColor(abbr) }}>
+      <div className="px-5 pt-5 pb-6 text-white" style={{ backgroundColor: playerHeaderColor(p) }}>
         <button onClick={onBack} className="text-sm font-semibold opacity-80 mb-4">‹ {backLabel}</button>
         <div className="flex items-center gap-4">
           <Avatar p={p} size="lg" />
           <div className="min-w-0">
             <div className="text-2xl font-extrabold leading-tight truncate">
-              {p.no ? "#" + p.no + " " : ""}{p.name}
+              {no ? "#" + no + " " : ""}{p.name}
             </div>
             <div className="text-sm opacity-80 font-medium mt-0.5 truncate">
               {[p.pos, p.teamName].filter(Boolean).join(" · ")}
@@ -172,6 +217,31 @@ function PlayerDetail({ p, onBack, backLabel }) {
   );
 }
 
+// ═══════════════ LIST HEADER (shared) ════════════════════════════
+function ListHeader({ title, q, setQ }) {
+  return (
+    <div className="bg-blue-600 px-5 pt-6 pb-5 text-white sticky top-0 z-10 shadow-md">
+      <div className="text-2xl font-extrabold tracking-tight">{title}</div>
+      <input
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder="Search players…"
+        className="mt-3 w-full rounded-xl px-4 py-2.5 text-sm text-slate-800 bg-white/95 placeholder-slate-400 outline-none"
+      />
+    </div>
+  );
+}
+
+function TeamPill({ team }) {
+  const abbr = toAbbr(team) || team;
+  if (!abbr) return null;
+  return (
+    <span className="text-[10px] font-bold text-white px-2 py-1 rounded-full shrink-0" style={{ backgroundColor: teamColor(abbr) }}>
+      {abbr}
+    </span>
+  );
+}
+
 // ═══════════════ TAB: PLAYER HUB ═════════════════════════════════
 function PlayersTab({ players, onSelect }) {
   const [q, setQ] = useState("");
@@ -181,38 +251,20 @@ function PlayersTab({ players, onSelect }) {
   );
   return (
     <div>
-      <div className="bg-blue-600 px-5 pt-6 pb-5 text-white sticky top-0 z-10 shadow-md">
-        <div className="text-2xl font-extrabold tracking-tight">Players</div>
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search players…"
-          className="mt-3 w-full rounded-xl px-4 py-2.5 text-sm text-slate-800 bg-white/95 placeholder-slate-400 outline-none"
-        />
-      </div>
+      <ListHeader title="Players" q={q} setQ={setQ} />
       <div className="px-4 pb-28 mt-4">
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm divide-y divide-slate-100 overflow-hidden">
-          {list.map((p) => {
-            const act = activeOf(p);
-            const abbr = act?.team || "";
-            return (
-              <button key={p.id} onClick={() => onSelect(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50">
-                <Avatar p={p} />
-                <span className="flex-1 min-w-0">
-                  <span className="block text-sm font-bold text-slate-900 truncate">{p.name}</span>
-                  <span className="block text-[11px] text-slate-400 font-medium truncate">
-                    {[p.pos, p.no ? "#" + p.no : ""].filter(Boolean).join(" · ") || "—"}
-                  </span>
-                </span>
-                {abbr && (
-                  <span className="text-[10px] font-bold text-white px-2 py-1 rounded-full shrink-0" style={{ backgroundColor: teamColor(abbr) }}>
-                    {abbr}
-                  </span>
-                )}
-                <span className="text-slate-300 shrink-0">›</span>
-              </button>
-            );
-          })}
+          {list.map((p) => (
+            <button key={p.id} onClick={() => onSelect(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50">
+              <Avatar p={p} />
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm font-bold text-slate-900 truncate">{p.name}</span>
+                <span className="block text-[11px] text-slate-400 font-medium truncate">{p.pos || "—"}</span>
+              </span>
+              <TeamPill team={p.teamName || activeOf(p)?.team} />
+              <span className="text-slate-300 shrink-0">›</span>
+            </button>
+          ))}
           {list.length === 0 && <div className="text-center text-sm text-slate-400 py-12">No players match "{q}".</div>}
         </div>
       </div>
@@ -232,15 +284,7 @@ function ContractsTab({ players, onSelect }) {
   );
   return (
     <div>
-      <div className="bg-blue-600 px-5 pt-6 pb-5 text-white sticky top-0 z-10 shadow-md">
-        <div className="text-2xl font-extrabold tracking-tight">Contracts</div>
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search players…"
-          className="mt-3 w-full rounded-xl px-4 py-2.5 text-sm text-slate-800 bg-white/95 placeholder-slate-400 outline-none"
-        />
-      </div>
+      <ListHeader title="Contracts" q={q} setQ={setQ} />
       <div className="px-4 pb-28 mt-4">
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm divide-y divide-slate-100 overflow-hidden">
           {list.map((p) => {
@@ -255,11 +299,7 @@ function ContractsTab({ players, onSelect }) {
                     {p.contracts.length > 1 ? " · " + p.contracts.length + " deals" : ""}
                   </span>
                 </span>
-                {act?.team && (
-                  <span className="text-[10px] font-bold text-white px-2 py-1 rounded-full shrink-0" style={{ backgroundColor: teamColor(act.team) }}>
-                    {act.team}
-                  </span>
-                )}
+                <TeamPill team={act?.team} />
                 <span className="text-slate-300 shrink-0">›</span>
               </button>
             );
@@ -271,10 +311,29 @@ function ContractsTab({ players, onSelect }) {
   );
 }
 
+// ═══════════════ PLACEHOLDER TABS ════════════════════════════════
+function ComingSoon({ icon, title, blurb }) {
+  return (
+    <div>
+      <div className="bg-blue-600 px-5 pt-6 pb-5 text-white sticky top-0 z-10 shadow-md">
+        <div className="text-2xl font-extrabold tracking-tight">{title}</div>
+      </div>
+      <div className="px-8 pt-24 pb-28 text-center">
+        <div className="text-5xl mb-4">{icon}</div>
+        <div className="text-lg font-extrabold text-slate-700">{title} is coming soon</div>
+        <div className="text-sm text-slate-400 mt-2 leading-relaxed">{blurb}</div>
+      </div>
+    </div>
+  );
+}
+
 // ═══════════════ APP SHELL ═══════════════════════════════════════
 const TABS = [
+  { id: "teams", label: "Teams", icon: "🏀" },
   { id: "players", label: "Players", icon: "👤" },
   { id: "contracts", label: "Contracts", icon: "💰" },
+  { id: "stats", label: "Stats", icon: "📊" },
+  { id: "draft", label: "Draft", icon: "🎓" },
 ];
 
 export default function App() {
@@ -295,7 +354,7 @@ export default function App() {
       <PlayerDetail
         p={sel}
         onBack={() => setSel(null)}
-        backLabel={tab === "players" ? "Players" : "Contracts"}
+        backLabel={tab === "contracts" ? "Contracts" : "Players"}
       />
     );
   }
@@ -307,13 +366,20 @@ export default function App() {
           Couldn't load data: {error}
         </div>
       )}
-      {!players && !error && (
-        <div className="text-center text-sm text-slate-400 pt-24">Loading…</div>
+      {!players && !error && <div className="text-center text-sm text-slate-400 pt-24">Loading…</div>}
+
+      {players && tab === "teams" && (
+        <ComingSoon icon="🏀" title="Teams" blurb="Team pages with rosters, records, and payroll — built from your Teams table. Next up." />
       )}
       {players && tab === "players" && <PlayersTab players={players} onSelect={setSel} />}
       {players && tab === "contracts" && <ContractsTab players={players} onSelect={setSel} />}
+      {players && tab === "stats" && (
+        <ComingSoon icon="📊" title="Stats" blurb="Season averages and leaderboards — waiting on the Stats table design in Airtable." />
+      )}
+      {players && tab === "draft" && (
+        <ComingSoon icon="🎓" title="Draft" blurb="Draft classes grouped by year with pick numbers — built from your draft fields." />
+      )}
 
-      {/* Bottom tab bar */}
       <div className="fixed bottom-0 inset-x-0 bg-white border-t border-slate-200 flex pb-[env(safe-area-inset-bottom)] z-20">
         {TABS.map((t) => (
           <button
