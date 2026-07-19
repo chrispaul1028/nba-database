@@ -465,7 +465,12 @@ function TeamDetail({ team, players, onBack, onSelectPlayer }) {
             <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">{role}</div>
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm divide-y divide-slate-100 overflow-hidden">
               {groups[role]
-                .sort((a, b) => currentSalary(b) - currentSalary(a))
+                .sort((a, b) => {
+                  if (a.sort != null && b.sort != null) return a.sort - b.sort;
+                  if (a.sort != null) return -1;
+                  if (b.sort != null) return 1;
+                  return currentSalary(b) - currentSalary(a);
+                })
                 .map((p) => (
                   <button key={p.id} onClick={() => onSelectPlayer(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50">
                     <Avatar p={p} />
