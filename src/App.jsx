@@ -259,7 +259,11 @@ function PlayersTab({ players, onSelect }) {
               <Avatar p={p} />
               <span className="flex-1 min-w-0">
                 <span className="block text-sm font-bold text-slate-900 truncate">{p.name}</span>
-                <span className="block text-[11px] text-slate-400 font-medium truncate">{p.pos || "—"}</span>
+                <span className="block text-[11px] text-slate-400 font-medium truncate">
+                  {[p.pos, cleanNo(p.no) ? "#" + cleanNo(p.no) : "", p.height, p.age ? p.age + " yrs" : ""]
+                    .filter(Boolean)
+                    .join(" · ") || "—"}
+                </span>
               </span>
               <TeamPill team={p.teamName || activeOf(p)?.team} />
               <span className="text-slate-300 shrink-0">›</span>
