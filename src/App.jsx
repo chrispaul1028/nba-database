@@ -11,17 +11,17 @@ const CURRENT_SEASON = "2025-2026";
 
 // Salary bar colors by year type - change any hex you like.
 const BAR_COLORS = {
-  G: "#2563eb",    // guaranteed        (blue-600)
-  PO: "#93c5fd",   // player option     (blue-300)
-  TO: "#bfdbfe",   // team option       (blue-200)
-  NG: "#dbeafe",   // non-guaranteed    (blue-100)
-  PG: "#3b82f6",   // partially gtd     (blue-500)
-  UFA: "#e2e8f0",  // free agent stub   (slate-200)
-  RFA: "#fecdd3",  // restricted stub   (rose-200)
+  G: "#2563eb",    // guaranteed        (blue)
+  PO: "#22c55e",   // player option     (green)
+  TO: "#f59e0b",   // team option       (amber)
+  NG: "#cbd5e1",   // non-guaranteed    (slate)
+  PG: "#d2b48c",   // partially gtd     (tan)
+  UFA: "#e2e8f0",  // free agent stub
+  RFA: "#fecdd3",  // restricted stub
 };
 // Accent for the Total tile + featured contract border.
-const ACCENT_TEXT = "text-blue-600";
-const ACCENT_BORDER = "border-blue-200";
+const ACCENT_TEXT = "text-emerald-600";
+const ACCENT_BORDER = "border-emerald-200";
 
 const TEAM_COLORS = {
   NY: "#1D428A", DAL: "#00538C", ATL: "#C8102E", OKC: "#007AC1",
@@ -67,7 +67,7 @@ function playerHeaderColor(p) {
 }
 
 const TYPE_LABEL = { G: "Guaranteed", PO: "Player Option", TO: "Team Option", NG: "Non-Guaranteed", PG: "Partially Gtd", UFA: "Free Agent", RFA: "Restricted FA" };
-const BADGE = { PO: "bg-orange-100 text-orange-700", TO: "bg-amber-100 text-amber-700", NG: "bg-orange-50 text-orange-500", PG: "bg-orange-100 text-orange-600", UFA: "bg-slate-100 text-slate-500", RFA: "bg-rose-100 text-rose-600" };
+const BADGE = { PO: "bg-emerald-100 text-emerald-700", TO: "bg-amber-100 text-amber-700", NG: "bg-slate-100 text-slate-500", PG: "bg-amber-50 text-amber-800", UFA: "bg-slate-100 text-slate-500", RFA: "bg-rose-100 text-rose-600" };
 
 const fmtM = (v) => "$" + v.toFixed(1) + "M";
 const cleanNo = (no) => String(no || "").replace(/^#+/, "");
@@ -194,7 +194,7 @@ function BioRow({ k, v }) {
 }
 
 // ═══════════════ PLAYER DETAIL ═══════════════════════════════════
-function PlayerDetail({ p, onBack, backLabel }) {
+function PlayerDetail({ p, onBack, backLabel, mode = "full" }) {
   const act = activeOf(p);
   const past = p.contracts.filter((c) => c !== act);
   const no = cleanNo(p.no);
@@ -236,7 +236,7 @@ function PlayerDetail({ p, onBack, backLabel }) {
           </>
         )}
 
-        {(p.height || p.weight || p.age || p.draft || p.birthplace || p.draftYear) && (
+        {mode === "full" && (p.height || p.weight || p.age || p.draft || p.birthplace || p.draftYear) && (
           <>
             <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">Bio</div>
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm divide-y divide-slate-100">
@@ -250,7 +250,7 @@ function PlayerDetail({ p, onBack, backLabel }) {
           </>
         )}
 
-        {p.awards && p.awards.length > 0 && (
+        {mode === "full" && p.awards && p.awards.length > 0 && (
           <>
             <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">Awards</div>
             <div className="flex flex-wrap gap-1.5">
@@ -540,6 +540,7 @@ export default function App() {
         p={sel}
         onBack={() => setSel(null)}
         backLabel={tab === "contracts" ? "Contracts" : tab === "teams" ? (selTeam ? selTeam.name : "Teams") : "Players"}
+        mode={tab === "contracts" ? "contracts" : "full"}
       />
     );
   }

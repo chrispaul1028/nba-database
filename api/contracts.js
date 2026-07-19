@@ -50,13 +50,13 @@ const FIELDS = {
   yGuaranteed: ["Guaranteed $", "Guaranteed", "Guaranteed Amount", "Gtd"],
 };
 
+// Keys are normalized (lowercase, no spaces/punctuation) to match norm()
 const TYPE_MAP = {
   "guaranteed": "G",
-  "player option": "PO",
-  "team option": "TO",
-  "non-guaranteed": "NG",
+  "playeroption": "PO",
+  "teamoption": "TO",
   "nonguaranteed": "NG",
-  "partially guaranteed": "PG",
+  "partiallyguaranteed": "PG",
   "ufa": "UFA",
   "rfa": "RFA",
 };
