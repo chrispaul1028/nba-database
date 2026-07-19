@@ -6,6 +6,9 @@ import { useState, useMemo, useEffect } from "react";
 //   any hex  -> one fixed color for everyone, e.g. "#1e293b"
 const HEADER_COLOR = "team";
 
+// Season used for team payroll totals (must match your Season select format)
+const CURRENT_SEASON = "2025-2026";
+
 // Salary bar colors by year type - change any hex you like.
 const BAR_COLORS = {
   G: "#2563eb",    // guaranteed        (blue-600)
@@ -74,6 +77,15 @@ const terms = (c) => salaried(c).length + " yrs / " + fmtM(total(c));
 const displayLine = (c) => terms(c) + (c.team ? " (" + c.team + ")" : "") + " · " + c.kind;
 const activeOf = (p) => p.contracts.find((c) => c.status === "Active") || p.contracts[0] || null;
 
+// Years in the league, computed from Draft Year vs the current season.
+function experienceOf(p) {
+  if (!p.draftYear) return "";
+  const nowYear = parseInt(String(CURRENT_SEASON).slice(0, 4), 10);
+  const yrs = nowYear - p.draftYear;
+  if (isNaN(yrs) || yrs < 0) return "";
+  return yrs === 0 ? "Rookie" : yrs + (yrs === 1 ? " year" : " years");
+}
+
 // Search matches player name, current team (full name or abbreviation),
 // or the active contract's team. "knicks", "NY", "jalen" all work.
 function matchesQuery(p, q) {
@@ -86,6 +98,9 @@ function matchesQuery(p, q) {
   if (String(abbr).toLowerCase().includes(s)) return true;
   const actTeam = activeOf(p) ? String(activeOf(p).team).toLowerCase() : "";
   if (actTeam.includes(s)) return true;
+  for (const c of p.contracts) {
+    if (String(c.kind).toLowerCase().includes(s)) return true;
+  }
   return false;
 }
 
@@ -221,13 +236,29 @@ function PlayerDetail({ p, onBack, backLabel }) {
           </>
         )}
 
-        {(p.height || p.weight || p.age) && (
+        {(p.height || p.weight || p.age || p.draft || p.birthplace || p.draftYear) && (
           <>
             <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">Bio</div>
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm divide-y divide-slate-100">
               <BioRow k="Height" v={p.height} />
               <BioRow k="Weight" v={p.weight} />
               <BioRow k="Age" v={p.age} />
+              <BioRow k="Draft" v={p.draft || (p.draftYear ? String(p.draftYear) : "")} />
+              <BioRow k="Experience" v={experienceOf(p)} />
+              <BioRow k="Born" v={p.birthplace} />
+            </div>
+          </>
+        )}
+
+        {p.awards && p.awards.length > 0 && (
+          <>
+            <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">Awards</div>
+            <div className="flex flex-wrap gap-1.5">
+              {p.awards.map((a, i) => (
+                <span key={i} className="text-[11px] font-semibold px-2.5 py-1.5 rounded-full bg-amber-100 text-amber-700">
+                  🏆 {a}
+                </span>
+              ))}
             </div>
           </>
         )}
@@ -316,7 +347,6 @@ function ContractsTab({ players, onSelect }) {
                   <span className="block text-sm font-bold text-slate-900 truncate">{p.name}</span>
                   <span className="block text-[11px] text-slate-400 font-medium truncate">
                     {act ? displayLine(act) : "No contract"}
-                    {p.contracts.length > 1 ? " · " + p.contracts.length + " deals" : ""}
                   </span>
                 </span>
                 <TeamPill team={act?.team} />
@@ -326,6 +356,139 @@ function ContractsTab({ players, onSelect }) {
           })}
           {list.length === 0 && <div className="text-center text-sm text-slate-400 py-12">No players match "{q}".</div>}
         </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ═══════════════ TAB: TEAMS ══════════════════════════════════════
+function teamOfPlayer(p) {
+  return toAbbr(p.teamName) || (activeOf(p) ? toAbbr(activeOf(p).team) || activeOf(p).team : "");
+}
+
+function currentSalary(p) {
+  const act = activeOf(p);
+  if (!act) return 0;
+  const yr = act.years.find((y) => y.season === CURRENT_SEASON && y.salary != null);
+  if (yr) return yr.salary;
+  const first = salaried(act)[0];
+  return first ? first.salary : 0;
+}
+
+const ROLE_ORDER = ["Starter", "Bench", "Reserve", "Two-Way"];
+
+function TeamsTab({ teams, onSelect }) {
+  const [q, setQ] = useState("");
+  const list = teams.filter((t) =>
+    (t.name + " " + t.abbr).toLowerCase().includes(q.toLowerCase())
+  );
+  return (
+    <div>
+      <ListHeader title="Teams" q={q} setQ={setQ} />
+      <div className="px-4 pb-28 mt-4">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm divide-y divide-slate-100 overflow-hidden">
+          {list.map((t) => {
+            const abbr = t.abbr || toAbbr(t.name);
+            return (
+              <button key={t.id} onClick={() => onSelect(t)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50">
+                {t.logo ? (
+                  <img src={t.logo} alt="" className="w-11 h-11 rounded-full object-contain bg-slate-100 shrink-0" />
+                ) : (
+                  <span className="w-11 h-11 rounded-full shrink-0" style={{ backgroundColor: teamColor(abbr) }} />
+                )}
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm font-bold text-slate-900 truncate">{t.name}</span>
+                  <span className="block text-[11px] text-slate-400 font-medium truncate">
+                    {[t.conference, t.division].filter(Boolean).join(" · ") || "—"}
+                  </span>
+                </span>
+                {(t.wins != null || t.losses != null) && (
+                  <span className="text-xs font-extrabold text-slate-600 shrink-0">
+                    {t.wins ?? 0}-{t.losses ?? 0}
+                  </span>
+                )}
+                <span className="text-slate-300 shrink-0">›</span>
+              </button>
+            );
+          })}
+          {list.length === 0 && <div className="text-center text-sm text-slate-400 py-12">No teams match "{q}".</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TeamDetail({ team, players, onBack, onSelectPlayer }) {
+  const abbr = team.abbr || toAbbr(team.name);
+  const roster = players.filter((p) => {
+    const t = teamOfPlayer(p);
+    return t && (t === abbr || String(p.teamName).toLowerCase() === String(team.name).toLowerCase());
+  });
+  const payroll = roster.reduce((a, p) => a + currentSalary(p), 0);
+
+  const groups = {};
+  for (const p of roster) {
+    const role = ROLE_ORDER.includes(p.role) ? p.role : "Roster";
+    (groups[role] ??= []).push(p);
+  }
+  const orderedRoles = [...ROLE_ORDER.filter((r) => groups[r]), ...(groups["Roster"] ? ["Roster"] : [])];
+
+  return (
+    <div className="min-h-screen bg-slate-100 pb-24">
+      <div className="px-5 pt-5 pb-6 text-white" style={{ backgroundColor: teamColor(abbr) }}>
+        <button onClick={onBack} className="text-sm font-semibold opacity-80 mb-4">‹ Teams</button>
+        <div className="flex items-center gap-4">
+          {team.logo ? (
+            <img src={team.logo} alt="" className="w-16 h-16 rounded-full object-contain bg-white/20 shrink-0" />
+          ) : (
+            <span className="text-3xl">🏀</span>
+          )}
+          <div className="min-w-0">
+            <div className="text-2xl font-extrabold leading-tight truncate">{team.name}</div>
+            <div className="text-sm opacity-80 font-medium mt-0.5 truncate">
+              {[team.conference, team.division].filter(Boolean).join(" · ")}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="px-4 -mt-3">
+        <div className="grid grid-cols-3 gap-2">
+          <Tile value={(team.wins ?? 0) + "-" + (team.losses ?? 0)} label="Record" />
+          <Tile value={fmtM(payroll)} label="Payroll" accent />
+          <Tile value={roster.length} label="Players" />
+        </div>
+
+        {orderedRoles.map((role) => (
+          <div key={role}>
+            <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">{role}</div>
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm divide-y divide-slate-100 overflow-hidden">
+              {groups[role]
+                .sort((a, b) => currentSalary(b) - currentSalary(a))
+                .map((p) => (
+                  <button key={p.id} onClick={() => onSelectPlayer(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50">
+                    <Avatar p={p} />
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-sm font-bold text-slate-900 truncate">{p.name}</span>
+                      <span className="block text-[11px] text-slate-400 font-medium truncate">
+                        {[p.pos, cleanNo(p.no) ? "#" + cleanNo(p.no) : ""].filter(Boolean).join(" · ") || "—"}
+                      </span>
+                    </span>
+                    {currentSalary(p) > 0 && (
+                      <span className="text-xs font-extrabold text-slate-600 shrink-0">{fmtM(currentSalary(p))}</span>
+                    )}
+                    <span className="text-slate-300 shrink-0">›</span>
+                  </button>
+                ))}
+            </div>
+          </div>
+        ))}
+        {roster.length === 0 && (
+          <div className="text-center text-sm text-slate-400 mt-16">
+            No players linked to {team.name} yet.
+          </div>
+        )}
       </div>
     </div>
   );
@@ -360,12 +523,14 @@ export default function App() {
   const [tab, setTab] = useState("players");
   const [sel, setSel] = useState(null);
   const [players, setPlayers] = useState(null);
+  const [teams, setTeams] = useState([]);
+  const [selTeam, setSelTeam] = useState(null);
   const [error, setError] = useState(null);
 
   useEffect(() => {
     fetch("/api/contracts")
       .then((r) => r.json())
-      .then((d) => (d.error ? setError(d.error) : setPlayers(d.players)))
+      .then((d) => { if (d.error) setError(d.error); else { setPlayers(d.players); setTeams(d.teams || []); } })
       .catch((e) => setError(String(e)));
   }, []);
 
@@ -374,7 +539,7 @@ export default function App() {
       <PlayerDetail
         p={sel}
         onBack={() => setSel(null)}
-        backLabel={tab === "contracts" ? "Contracts" : "Players"}
+        backLabel={tab === "contracts" ? "Contracts" : tab === "teams" ? (selTeam ? selTeam.name : "Teams") : "Players"}
       />
     );
   }
@@ -388,8 +553,16 @@ export default function App() {
       )}
       {!players && !error && <div className="text-center text-sm text-slate-400 pt-24">Loading…</div>}
 
-      {players && tab === "teams" && (
-        <ComingSoon icon="🏀" title="Teams" blurb="Team pages with rosters, records, and payroll — built from your Teams table. Next up." />
+      {players && tab === "teams" && !selTeam && (
+        <TeamsTab teams={teams} onSelect={setSelTeam} />
+      )}
+      {players && tab === "teams" && selTeam && (
+        <TeamDetail
+          team={selTeam}
+          players={players}
+          onBack={() => setSelTeam(null)}
+          onSelectPlayer={setSel}
+        />
       )}
       {players && tab === "players" && <PlayersTab players={players} onSelect={setSel} />}
       {players && tab === "contracts" && <ContractsTab players={players} onSelect={setSel} />}
@@ -404,7 +577,7 @@ export default function App() {
         {TABS.map((t) => (
           <button
             key={t.id}
-            onClick={() => { setTab(t.id); setSel(null); }}
+            onClick={() => { setTab(t.id); setSel(null); setSelTeam(null); }}
             className={"flex-1 py-2.5 text-center " + (tab === t.id ? "text-blue-600" : "text-slate-400")}
           >
             <div className="text-lg leading-none">{t.icon}</div>

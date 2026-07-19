@@ -27,7 +27,16 @@ const FIELDS = {
   playerWeight: ["Weight"],
   playerAge: ["Age"],
   playerStatus: ["Status"],
-  playerArchetype: ["Archetype", "Player Type", "Play Style", "Role"],
+  playerArchetype: ["Archetype", "Player Type", "Play Style"],
+  playerRole: ["Role", "Depth Chart", "Depth", "Lineup Role", "Rotation"],
+  playerDraft: ["Draft", "Draft Info", "Drafted"],
+  playerDraftYear: ["Draft Year"],
+  playerBirthplace: ["Birthplace", "Birth Place", "Born", "Hometown"],
+  playerAwards: ["Awards", "Accolades", "Honors"],
+  teamConference: ["Conference", "Conf"],
+  teamDivision: ["Division", "Div"],
+  teamWins: ["W", "Wins"],
+  teamLosses: ["L", "Losses"],
   teamName: ["Name", "Team Name", "Team"],
   teamAbbr: ["Abbreviation", "Abbr", "Short Name", "Code"],
   cKind: ["Contract Type", "Kind", "Type", "Deal Type"],
@@ -148,16 +157,28 @@ export default async function handler(req, res) {
 
     // Teams table is optional - used only to translate linked ids to names.
     let teamNameById = {};
+    let teamsOut = [];
     try {
       const teams = await fetchAll(base, TABLES.teams, token);
       for (const t of teams) {
-        teamNameById[t.id] =
-          asText(getField(t.fields, FIELDS.teamAbbr)) ||
-          asText(getField(t.fields, FIELDS.teamName)) ||
-          "";
+        const abbr = asText(getField(t.fields, FIELDS.teamAbbr));
+        const name = asText(getField(t.fields, FIELDS.teamName));
+        teamNameById[t.id] = abbr || name || "";
+        teamsOut.push({
+          id: t.id,
+          name: name || abbr,
+          abbr,
+          conference: asText(getField(t.fields, FIELDS.teamConference)),
+          division: asText(getField(t.fields, FIELDS.teamDivision)),
+          wins: getField(t.fields, FIELDS.teamWins) ?? null,
+          losses: getField(t.fields, FIELDS.teamLosses) ?? null,
+          logo: findAnyPhoto(t.fields),
+        });
       }
+      teamsOut.sort((a, b) => String(a.name).localeCompare(String(b.name)));
     } catch {
       teamNameById = {};
+      teamsOut = [];
     }
 
     const playerIds = new Set(players.map((p) => p.id));
@@ -217,6 +238,11 @@ export default async function handler(req, res) {
         age: asText(getField(p.fields, FIELDS.playerAge)),
         status: asText(getField(p.fields, FIELDS.playerStatus)),
         archetype: asText(getField(p.fields, FIELDS.playerArchetype)),
+        role: asText(getField(p.fields, FIELDS.playerRole)),
+        draft: asText(getField(p.fields, FIELDS.playerDraft)),
+        draftYear: (() => { const v = getField(p.fields, FIELDS.playerDraftYear); return typeof v === "number" ? v : null; })(),
+        birthplace: asText(getField(p.fields, FIELDS.playerBirthplace)),
+        awards: (() => { const v = getField(p.fields, FIELDS.playerAwards); return Array.isArray(v) ? v.filter((x) => typeof x === "string" && !isRecId(x)) : (v ? [String(v)] : []); })(),
         contracts: (contractsByPlayer[p.id] || []).sort(
           (a, b) => (b.signed || 0) - (a.signed || 0)
         ),
@@ -224,7 +250,7 @@ export default async function handler(req, res) {
       .sort((a, b) => a.name.localeCompare(b.name));
 
     res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
-    return res.status(200).json({ players: out });
+    return res.status(200).json({ players: out, teams: teamsOut });
   } catch (e) {
     return res.status(500).json({ error: String(e.message || e) });
   }
