@@ -29,7 +29,7 @@ const TEAM_COLORS = {
   PHI: "#006BB6", LAL: "#552583", GSW: "#FDB927", GS: "#FDB927",
   MIA: "#98002E", MIL: "#00471B", CHI: "#CE1141", CLE: "#860038",
   TOR: "#CE1141", BKN: "#000000", WSH: "#E31837", ORL: "#0077C0",
-  CHA: "#1D1160", DET: "#C8102E", HOU: "#CE1141", SAS: "#C4CED4",
+  CHA: "#1D1160", DET: "#C8102E", HOU: "#CE1141", SAS: "#000000",
   MEM: "#5D76A9", NOP: "#0C2340", PHX: "#E56020", SAC: "#5A2D81",
   POR: "#E03A3E", UTA: "#002B5C", UTAH: "#002B5C", LAC: "#C8102E",
 };
@@ -467,10 +467,10 @@ function TeamsTab({ teams, players, onSelect }) {
 
 function StatusBadge({ status }) {
   if (!status) return null;
-  const s = String(status).toLowerCase();
+  const s = String(status).toLowerCase().trim();
   let cls = "bg-slate-100 text-slate-500 dark:text-slate-400";
-  if (s.includes("active") || s.includes("available")) cls = "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300";
-  else if (s.includes("out")) cls = "bg-red-100 text-red-600 dark:bg-red-900/50 dark:text-red-300";
+  if (s === "ir" || s.includes("injured reserve") || s.includes("out")) cls = "bg-red-100 text-red-600 dark:bg-red-900/50 dark:text-red-300";
+  else if (s.includes("active") || s.includes("available")) cls = "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300";
   else if (s.includes("injur") || s.includes("day") || s.includes("question") || s.includes("doubt")) cls = "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300";
   return (
     <span className={"shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wide " + cls}>
@@ -712,7 +712,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100">
+    <div className="min-h-screen bg-slate-100 dark:bg-slate-950">
       {error && (
         <div className="m-4 bg-rose-50 border border-rose-200 text-rose-700 text-sm rounded-2xl px-4 py-3">
           Couldn't load data: {error}
