@@ -304,7 +304,7 @@ export default async function handler(req, res) {
         archetype: asText(getField(p.fields, FIELDS.playerArchetype)),
         role: asText(getField(p.fields, FIELDS.playerRole)),
         sort: coerceNum(getField(p.fields, FIELDS.playerSort)),
-        draft: asText(getField(p.fields, FIELDS.playerDraft)),
+        draft: asText(getField(p.fields, FIELDS.playerDraft)).replace(/^\s*\d{4}\s*[:\u00b7\-]?\s*/, ""),
         draftYear: coerceNum(getField(p.fields, FIELDS.playerDraftYear)),
         birthplace: asText(getField(p.fields, FIELDS.playerBirthplace)),
         college: asText(getField(p.fields, FIELDS.playerCollege)),

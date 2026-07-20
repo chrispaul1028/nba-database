@@ -249,7 +249,7 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full" }) {
               <BioRow k="Height" v={p.height} />
               <BioRow k="Weight" v={p.weight} />
               <BioRow k="Age" v={p.age} />
-              <BioRow k="Draft" v={[p.draftYear, p.draft].filter(Boolean).join(" \u00b7 ")} />
+              <BioRow k="Draft" v={[p.draftYear, p.draft].filter(Boolean).join(" · ")} />
               <BioRow k="Experience" v={experienceOf(p)} />
               <BioRow k="College" v={p.college} />
               <BioRow k="Birthplace" v={p.birthplace} />
@@ -263,9 +263,9 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full" }) {
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm divide-y divide-slate-100">
               {p.stats.map((st, i) => (
                 <div key={i} className="flex items-center justify-between px-4 py-3">
-                  <span className="text-xs font-bold text-slate-500">{st.season || "\u2014"}</span>
+                  <span className="text-xs font-bold text-slate-500">{st.season || "—"}</span>
                   <span className="text-xs font-semibold text-slate-700">
-                    {fmt1(st.pts) ?? "\u2014"} PTS \u00b7 {fmt1(st.reb) ?? "\u2014"} REB \u00b7 {fmt1(st.ast) ?? "\u2014"} AST
+                    {fmt1(st.pts) ?? "—"} PTS · {fmt1(st.reb) ?? "—"} REB · {fmt1(st.ast) ?? "—"} AST
                   </span>
                 </div>
               ))}
@@ -291,14 +291,14 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full" }) {
 }
 
 // ═══════════════ LIST HEADER (shared) ════════════════════════════
-function ListHeader({ title, q, setQ }) {
+function ListHeader({ title, q, setQ, placeholder }) {
   return (
     <div className="bg-blue-600 px-5 pt-6 pb-5 text-white sticky top-0 z-10 shadow-md">
       <div className="text-2xl font-extrabold tracking-tight">{title}</div>
       <input
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="Search players or teams…"
+        placeholder={placeholder || "Search players or teams…"}
         className="mt-3 w-full rounded-xl px-4 py-2.5 text-sm text-slate-800 bg-white/95 placeholder-slate-400 outline-none"
       />
     </div>
@@ -401,42 +401,63 @@ function currentSalary(p) {
 
 const ROLE_ORDER = ["Starter", "Bench", "Reserve", "Two-Way"];
 
-function TeamsTab({ teams, onSelect }) {
+function TeamsTab({ teams, players, onSelect }) {
   const [q, setQ] = useState("");
-  const list = teams.filter((t) =>
-    (t.name + " " + t.abbr).toLowerCase().includes(q.toLowerCase())
+  const s = q.toLowerCase().trim();
+  // Direct team-name matches, plus teams of any player whose name matches -
+  // searching "Brunson" surfaces the Knicks.
+  const playerTeamAbbrs = new Set(
+    s
+      ? players
+          .filter((p) => p.name.toLowerCase().includes(s))
+          .map((p) => teamOfPlayer(p))
+          .filter(Boolean)
+      : []
   );
+  const list = teams.filter((t) => {
+    if (!s) return true;
+    if ((t.name + " " + t.abbr).toLowerCase().includes(s)) return true;
+    const abbr = t.abbr || toAbbr(t.name);
+    return playerTeamAbbrs.has(abbr);
+  });
   return (
     <div>
-      <ListHeader title="Teams" q={q} setQ={setQ} />
-      <div className="px-4 pb-28 mt-4">
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm divide-y divide-slate-100 overflow-hidden">
-          {list.map((t) => {
-            const abbr = t.abbr || toAbbr(t.name);
-            return (
-              <button key={t.id} onClick={() => onSelect(t)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50">
-                {t.logo ? (
-                  <img src={t.logo} alt="" className="w-11 h-11 rounded-full object-contain bg-slate-100 shrink-0" />
-                ) : (
-                  <span className="w-11 h-11 rounded-full shrink-0" style={{ backgroundColor: teamColor(abbr) }} />
-                )}
-                <span className="flex-1 min-w-0">
-                  <span className="block text-sm font-bold text-slate-900 truncate">{t.name}</span>
-                  <span className="block text-[11px] text-slate-400 font-medium truncate">
-                    {[t.conference, t.division].filter(Boolean).join(" · ") || "—"}
-                  </span>
-                </span>
-                {(t.wins != null || t.losses != null) && (
-                  <span className="text-xs font-extrabold text-slate-600 shrink-0">
-                    {t.wins ?? 0}-{t.losses ?? 0}
-                  </span>
-                )}
-                <span className="text-slate-300 shrink-0">›</span>
-              </button>
-            );
-          })}
-          {list.length === 0 && <div className="text-center text-sm text-slate-400 py-12">No teams match "{q}".</div>}
-        </div>
+      <ListHeader title="Teams" q={q} setQ={setQ} placeholder="Search teams or players…" />
+      <div className="px-4 pb-28">
+        {[
+          ["Eastern Conference", list.filter((t) => String(t.conference).toLowerCase().startsWith("east"))],
+          ["Western Conference", list.filter((t) => String(t.conference).toLowerCase().startsWith("west"))],
+          ["Other", list.filter((t) => { const c = String(t.conference).toLowerCase(); return !c.startsWith("east") && !c.startsWith("west"); })],
+        ]
+          .filter(([, group]) => group.length > 0)
+          .map(([label, group]) => (
+            <div key={label}>
+              <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">{label}</div>
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm divide-y divide-slate-100 overflow-hidden">
+                {group.map((t) => {
+                  const abbr = t.abbr || toAbbr(t.name);
+                  return (
+                    <button key={t.id} onClick={() => onSelect(t)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50">
+                      {t.logo ? (
+                        <img src={t.logo} alt="" className="w-11 h-11 rounded-full object-contain bg-slate-100 shrink-0" />
+                      ) : (
+                        <span className="w-11 h-11 rounded-full shrink-0" style={{ backgroundColor: teamColor(abbr) }} />
+                      )}
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-sm font-bold text-slate-900 truncate">{t.name}</span>
+                        <span className="block text-[11px] text-slate-400 font-medium truncate">{t.division || "—"}</span>
+                      </span>
+                      {(t.wins != null || t.losses != null) && (
+                        <span className="text-xs font-extrabold text-slate-600 shrink-0">{t.wins ?? 0}-{t.losses ?? 0}</span>
+                      )}
+                      <span className="text-slate-300 shrink-0">›</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        {list.length === 0 && <div className="text-center text-sm text-slate-400 py-12">No teams match "{q}".</div>}
       </div>
     </div>
   );
@@ -508,9 +529,9 @@ function TeamDetail({ team, players, onBack, onSelectPlayer }) {
                       if (st && (st.pts != null || st.reb != null || st.ast != null)) {
                         return (
                           <span className="text-right shrink-0">
-                            <span className="block text-xs font-extrabold text-slate-700">{fmt1(st.pts) ?? "\u2014"} PTS</span>
+                            <span className="block text-xs font-extrabold text-slate-700">{fmt1(st.pts) ?? "—"} PTS</span>
                             <span className="block text-[10px] font-semibold text-slate-400">
-                              {fmt1(st.reb) ?? "\u2014"} REB \u00b7 {fmt1(st.ast) ?? "\u2014"} AST
+                              {fmt1(st.reb) ?? "—"} REB · {fmt1(st.ast) ?? "—"} AST
                             </span>
                           </span>
                         );
@@ -574,12 +595,12 @@ function DraftTab({ players, onSelect }) {
                         {p.draft ||
                           [p.draftRound ? "Rd " + p.draftRound : "", pickOf(p) !== 999 ? "Pick " + pickOf(p) : ""]
                             .filter(Boolean)
-                            .join(" \u00b7 ") ||
-                          "\u2014"}
+                            .join(" · ") ||
+                          "—"}
                       </span>
                     </span>
                     <TeamPill team={p.teamName || (activeOf(p) && activeOf(p).team)} />
-                    <span className="text-slate-300 shrink-0">\u203a</span>
+                    <span className="text-slate-300 shrink-0">›</span>
                   </button>
                 ))}
             </div>
@@ -661,7 +682,7 @@ export default function App() {
       {!players && !error && <div className="text-center text-sm text-slate-400 pt-24">Loading…</div>}
 
       {players && tab === "teams" && !selTeam && (
-        <TeamsTab teams={teams} onSelect={setSelTeam} />
+        <TeamsTab teams={teams} players={players} onSelect={setSelTeam} />
       )}
       {players && tab === "teams" && selTeam && (
         <TeamDetail
