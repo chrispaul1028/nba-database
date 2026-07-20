@@ -32,6 +32,8 @@ const FIELDS = {
   playerSort: ["Sort Priority", "Sort", "Priority", "Depth Order", "Order"],
   playerDraft: ["Draft", "Draft Info", "Drafted"],
   playerDraftYear: ["Draft Year"],
+  playerDraftRound: ["Draft Round", "Round", "Rd"],
+  playerDraftPick: ["Draft Pick", "Pick", "Pick No", "Pick Number"],
   playerBirthplace: ["Birthplace", "Birth Place", "Born", "Hometown"],
   playerAwards: ["Awards", "Accolades", "Honors"],
   teamConference: ["Conference", "Conf"],
@@ -39,7 +41,7 @@ const FIELDS = {
   teamWins: ["W", "Wins"],
   teamLosses: ["L", "Losses"],
   teamName: ["Name", "Team Name", "Team"],
-  teamAbbr: ["Abbreviation", "Abbr", "Short Name", "Code"],
+  teamAbbr: ["TM", "Abbreviation", "Abbr", "Short Name", "Code"],
   cKind: ["Contract Type", "Kind", "Type", "Deal Type"],
   cStatus: ["Status", "Contract Status"],
   cTeam: ["Team", "Signing Team"],
@@ -244,6 +246,8 @@ export default async function handler(req, res) {
         draft: asText(getField(p.fields, FIELDS.playerDraft)),
         draftYear: (() => { const v = getField(p.fields, FIELDS.playerDraftYear); return typeof v === "number" ? v : null; })(),
         birthplace: asText(getField(p.fields, FIELDS.playerBirthplace)),
+        draftRound: (() => { const v = getField(p.fields, FIELDS.playerDraftRound); return typeof v === "number" ? v : null; })(),
+        draftPick: (() => { const v = getField(p.fields, FIELDS.playerDraftPick); return typeof v === "number" ? v : null; })(),
         awards: (() => { const v = getField(p.fields, FIELDS.playerAwards); return Array.isArray(v) ? v.filter((x) => typeof x === "string" && !isRecId(x)) : (v ? [String(v)] : []); })(),
         contracts: (contractsByPlayer[p.id] || []).sort(
           (a, b) => (b.signed || 0) - (a.signed || 0)

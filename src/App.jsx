@@ -40,14 +40,14 @@ const NAME_TO_ABBR = {
   "atlanta hawks": "ATL", "boston celtics": "BOS", "brooklyn nets": "BKN",
   "charlotte hornets": "CHA", "chicago bulls": "CHI", "cleveland cavaliers": "CLE",
   "dallas mavericks": "DAL", "denver nuggets": "DEN", "detroit pistons": "DET",
-  "golden state warriors": "GSW", "houston rockets": "HOU", "indiana pacers": "IND",
+  "golden state warriors": "GS", "houston rockets": "HOU", "indiana pacers": "IND",
   "los angeles clippers": "LAC", "la clippers": "LAC", "los angeles lakers": "LAL",
   "memphis grizzlies": "MEM", "miami heat": "MIA", "milwaukee bucks": "MIL",
   "minnesota timberwolves": "MIN", "new orleans pelicans": "NOP",
   "new york knicks": "NY", "oklahoma city thunder": "OKC", "orlando magic": "ORL",
   "philadelphia 76ers": "PHI", "phoenix suns": "PHX", "portland trail blazers": "POR",
   "sacramento kings": "SAC", "san antonio spurs": "SAS", "toronto raptors": "TOR",
-  "utah jazz": "UTA", "washington wizards": "WSH",
+  "utah jazz": "UTAH", "washington wizards": "WSH",
 };
 
 function toAbbr(team) {
@@ -499,6 +499,71 @@ function TeamDetail({ team, players, onBack, onSelectPlayer }) {
   );
 }
 
+
+// ═══════════════ TAB: DRAFT ══════════════════════════════════════
+function pickOf(p) {
+  if (p.draftPick != null) return p.draftPick;
+  const m = String(p.draft || "").match(/pick\s*(\d+)/i);
+  return m ? parseInt(m[1], 10) : 999;
+}
+
+function DraftTab({ players, onSelect }) {
+  const [q, setQ] = useState("");
+  const list = players.filter((p) => matchesQuery(p, q));
+  const byYear = {};
+  const noData = [];
+  for (const p of list) {
+    if (p.draftYear) (byYear[p.draftYear] ??= []).push(p);
+    else noData.push(p);
+  }
+  const years = Object.keys(byYear).map(Number).sort((a, b) => b - a);
+  return (
+    <div>
+      <ListHeader title="Draft" q={q} setQ={setQ} />
+      <div className="px-4 pb-28 mt-4">
+        {years.map((yr) => (
+          <div key={yr}>
+            <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">
+              {yr} Draft Class
+            </div>
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm divide-y divide-slate-100 overflow-hidden">
+              {byYear[yr]
+                .sort((a, b) => pickOf(a) - pickOf(b))
+                .map((p) => (
+                  <button key={p.id} onClick={() => onSelect(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50">
+                    <Avatar p={p} />
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-sm font-bold text-slate-900 truncate">{p.name}</span>
+                      <span className="block text-[11px] text-slate-400 font-medium truncate">
+                        {p.draft ||
+                          [p.draftRound ? "Rd " + p.draftRound : "", pickOf(p) !== 999 ? "Pick " + pickOf(p) : ""]
+                            .filter(Boolean)
+                            .join(" \u00b7 ") ||
+                          "\u2014"}
+                      </span>
+                    </span>
+                    <TeamPill team={p.teamName || (activeOf(p) && activeOf(p).team)} />
+                    <span className="text-slate-300 shrink-0">\u203a</span>
+                  </button>
+                ))}
+            </div>
+          </div>
+        ))}
+        {noData.length > 0 && (
+          <div className="text-center text-xs text-slate-400 mt-8">
+            {noData.length} player{noData.length === 1 ? "" : "s"} without draft data yet
+          </div>
+        )}
+        {years.length === 0 && (
+          <div className="text-center text-sm text-slate-400 mt-16">
+            No draft data yet. Fill in the Draft Year field in Airtable and classes will appear here.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ═══════════════ PLACEHOLDER TABS ════════════════════════════════
 function ComingSoon({ icon, title, blurb }) {
   return (
@@ -525,7 +590,7 @@ const TABS = [
 ];
 
 export default function App() {
-  const [tab, setTab] = useState("players");
+  const [tab, setTab] = useState("teams");
   const [sel, setSel] = useState(null);
   const [players, setPlayers] = useState(null);
   const [teams, setTeams] = useState([]);
@@ -575,9 +640,7 @@ export default function App() {
       {players && tab === "stats" && (
         <ComingSoon icon="📊" title="Stats" blurb="Season averages and leaderboards — waiting on the Stats table design in Airtable." />
       )}
-      {players && tab === "draft" && (
-        <ComingSoon icon="🎓" title="Draft" blurb="Draft classes grouped by year with pick numbers — built from your draft fields." />
-      )}
+      {players && tab === "draft" && <DraftTab players={players} onSelect={setSel} />}
 
       <div className="fixed bottom-0 inset-x-0 bg-white border-t border-slate-200 flex pb-[env(safe-area-inset-bottom)] z-20">
         {TABS.map((t) => (
