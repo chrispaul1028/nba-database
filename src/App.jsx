@@ -225,7 +225,7 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full" }) {
         {act && salaried(act).length > 0 && (
           <>
             <div className="grid grid-cols-3 gap-2">
-              <Tile value={fmtM(total(act))} label="Total" accent />
+              <Tile value={fmtM(total(act))} label="Total" />
               <Tile value={fmtM(total(act) / salaried(act).length)} label="Per Year" />
               <Tile value={salaried(act).length} label="Years" />
             </div>
@@ -565,20 +565,36 @@ function pickOf(p) {
 }
 
 function DraftTab({ players, onSelect }) {
-  const [q, setQ] = useState("");
-  const list = players.filter((p) => matchesQuery(p, q));
   const byYear = {};
   const noData = [];
-  for (const p of list) {
+  for (const p of players) {
     if (p.draftYear) (byYear[p.draftYear] ??= []).push(p);
     else noData.push(p);
   }
   const years = Object.keys(byYear).map(Number).sort((a, b) => b - a);
+  const [selYear, setSelYear] = useState(null);
+  const yr = selYear && byYear[selYear] ? selYear : years[0]; // default: newest class
   return (
     <div>
-      <ListHeader title="Draft" q={q} setQ={setQ} />
+      <div className="bg-blue-600 pt-3 pb-4 px-4">
+        <h1 className="text-3xl font-extrabold text-white mb-3">Draft</h1>
+        <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1" style={{ scrollbarWidth: "none" }}>
+          {years.map((y) => (
+            <button
+              key={y}
+              onClick={() => setSelYear(y)}
+              className={
+                "shrink-0 px-4 py-1.5 rounded-full text-sm font-bold transition-colors " +
+                (y === yr ? "bg-white text-blue-700" : "bg-blue-500/60 text-blue-100 active:bg-blue-500")
+              }
+            >
+              {y}
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="px-4 pb-28 mt-4">
-        {years.map((yr) => (
+        {[yr].filter((y) => y != null).map((yr) => (
           <div key={yr}>
             <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">
               {yr} Draft Class
