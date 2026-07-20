@@ -67,7 +67,7 @@ function playerHeaderColor(p) {
 }
 
 const TYPE_LABEL = { G: "Guaranteed", PO: "Player Option", TO: "Team Option", NG: "Non-Guaranteed", PG: "Partially Gtd", UFA: "Free Agent", RFA: "Restricted FA" };
-const BADGE = { PO: "bg-emerald-100 text-emerald-700", TO: "bg-amber-100 text-amber-700", NG: "bg-slate-100 text-slate-500", PG: "bg-amber-50 text-amber-800", UFA: "bg-slate-100 text-slate-500", RFA: "bg-rose-100 text-rose-600" };
+const BADGE = { PO: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300", TO: "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300", NG: "bg-slate-100 text-slate-500 dark:text-slate-400", PG: "bg-amber-50 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300", UFA: "bg-slate-100 text-slate-500 dark:text-slate-400", RFA: "bg-rose-100 text-rose-600 dark:bg-rose-900/50 dark:text-rose-300" };
 
 const fmtM = (v) => "$" + v.toFixed(1) + "M";
 const cleanNo = (no) => String(no || "").replace(/^#+/, "");
@@ -120,7 +120,7 @@ function Avatar({ p, size }) {
   const no = cleanNo(p.no);
   const label = no ? "#" + no : p.name.split(" ").map((w) => w[0]).slice(0, 2).join("");
   return (
-    <div className={px + " rounded-full bg-slate-200 text-slate-500 font-bold flex items-center justify-center shrink-0"}>
+    <div className={px + " rounded-full bg-slate-200 text-slate-500 dark:text-slate-400 dark:bg-slate-700 dark:text-slate-300 font-bold flex items-center justify-center shrink-0"}>
       {label}
     </div>
   );
@@ -128,8 +128,8 @@ function Avatar({ p, size }) {
 
 function Tile({ value, label, accent }) {
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 px-2 py-4 text-center shadow-sm">
-      <div className={"text-2xl font-extrabold tracking-tight " + (accent ? ACCENT_TEXT : "text-slate-900")}>{value}</div>
+    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 px-2 py-4 text-center shadow-sm">
+      <div className={"text-2xl font-extrabold tracking-tight " + (accent ? ACCENT_TEXT : "text-slate-900 dark:text-slate-100")}>{value}</div>
       <div className="text-[10px] font-semibold text-slate-400 tracking-widest uppercase mt-1">{label}</div>
     </div>
   );
@@ -141,7 +141,7 @@ function SalaryBars({ years }) {
     <div className="flex items-end gap-2 h-32 mt-2">
       {years.map((y, i) => (
         <div key={i} className="flex-1 flex flex-col items-center justify-end h-full">
-          <div className="text-[11px] font-bold text-slate-700 mb-1">
+          <div className="text-[11px] font-bold text-slate-700 dark:text-slate-200 mb-1">
             {y.salary == null ? y.type : fmtM(y.salary)}
           </div>
           <div
@@ -160,29 +160,29 @@ function SalaryBars({ years }) {
 
 function ContractCard({ c, big }) {
   return (
-    <div className={"bg-white rounded-2xl border shadow-sm px-4 py-4 " + (big ? ACCENT_BORDER : "border-slate-200")}>
+    <div className={"bg-white dark:bg-slate-900 rounded-2xl border shadow-sm px-4 py-4 " + (big ? ACCENT_BORDER : "border-slate-200 dark:border-slate-800")}>
       <div className="flex items-baseline justify-between gap-2">
         <div className="min-w-0">
           <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase truncate">
             {c.kind}{c.team ? " · " + c.team : ""}{c.signed ? " · " + c.signed : ""}
           </div>
-          <div className="text-sm font-extrabold text-slate-800 mt-0.5">{terms(c)}</div>
+          <div className="text-sm font-extrabold text-slate-800 dark:text-slate-200 mt-0.5">{terms(c)}</div>
         </div>
-        <span className={"text-[10px] font-bold px-2 py-1 rounded-full shrink-0 " + (c.status === "Active" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500")}>
+        <span className={"text-[10px] font-bold px-2 py-1 rounded-full shrink-0 " + (c.status === "Active" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300" : "bg-slate-100 text-slate-500 dark:text-slate-400")}>
           {c.status}
         </span>
       </div>
       <SalaryBars years={c.years} />
       <div className="flex flex-wrap gap-1.5 mt-3">
         {c.years.filter((y) => y.type !== "G").map((y, i) => (
-          <span key={i} className={"text-[11px] font-semibold px-2 py-1 rounded-full " + (BADGE[y.type] || "bg-slate-100 text-slate-500")}>
+          <span key={i} className={"text-[11px] font-semibold px-2 py-1 rounded-full " + (BADGE[y.type] || "bg-slate-100 text-slate-500 dark:text-slate-400")}>
             {y.season || y.s} · {TYPE_LABEL[y.type] || y.type}
             {y.decision ? " · " + y.decision : ""}
             {y.gtd != null ? " (" + fmtM(y.gtd) + " gtd)" : ""}
           </span>
         ))}
         {c.years.length > 0 && c.years.every((y) => y.type === "G") && (
-          <span className="text-[11px] font-semibold px-2 py-1 rounded-full bg-emerald-100 text-emerald-700">Fully guaranteed</span>
+          <span className="text-[11px] font-semibold px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">Fully guaranteed</span>
         )}
       </div>
     </div>
@@ -194,7 +194,7 @@ function BioRow({ k, v }) {
   return (
     <div className="flex justify-between px-4 py-3 text-sm">
       <span className="text-slate-400 font-medium">{k}</span>
-      <span className="text-slate-800 font-semibold">{v}</span>
+      <span className="text-slate-800 dark:text-slate-200 font-semibold">{v}</span>
     </div>
   );
 }
@@ -205,7 +205,7 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full" }) {
   const past = p.contracts.filter((c) => c !== act);
   const no = cleanNo(p.no);
   return (
-    <div className="min-h-screen bg-slate-100 pb-24">
+    <div className="min-h-screen bg-slate-100 dark:bg-slate-950 pb-24">
       <div className="px-5 pt-5 pb-6 text-white" style={{ backgroundColor: playerHeaderColor(p) }}>
         <button onClick={onBack} className="text-sm font-semibold opacity-80 mb-4">‹ {backLabel}</button>
         <div className="flex items-center gap-4">
@@ -233,7 +233,7 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full" }) {
         {mode === "full" && (p.height || p.weight || p.age || p.draft || p.birthplace || p.draftYear) && (
           <>
             <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">Bio</div>
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm divide-y divide-slate-100">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800">
               <BioRow k="Height" v={p.height} />
               <BioRow k="Weight" v={p.weight} />
               <BioRow k="Age" v={p.age} />
@@ -261,11 +261,11 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full" }) {
         {mode === "full" && p.stats && p.stats.length > 0 && (
           <>
             <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">Stats</div>
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm divide-y divide-slate-100">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800">
               {p.stats.map((st, i) => (
                 <div key={i} className="flex items-center justify-between px-4 py-3">
-                  <span className="text-xs font-bold text-slate-500">{st.season || "—"}</span>
-                  <span className="text-xs font-semibold text-slate-700">
+                  <span className="text-xs font-bold text-slate-500 dark:text-slate-400">{st.season || "—"}</span>
+                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
                     {fmt1(st.pts) ?? "—"} PTS · {fmt1(st.reb) ?? "—"} REB · {fmt1(st.ast) ?? "—"} AST
                   </span>
                 </div>
@@ -279,7 +279,7 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full" }) {
             <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">Awards</div>
             <div className="flex flex-wrap gap-1.5">
               {p.awards.map((a, i) => (
-                <span key={i} className="text-[11px] font-semibold px-2.5 py-1.5 rounded-full bg-amber-100 text-amber-700">
+                <span key={i} className="text-[11px] font-semibold px-2.5 py-1.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
                   🏆 {a}
                 </span>
               ))}
@@ -300,7 +300,7 @@ function ListHeader({ title, q, setQ, placeholder }) {
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder={placeholder || "Search players or teams…"}
-        className="mt-3 w-full rounded-xl px-4 py-2.5 text-sm text-slate-800 bg-white/95 placeholder-slate-400 outline-none"
+        className="mt-3 w-full rounded-xl px-4 py-2.5 text-sm text-slate-800 dark:text-slate-200 bg-white/95 dark:bg-slate-900/80 placeholder-slate-400 outline-none"
       />
     </div>
   );
@@ -324,12 +324,12 @@ function PlayersTab({ players, onSelect }) {
     <div>
       <ListHeader title="Players" q={q} setQ={setQ} />
       <div className="px-4 pb-28 mt-4">
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm divide-y divide-slate-100 overflow-hidden">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
           {list.map((p) => (
-            <button key={p.id} onClick={() => onSelect(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50">
+            <button key={p.id} onClick={() => onSelect(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
               <Avatar p={p} />
               <span className="flex-1 min-w-0">
-                <span className="block text-sm font-bold text-slate-900 truncate">{p.name}</span>
+                <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
                 <span className="block text-[11px] text-slate-400 font-medium truncate">
                   {[p.pos, p.archetype, p.age ? p.age + " yrs" : ""]
                     .filter(Boolean)
@@ -361,14 +361,14 @@ function ContractsTab({ players, onSelect }) {
     <div>
       <ListHeader title="Contracts" q={q} setQ={setQ} />
       <div className="px-4 pb-28 mt-4">
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm divide-y divide-slate-100 overflow-hidden">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
           {list.map((p) => {
             const act = activeOf(p);
             return (
-              <button key={p.id} onClick={() => onSelect(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50">
+              <button key={p.id} onClick={() => onSelect(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
                 <Avatar p={p} />
                 <span className="flex-1 min-w-0">
-                  <span className="block text-sm font-bold text-slate-900 truncate">{p.name}</span>
+                  <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
                   <span className="block text-[11px] text-slate-400 font-medium truncate">
                     {act ? displayLine(act) : "No contract"}
                   </span>
@@ -434,22 +434,22 @@ function TeamsTab({ teams, players, onSelect }) {
           .map(([label, group]) => (
             <div key={label}>
               <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">{label}</div>
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm divide-y divide-slate-100 overflow-hidden">
+              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
                 {group.map((t) => {
                   const abbr = t.abbr || toAbbr(t.name);
                   return (
-                    <button key={t.id} onClick={() => onSelect(t)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50">
+                    <button key={t.id} onClick={() => onSelect(t)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
                       {t.logo ? (
-                        <img src={t.logo} alt="" className="w-11 h-11 rounded-full object-contain bg-slate-100 shrink-0" />
+                        <img src={t.logo} alt="" className="w-11 h-11 rounded-full object-contain bg-slate-100 dark:bg-slate-800 shrink-0" />
                       ) : (
                         <span className="w-11 h-11 rounded-full shrink-0" style={{ backgroundColor: teamColor(abbr) }} />
                       )}
                       <span className="flex-1 min-w-0">
-                        <span className="block text-sm font-bold text-slate-900 truncate">{t.name}</span>
+                        <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{t.name}</span>
                         <span className="block text-[11px] text-slate-400 font-medium truncate">{t.division || "—"}</span>
                       </span>
                       {(t.wins != null || t.losses != null) && (
-                        <span className="text-xs font-extrabold text-slate-600 shrink-0">{t.wins ?? 0}-{t.losses ?? 0}</span>
+                        <span className="text-xs font-extrabold text-slate-600 dark:text-slate-300 shrink-0">{t.wins ?? 0}-{t.losses ?? 0}</span>
                       )}
                       <span className="text-slate-300 shrink-0">›</span>
                     </button>
@@ -468,10 +468,10 @@ function TeamsTab({ teams, players, onSelect }) {
 function StatusBadge({ status }) {
   if (!status) return null;
   const s = String(status).toLowerCase();
-  let cls = "bg-slate-100 text-slate-500";
-  if (s.includes("active") || s.includes("available")) cls = "bg-green-100 text-green-700";
-  else if (s.includes("out")) cls = "bg-red-100 text-red-600";
-  else if (s.includes("injur") || s.includes("day") || s.includes("question") || s.includes("doubt")) cls = "bg-amber-100 text-amber-700";
+  let cls = "bg-slate-100 text-slate-500 dark:text-slate-400";
+  if (s.includes("active") || s.includes("available")) cls = "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300";
+  else if (s.includes("out")) cls = "bg-red-100 text-red-600 dark:bg-red-900/50 dark:text-red-300";
+  else if (s.includes("injur") || s.includes("day") || s.includes("question") || s.includes("doubt")) cls = "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300";
   return (
     <span className={"shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wide " + cls}>
       {status}
@@ -496,7 +496,7 @@ function TeamDetail({ team, players, onBack, onSelectPlayer }) {
   const orderedRoles = [...ROLE_ORDER.filter((r) => groups[r]), ...(groups["Roster"] ? ["Roster"] : [])];
 
   return (
-    <div className="min-h-screen bg-slate-100 pb-24">
+    <div className="min-h-screen bg-slate-100 dark:bg-slate-950 pb-24">
       <div className="px-5 pt-5 pb-6 text-white" style={{ backgroundColor: teamColor(abbr) }}>
         <button onClick={onBack} className="text-sm font-semibold opacity-80 mb-4">‹ Teams</button>
         <div className="flex items-center gap-4">
@@ -524,7 +524,7 @@ function TeamDetail({ team, players, onBack, onSelectPlayer }) {
         {orderedRoles.map((role) => (
           <div key={role}>
             <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">{role}</div>
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm divide-y divide-slate-100 overflow-hidden">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
               {groups[role]
                 .sort((a, b) => {
                   if (a.sort != null && b.sort != null) return a.sort - b.sort;
@@ -533,11 +533,11 @@ function TeamDetail({ team, players, onBack, onSelectPlayer }) {
                   return currentSalary(b) - currentSalary(a);
                 })
                 .map((p) => (
-                  <button key={p.id} onClick={() => onSelectPlayer(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50">
+                  <button key={p.id} onClick={() => onSelectPlayer(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
                     <Avatar p={p} />
                     <span className="flex-1 min-w-0">
                       <span className="flex items-center gap-1.5 min-w-0">
-                        <span className="text-sm font-bold text-slate-900 truncate">{p.name}</span>
+                        <span className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
                         <StatusBadge status={p.status} />
                       </span>
                       <span className="block text-[11px] text-slate-400 font-medium truncate">
@@ -552,7 +552,7 @@ function TeamDetail({ team, players, onBack, onSelectPlayer }) {
                       if (st && (st.pts != null || st.reb != null || st.ast != null)) {
                         return (
                           <span className="text-right shrink-0">
-                            <span className="block text-xs font-extrabold text-slate-700">{fmt1(st.pts) ?? "—"} PTS</span>
+                            <span className="block text-xs font-extrabold text-slate-700 dark:text-slate-200">{fmt1(st.pts) ?? "—"} PTS</span>
                             <span className="block text-[10px] font-semibold text-slate-400">
                               {fmt1(st.reb) ?? "—"} REB · {fmt1(st.ast) ?? "—"} AST
                             </span>
@@ -560,7 +560,7 @@ function TeamDetail({ team, players, onBack, onSelectPlayer }) {
                         );
                       }
                       return currentSalary(p) > 0 ? (
-                        <span className="text-xs font-extrabold text-slate-600 shrink-0">{fmtM(currentSalary(p))}</span>
+                        <span className="text-xs font-extrabold text-slate-600 dark:text-slate-300 shrink-0">{fmtM(currentSalary(p))}</span>
                       ) : null;
                     })()}
                     <span className="text-slate-300 shrink-0">›</span>
@@ -622,14 +622,14 @@ function DraftTab({ players, onSelect }) {
             <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">
               {yr} Draft Class
             </div>
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm divide-y divide-slate-100 overflow-hidden">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
               {byYear[yr]
                 .sort((a, b) => pickOf(a) - pickOf(b))
                 .map((p) => (
-                  <button key={p.id} onClick={() => onSelect(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50">
+                  <button key={p.id} onClick={() => onSelect(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
                     <Avatar p={p} />
                     <span className="flex-1 min-w-0">
-                      <span className="block text-sm font-bold text-slate-900 truncate">{p.name}</span>
+                      <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
                       <span className="block text-[11px] text-slate-400 font-medium truncate">
                         {p.draft ||
                           [p.draftRound ? "Rd " + p.draftRound : "", pickOf(p) !== 999 ? "Pick " + pickOf(p) : ""]
@@ -669,7 +669,7 @@ function ComingSoon({ icon, title, blurb }) {
       </div>
       <div className="px-8 pt-24 pb-28 text-center">
         <div className="text-5xl mb-4">{icon}</div>
-        <div className="text-lg font-extrabold text-slate-700">{title} is coming soon</div>
+        <div className="text-lg font-extrabold text-slate-700 dark:text-slate-200">{title} is coming soon</div>
         <div className="text-sm text-slate-400 mt-2 leading-relaxed">{blurb}</div>
       </div>
     </div>
@@ -738,7 +738,7 @@ export default function App() {
       )}
       {players && tab === "draft" && <DraftTab players={players} onSelect={setSel} />}
 
-      <div className="fixed bottom-0 inset-x-0 bg-white border-t border-slate-200 flex pb-[env(safe-area-inset-bottom)] z-20">
+      <div className="fixed bottom-0 inset-x-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex pb-[env(safe-area-inset-bottom)] z-20">
         {TABS.map((t) => (
           <button
             key={t.id}
