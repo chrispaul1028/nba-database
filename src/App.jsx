@@ -78,6 +78,11 @@ const displayLine = (c) => terms(c) + (c.team ? " (" + c.team + ")" : "") + " ·
 const activeOf = (p) => p.contracts.find((c) => c.status === "Active") || p.contracts[0] || null;
 
 // Years in the league, computed from Draft Year vs the current season.
+function latestStats(p) {
+  return p.stats && p.stats.length > 0 ? p.stats[0] : null;
+}
+const fmt1 = (v) => (v == null ? null : Number(v).toFixed(1));
+
 function experienceOf(p) {
   if (!p.draftYear) return "";
   const nowYear = parseInt(String(CURRENT_SEASON).slice(0, 4), 10);
@@ -243,9 +248,26 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full" }) {
               <BioRow k="Height" v={p.height} />
               <BioRow k="Weight" v={p.weight} />
               <BioRow k="Age" v={p.age} />
-              <BioRow k="Draft" v={p.draft || (p.draftYear ? String(p.draftYear) : "")} />
+              <BioRow k="Draft" v={[p.draftYear, p.draft].filter(Boolean).join(" \u00b7 ")} />
               <BioRow k="Experience" v={experienceOf(p)} />
-              <BioRow k="Born" v={p.birthplace} />
+              <BioRow k="College" v={p.college} />
+              <BioRow k="Birthplace" v={p.birthplace} />
+            </div>
+          </>
+        )}
+
+        {mode === "full" && p.stats && p.stats.length > 0 && (
+          <>
+            <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">Stats</div>
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm divide-y divide-slate-100">
+              {p.stats.map((st, i) => (
+                <div key={i} className="flex items-center justify-between px-4 py-3">
+                  <span className="text-xs font-bold text-slate-500">{st.season || "\u2014"}</span>
+                  <span className="text-xs font-semibold text-slate-700">
+                    {fmt1(st.pts) ?? "\u2014"} PTS \u00b7 {fmt1(st.reb) ?? "\u2014"} REB \u00b7 {fmt1(st.ast) ?? "\u2014"} AST
+                  </span>
+                </div>
+              ))}
             </div>
           </>
         )}
@@ -480,9 +502,22 @@ function TeamDetail({ team, players, onBack, onSelectPlayer }) {
                         {[p.pos, cleanNo(p.no) ? "#" + cleanNo(p.no) : ""].filter(Boolean).join(" · ") || "—"}
                       </span>
                     </span>
-                    {currentSalary(p) > 0 && (
-                      <span className="text-xs font-extrabold text-slate-600 shrink-0">{fmtM(currentSalary(p))}</span>
-                    )}
+                    {(() => {
+                      const st = latestStats(p);
+                      if (st && (st.pts != null || st.reb != null || st.ast != null)) {
+                        return (
+                          <span className="text-right shrink-0">
+                            <span className="block text-xs font-extrabold text-slate-700">{fmt1(st.pts) ?? "\u2014"} PTS</span>
+                            <span className="block text-[10px] font-semibold text-slate-400">
+                              {fmt1(st.reb) ?? "\u2014"} REB \u00b7 {fmt1(st.ast) ?? "\u2014"} AST
+                            </span>
+                          </span>
+                        );
+                      }
+                      return currentSalary(p) > 0 ? (
+                        <span className="text-xs font-extrabold text-slate-600 shrink-0">{fmtM(currentSalary(p))}</span>
+                      ) : null;
+                    })()}
                     <span className="text-slate-300 shrink-0">›</span>
                   </button>
                 ))}

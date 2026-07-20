@@ -15,6 +15,7 @@ const TABLES = {
   contracts: "Contracts",
   years: "Contract Years",
   teams: "Teams", // optional - used to resolve linked team names
+  stats: "Stats", // optional - season averages, one row per player per season
 };
 
 const FIELDS = {
@@ -35,6 +36,7 @@ const FIELDS = {
   playerDraftRound: ["Draft Round", "Round", "Rd"],
   playerDraftPick: ["Draft Pick", "Pick", "Pick No", "Pick Number"],
   playerBirthplace: ["Birthplace", "Birth Place", "Born", "Hometown"],
+  playerCollege: ["College", "School", "College/Country"],
   playerAwards: ["Awards", "Accolades", "Honors"],
   teamConference: ["Conference", "Conf"],
   teamDivision: ["Division", "Div"],
@@ -47,6 +49,16 @@ const FIELDS = {
   cTeam: ["Team", "Signing Team"],
   cSigned: ["Signed Date", "Signed", "Date Signed", "Signed Year"],
   ySeason: ["Season", "Year"],
+  sSeason: ["Season", "Year"],
+  sGP: ["GP", "Games", "Games Played"],
+  sMIN: ["MIN", "MPG", "Minutes"],
+  sPTS: ["PTS", "PPG", "Points"],
+  sREB: ["REB", "RPG", "Rebounds"],
+  sAST: ["AST", "APG", "Assists"],
+  sSTL: ["STL", "SPG", "Steals"],
+  sBLK: ["BLK", "BPG", "Blocks"],
+  sFG: ["FG%", "FG", "Field Goal %"],
+  s3P: ["3P%", "3PT%", "3P", "Three Point %"],
   ySalary: ["Salary", "Amount", "Cap Hit"],
   yType: ["Type", "Year Type", "Guarantee"],
   yDecision: ["Decision", "Option Decision"],
@@ -63,6 +75,19 @@ const TYPE_MAP = {
   "ufa": "UFA",
   "rfa": "RFA",
 };
+
+
+// Accepts a number, a numeric string ("4"), or an array holding either
+// (single selects and lookups often arrive as strings/arrays).
+function coerceNum(v) {
+  if (Array.isArray(v)) v = v[0];
+  if (typeof v === "number") return v;
+  if (typeof v === "string") {
+    const n = parseFloat(v.replace(/[^0-9.\-]/g, ""));
+    return isNaN(n) ? null : n;
+  }
+  return null;
+}
 
 const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, "");
 const isRecId = (v) => typeof v === "string" && /^rec[a-zA-Z0-9]{14}$/.test(v);
@@ -158,6 +183,21 @@ export default async function handler(req, res) {
       fetchAll(base, TABLES.years, token),
     ]);
 
+    // Stats are optional: prefer a single "Stats" table; fall back to the
+    // legacy per-season table name if it exists.
+    let statRecords = [];
+    let impliedSeason = null;
+    try {
+      statRecords = await fetchAll(base, TABLES.stats, token);
+    } catch {
+      try {
+        statRecords = await fetchAll(base, "2025-2026 Stats", token);
+        impliedSeason = "2025-2026";
+      } catch {
+        statRecords = [];
+      }
+    }
+
     // Teams table is optional - used only to translate linked ids to names.
     let teamNameById = {};
     let teamsOut = [];
@@ -173,8 +213,8 @@ export default async function handler(req, res) {
           abbr,
           conference: asText(getField(t.fields, FIELDS.teamConference)),
           division: asText(getField(t.fields, FIELDS.teamDivision)),
-          wins: getField(t.fields, FIELDS.teamWins) ?? null,
-          losses: getField(t.fields, FIELDS.teamLosses) ?? null,
+          wins: coerceNum(getField(t.fields, FIELDS.teamWins)),
+          losses: coerceNum(getField(t.fields, FIELDS.teamLosses)),
           logo: findAnyPhoto(t.fields),
         });
       }
@@ -186,6 +226,27 @@ export default async function handler(req, res) {
 
     const playerIds = new Set(players.map((p) => p.id));
     const contractIds = new Set(contracts.map((c) => c.id));
+
+    const statsByPlayer = {};
+    for (const r of statRecords) {
+      const pid = findLink(r.fields, playerIds);
+      if (!pid) continue;
+      (statsByPlayer[pid] ??= []).push({
+        season: asText(getField(r.fields, FIELDS.sSeason)) || impliedSeason || "",
+        gp: coerceNum(getField(r.fields, FIELDS.sGP)),
+        min: coerceNum(getField(r.fields, FIELDS.sMIN)),
+        pts: coerceNum(getField(r.fields, FIELDS.sPTS)),
+        reb: coerceNum(getField(r.fields, FIELDS.sREB)),
+        ast: coerceNum(getField(r.fields, FIELDS.sAST)),
+        stl: coerceNum(getField(r.fields, FIELDS.sSTL)),
+        blk: coerceNum(getField(r.fields, FIELDS.sBLK)),
+        fg: coerceNum(getField(r.fields, FIELDS.sFG)),
+        p3: coerceNum(getField(r.fields, FIELDS.s3P)),
+      });
+    }
+    for (const arr of Object.values(statsByPlayer)) {
+      arr.sort((a, b) => String(b.season).localeCompare(String(a.season)));
+    }
 
     const yearsByContract = {};
     for (const y of years) {
@@ -242,12 +303,14 @@ export default async function handler(req, res) {
         status: asText(getField(p.fields, FIELDS.playerStatus)),
         archetype: asText(getField(p.fields, FIELDS.playerArchetype)),
         role: asText(getField(p.fields, FIELDS.playerRole)),
-        sort: (() => { const v = getField(p.fields, FIELDS.playerSort); return typeof v === "number" ? v : null; })(),
+        sort: coerceNum(getField(p.fields, FIELDS.playerSort)),
         draft: asText(getField(p.fields, FIELDS.playerDraft)),
-        draftYear: (() => { const v = getField(p.fields, FIELDS.playerDraftYear); return typeof v === "number" ? v : null; })(),
+        draftYear: coerceNum(getField(p.fields, FIELDS.playerDraftYear)),
         birthplace: asText(getField(p.fields, FIELDS.playerBirthplace)),
-        draftRound: (() => { const v = getField(p.fields, FIELDS.playerDraftRound); return typeof v === "number" ? v : null; })(),
-        draftPick: (() => { const v = getField(p.fields, FIELDS.playerDraftPick); return typeof v === "number" ? v : null; })(),
+        college: asText(getField(p.fields, FIELDS.playerCollege)),
+        draftRound: coerceNum(getField(p.fields, FIELDS.playerDraftRound)),
+        draftPick: coerceNum(getField(p.fields, FIELDS.playerDraftPick)),
+        stats: statsByPlayer[p.id] || [],
         awards: (() => { const v = getField(p.fields, FIELDS.playerAwards); return Array.isArray(v) ? v.filter((x) => typeof x === "string" && !isRecId(x)) : (v ? [String(v)] : []); })(),
         contracts: (contractsByPlayer[p.id] || []).sort(
           (a, b) => (b.signed || 0) - (a.signed || 0)
