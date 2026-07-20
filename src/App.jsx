@@ -83,12 +83,13 @@ function latestStats(p) {
 }
 const fmt1 = (v) => (v == null ? null : Number(v).toFixed(1));
 
+// Inclusive season count: drafted 2014 -> 2025-26 is season #12.
 function experienceOf(p) {
   if (!p.draftYear) return "";
   const nowYear = parseInt(String(CURRENT_SEASON).slice(0, 4), 10);
-  const yrs = nowYear - p.draftYear;
-  if (isNaN(yrs) || yrs < 0) return "";
-  return yrs === 0 ? "Rookie" : yrs + (yrs === 1 ? " year" : " years");
+  const seasons = nowYear - p.draftYear + 1;
+  if (isNaN(seasons) || seasons < 1) return "";
+  return seasons === 1 ? "Rookie" : seasons + " seasons";
 }
 
 // Search matches player name, current team (full name or abbreviation),
