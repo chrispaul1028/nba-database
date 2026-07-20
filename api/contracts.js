@@ -23,6 +23,8 @@ const FIELDS = {
   playerPos: ["Position", "Pos"],
   playerNo: ["No.", "No", "Number", "Jersey", "Jersey Number"],
   playerTeamName: ["Team Name", "Team", "Current Team"],
+  playerStatus: ["Status", "Player Status", "Availability"],
+  playerInjury: ["Injury Notes", "Injury Note", "Injury", "Injury Status", "Injury Report"],
   playerPhoto: ["Photo", "Headshot", "Headshots", "Player Photo", "Image", "Img", "Pic", "Picture", "Attachment", "Attachments"],
   playerHeight: ["Height"],
   playerWeight: ["Weight"],
@@ -296,6 +298,12 @@ export default async function handler(req, res) {
         pos: asText(getField(p.fields, FIELDS.playerPos)),
         no: asText(getField(p.fields, FIELDS.playerNo)),
         teamName: asText(getField(p.fields, FIELDS.playerTeamName), teamNameById),
+        teamId: (() => {
+          const v = getField(p.fields, FIELDS.playerTeamName);
+          return Array.isArray(v) && typeof v[0] === "string" && /^rec[a-zA-Z0-9]{14}$/.test(v[0]) ? v[0] : null;
+        })(),
+        status: asText(getField(p.fields, FIELDS.playerStatus)),
+        injuryNotes: asText(getField(p.fields, FIELDS.playerInjury)),
         photo: photoUrl(getField(p.fields, FIELDS.playerPhoto)) || findAnyPhoto(p.fields),
         height: asText(getField(p.fields, FIELDS.playerHeight)),
         weight: asText(getField(p.fields, FIELDS.playerWeight)),

@@ -223,23 +223,11 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full" }) {
 
       <div className="px-4 -mt-3">
         {act && salaried(act).length > 0 && (
-          <>
-            <div className="grid grid-cols-3 gap-2">
-              <Tile value={fmtM(total(act))} label="Total" />
-              <Tile value={fmtM(total(act) / salaried(act).length)} label="Per Year" />
-              <Tile value={salaried(act).length} label="Years" />
-            </div>
-            <div className="mt-4"><ContractCard c={act} big /></div>
-          </>
-        )}
-
-        {past.length > 0 && (
-          <>
-            <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">Contract history</div>
-            <div className="flex flex-col gap-3">
-              {past.map((c, i) => <ContractCard key={i} c={c} />)}
-            </div>
-          </>
+          <div className="grid grid-cols-3 gap-2">
+            <Tile value={fmtM(total(act))} label="Total" />
+            <Tile value={fmtM(total(act) / salaried(act).length)} label="Per Year" />
+            <Tile value={salaried(act).length} label="Years" />
+          </div>
         )}
 
         {mode === "full" && (p.height || p.weight || p.age || p.draft || p.birthplace || p.draftYear) && (
@@ -253,6 +241,19 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full" }) {
               <BioRow k="Experience" v={experienceOf(p)} />
               <BioRow k="College" v={p.college} />
               <BioRow k="Birthplace" v={p.birthplace} />
+            </div>
+          </>
+        )}
+
+        {act && salaried(act).length > 0 && (
+          <div className="mt-4"><ContractCard c={act} big /></div>
+        )}
+
+        {past.length > 0 && (
+          <>
+            <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">Contract history</div>
+            <div className="flex flex-col gap-3">
+              {past.map((c, i) => <ContractCard key={i} c={c} />)}
             </div>
           </>
         )}
@@ -463,9 +464,25 @@ function TeamsTab({ teams, players, onSelect }) {
   );
 }
 
+
+function StatusBadge({ status }) {
+  if (!status) return null;
+  const s = String(status).toLowerCase();
+  let cls = "bg-slate-100 text-slate-500";
+  if (s.includes("active") || s.includes("available")) cls = "bg-green-100 text-green-700";
+  else if (s.includes("out")) cls = "bg-red-100 text-red-600";
+  else if (s.includes("injur") || s.includes("day") || s.includes("question") || s.includes("doubt")) cls = "bg-amber-100 text-amber-700";
+  return (
+    <span className={"shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wide " + cls}>
+      {status}
+    </span>
+  );
+}
+
 function TeamDetail({ team, players, onBack, onSelectPlayer }) {
   const abbr = team.abbr || toAbbr(team.name);
   const roster = players.filter((p) => {
+    if (p.teamId && p.teamId === team.id) return true; // exact Airtable link - no naming needed
     const t = teamOfPlayer(p);
     return t && (t === abbr || String(p.teamName).toLowerCase() === String(team.name).toLowerCase());
   });
@@ -519,10 +536,16 @@ function TeamDetail({ team, players, onBack, onSelectPlayer }) {
                   <button key={p.id} onClick={() => onSelectPlayer(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50">
                     <Avatar p={p} />
                     <span className="flex-1 min-w-0">
-                      <span className="block text-sm font-bold text-slate-900 truncate">{p.name}</span>
+                      <span className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-sm font-bold text-slate-900 truncate">{p.name}</span>
+                        <StatusBadge status={p.status} />
+                      </span>
                       <span className="block text-[11px] text-slate-400 font-medium truncate">
                         {[p.pos, cleanNo(p.no) ? "#" + cleanNo(p.no) : ""].filter(Boolean).join(" · ") || "—"}
                       </span>
+                      {p.injuryNotes && (
+                        <span className="block text-[11px] font-semibold text-red-500 truncate mt-0.5">{p.injuryNotes}</span>
+                      )}
                     </span>
                     {(() => {
                       const st = latestStats(p);
