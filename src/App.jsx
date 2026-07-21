@@ -206,7 +206,7 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full" }) {
   const no = cleanNo(p.no);
   return (
     <div className="min-h-screen bg-slate-100 dark:bg-slate-950 pb-24">
-      <div className="px-5 pt-5 pb-6 text-white" style={{ backgroundColor: playerHeaderColor(p) }}>
+      <div className="px-5 pb-6 text-white" style={{ backgroundColor: playerHeaderColor(p), paddingTop: "calc(env(safe-area-inset-top) + 1.25rem)" }}>
         <button onClick={onBack} className="text-sm font-semibold opacity-80 mb-4">‹ {backLabel}</button>
         <div className="flex items-center gap-4">
           <Avatar p={p} size="lg" />
@@ -294,7 +294,7 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full" }) {
 // ═══════════════ LIST HEADER (shared) ════════════════════════════
 function ListHeader({ title, q, setQ, placeholder }) {
   return (
-    <div className="bg-blue-600 px-5 pt-6 pb-5 text-white sticky top-0 z-10 shadow-md">
+    <div className="bg-blue-600 px-5 pb-5 text-white sticky top-0 z-10 shadow-md" style={{ paddingTop: "calc(env(safe-area-inset-top) + 1.5rem)" }}>
       <div className="text-2xl font-extrabold tracking-tight">{title}</div>
       <input
         value={q}
@@ -497,7 +497,7 @@ function TeamDetail({ team, players, onBack, onSelectPlayer }) {
 
   return (
     <div className="min-h-screen bg-slate-100 dark:bg-slate-950 pb-24">
-      <div className="px-5 pt-5 pb-6 text-white" style={{ backgroundColor: teamColor(abbr) }}>
+      <div className="px-5 pb-6 text-white" style={{ backgroundColor: teamColor(abbr), paddingTop: "calc(env(safe-area-inset-top) + 1.25rem)" }}>
         <button onClick={onBack} className="text-sm font-semibold opacity-80 mb-4">‹ Teams</button>
         <div className="flex items-center gap-4">
           {team.logo ? (
@@ -599,7 +599,7 @@ function DraftTab({ players, onSelect }) {
   const yr = selYear && byYear[selYear] ? selYear : years[0]; // default: newest class
   return (
     <div>
-      <div className="bg-blue-600 pt-3 pb-4 px-4">
+      <div className="bg-blue-600 pb-4 px-4" style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.75rem)" }}>
         <h1 className="text-3xl font-extrabold text-white mb-3">Draft</h1>
         <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1" style={{ scrollbarWidth: "none" }}>
           {years.map((y) => (
@@ -664,7 +664,7 @@ function DraftTab({ players, onSelect }) {
 function ComingSoon({ icon, title, blurb }) {
   return (
     <div>
-      <div className="bg-blue-600 px-5 pt-6 pb-5 text-white sticky top-0 z-10 shadow-md">
+      <div className="bg-blue-600 px-5 pb-5 text-white sticky top-0 z-10 shadow-md" style={{ paddingTop: "calc(env(safe-area-inset-top) + 1.5rem)" }}>
         <div className="text-2xl font-extrabold tracking-tight">{title}</div>
       </div>
       <div className="px-8 pt-24 pb-28 text-center">
