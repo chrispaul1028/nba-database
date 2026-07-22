@@ -43,6 +43,8 @@ const FIELDS = {
   teamConference: ["Conference", "Conf"],
   teamDivision: ["Division", "Div"],
   teamWins: ["W", "Wins"],
+  teamPPG: ["PPG", "Points Per Game", "Team PPG", "Offense PPG", "PTS/G"],
+  teamOppPPG: ["OPP PPG", "Opp PPG", "PPG Allowed", "Points Allowed", "OPPG", "Defense PPG", "Opp PTS/G"],
   teamLosses: ["L", "Losses"],
   teamName: ["Name", "Team Name", "Team"],
   teamAbbr: ["TM", "Abbreviation", "Abbr", "Short Name", "Code"],
@@ -223,6 +225,8 @@ export default async function handler(req, res) {
           conference: asText(getField(t.fields, FIELDS.teamConference)),
           division: asText(getField(t.fields, FIELDS.teamDivision)),
           wins: coerceNum(getField(t.fields, FIELDS.teamWins)),
+          ppg: coerceNum(getField(t.fields, FIELDS.teamPPG)),
+          oppPpg: coerceNum(getField(t.fields, FIELDS.teamOppPPG)),
           losses: coerceNum(getField(t.fields, FIELDS.teamLosses)),
           logo: findAnyPhoto(t.fields),
         });

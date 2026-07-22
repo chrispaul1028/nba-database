@@ -126,11 +126,23 @@ function Avatar({ p, size }) {
   );
 }
 
-function Tile({ value, label, accent }) {
+
+function rankOf(teams, team, key, dir) {
+  if (!teams || team[key] == null) return null;
+  const vals = teams.filter((t) => t[key] != null);
+  if (vals.length < 2) return null;
+  const sorted = vals.slice().sort((a, b) => (dir === "asc" ? a[key] - b[key] : b[key] - a[key]));
+  const rank = sorted.findIndex((t) => t.id === team.id) + 1;
+  if (!rank) return null;
+  return "#" + rank + " of " + vals.length;
+}
+
+function Tile({ value, label, sub, accent }) {
   return (
     <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 px-2 py-4 text-center shadow-sm">
       <div className={"text-2xl font-extrabold tracking-tight " + (accent ? ACCENT_TEXT : "text-slate-900 dark:text-slate-100")}>{value}</div>
       <div className="text-[10px] font-semibold text-slate-400 tracking-widest uppercase mt-1">{label}</div>
+      {sub && <div className="text-[10px] font-bold text-blue-600 dark:text-blue-400 mt-0.5">{sub}</div>}
     </div>
   );
 }
@@ -480,7 +492,7 @@ function StatusBadge({ status }) {
   );
 }
 
-function TeamDetail({ team, players, onBack, onSelectPlayer }) {
+function TeamDetail({ team, teams, players, onBack, onSelectPlayer }) {
   const abbr = team.abbr || toAbbr(team.name);
   const roster = players.filter((p) => {
     if (p.teamId && p.teamId === team.id) return true; // exact Airtable link - no naming needed
@@ -518,8 +530,16 @@ function TeamDetail({ team, players, onBack, onSelectPlayer }) {
       <div className="px-4 -mt-3">
         <div className="grid grid-cols-3 gap-2">
           <Tile value={(team.wins ?? 0) + "-" + (team.losses ?? 0)} label="Record" />
-          <Tile value={fmtM(payroll)} label="Payroll" accent />
-          <Tile value={roster.length} label="Players" />
+          <Tile
+            value={team.ppg != null ? team.ppg.toFixed(1) : "—"}
+            label="PPG"
+            sub={rankOf(teams, team, "ppg", "desc")}
+          />
+          <Tile
+            value={team.oppPpg != null ? team.oppPpg.toFixed(1) : "—"}
+            label="Opp PPG"
+            sub={rankOf(teams, team, "oppPpg", "asc")}
+          />
         </div>
 
         {orderedRoles.map((role) => (
@@ -538,36 +558,40 @@ function TeamDetail({ team, players, onBack, onSelectPlayer }) {
                     <span className="w-7 text-center text-[11px] font-extrabold text-slate-400 uppercase shrink-0">{p.pos || "—"}</span>
                     <Avatar p={p} />
                     <span className="flex-1 min-w-0">
-                      <span className="flex items-center gap-1.5 min-w-0">
-                        <span className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
-                        <StatusBadge status={p.status} />
+                      <span className="flex items-center gap-2 min-w-0">
+                        <span className="flex-1 min-w-0 text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
+                        <span className="text-slate-300 shrink-0">›</span>
                       </span>
-                      {cleanNo(p.no) && (
-                        <span className="block text-[11px] text-slate-400 font-medium truncate">#{cleanNo(p.no)}</span>
-                      )}
-                      {p.injuryNotes && (
-                        <span className="block text-[11px] font-semibold text-red-500 truncate mt-0.5">{p.injuryNotes}</span>
-                      )}
-                    </span>
-                    {(() => {
-                      const st = latestStats(p);
-                      if (st && (st.pts != null || st.reb != null || st.ast != null)) {
-                        return (
-                          <span className="flex gap-2.5 shrink-0">
-                            {[["PTS", st.pts], ["REB", st.reb], ["AST", st.ast]].map(([lbl, v]) => (
-                              <span key={lbl} className="w-8 text-center">
-                                <span className="block text-xs font-extrabold text-slate-800 dark:text-slate-100 tabular-nums">{fmt1(v) ?? "—"}</span>
-                                <span className="block text-[9px] font-bold text-slate-400 uppercase">{lbl}</span>
-                              </span>
-                            ))}
+                      <span className="flex items-end justify-between gap-2 mt-1 min-w-0">
+                        <span className="min-w-0">
+                          <span className="flex items-center gap-1.5">
+                            {cleanNo(p.no) && <span className="text-[11px] text-slate-400 font-medium">#{cleanNo(p.no)}</span>}
+                            <StatusBadge status={p.status} />
                           </span>
-                        );
-                      }
-                      return currentSalary(p) > 0 ? (
-                        <span className="text-xs font-extrabold text-slate-600 dark:text-slate-300 shrink-0">{fmtM(currentSalary(p))}</span>
-                      ) : null;
-                    })()}
-                    <span className="text-slate-300 shrink-0">›</span>
+                          {p.injuryNotes && (
+                            <span className="block text-[11px] font-semibold text-red-500 truncate mt-0.5">{p.injuryNotes}</span>
+                          )}
+                        </span>
+                        {(() => {
+                          const st = latestStats(p);
+                          if (st && (st.pts != null || st.reb != null || st.ast != null)) {
+                            return (
+                              <span className="flex gap-2.5 shrink-0">
+                                {[["PTS", st.pts], ["REB", st.reb], ["AST", st.ast]].map(([lbl, v]) => (
+                                  <span key={lbl} className="w-8 text-center">
+                                    <span className="block text-xs font-extrabold text-slate-800 dark:text-slate-100 tabular-nums">{fmt1(v) ?? "—"}</span>
+                                    <span className="block text-[9px] font-bold text-slate-400 uppercase">{lbl}</span>
+                                  </span>
+                                ))}
+                              </span>
+                            );
+                          }
+                          return currentSalary(p) > 0 ? (
+                            <span className="text-xs font-extrabold text-slate-600 dark:text-slate-300 shrink-0">{fmtM(currentSalary(p))}</span>
+                          ) : null;
+                        })()}
+                      </span>
+                    </span>
                   </button>
                 ))}
             </div>
@@ -814,7 +838,7 @@ export default function App() {
       )}
       {players && tab === "teams" && selTeam && (
         <TeamDetail
-          team={selTeam}
+          team={selTeam} teams={teams}
           players={players}
           onBack={() => setSelTeam(null)}
           onSelectPlayer={setSel}
