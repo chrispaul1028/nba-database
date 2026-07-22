@@ -558,40 +558,34 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer }) {
                     <span className="w-7 text-center text-[11px] font-extrabold text-slate-400 uppercase shrink-0">{p.pos || "—"}</span>
                     <Avatar p={p} />
                     <span className="flex-1 min-w-0">
-                      <span className="flex items-center gap-2 min-w-0">
-                        <span className="flex-1 min-w-0 text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
-                        <span className="text-slate-300 shrink-0">›</span>
+                      <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
+                      <span className="flex items-center gap-1.5 mt-0.5">
+                        {cleanNo(p.no) && <span className="text-[11px] text-slate-400 font-medium">#{cleanNo(p.no)}</span>}
+                        <StatusBadge status={p.status} />
                       </span>
-                      <span className="flex items-end justify-between gap-2 mt-1 min-w-0">
-                        <span className="min-w-0">
-                          <span className="flex items-center gap-1.5">
-                            {cleanNo(p.no) && <span className="text-[11px] text-slate-400 font-medium">#{cleanNo(p.no)}</span>}
-                            <StatusBadge status={p.status} />
-                          </span>
-                          {p.injuryNotes && (
-                            <span className="block text-[11px] font-semibold text-red-500 truncate mt-0.5">{p.injuryNotes}</span>
-                          )}
-                        </span>
-                        {(() => {
-                          const st = latestStats(p);
-                          if (st && (st.pts != null || st.reb != null || st.ast != null)) {
-                            return (
-                              <span className="flex gap-2.5 shrink-0">
-                                {[["PTS", st.pts], ["REB", st.reb], ["AST", st.ast]].map(([lbl, v]) => (
-                                  <span key={lbl} className="w-8 text-center">
-                                    <span className="block text-xs font-extrabold text-slate-800 dark:text-slate-100 tabular-nums">{fmt1(v) ?? "—"}</span>
-                                    <span className="block text-[9px] font-bold text-slate-400 uppercase">{lbl}</span>
-                                  </span>
-                                ))}
-                              </span>
-                            );
-                          }
-                          return currentSalary(p) > 0 ? (
-                            <span className="text-xs font-extrabold text-slate-600 dark:text-slate-300 shrink-0">{fmtM(currentSalary(p))}</span>
-                          ) : null;
-                        })()}
-                      </span>
+                      {p.injuryNotes && (
+                        <span className="block text-[11px] font-semibold text-red-500 truncate mt-0.5">{p.injuryNotes}</span>
+                      )}
                     </span>
+                    {(() => {
+                      const st = latestStats(p);
+                      if (st && (st.pts != null || st.reb != null || st.ast != null)) {
+                        return (
+                          <span className="flex gap-2 shrink-0">
+                            {[["PTS", st.pts], ["REB", st.reb], ["AST", st.ast]].map(([lbl, v]) => (
+                              <span key={lbl} className="w-7 text-center">
+                                <span className="block text-[11px] font-extrabold text-slate-800 dark:text-slate-100 tabular-nums">{fmt1(v) ?? "—"}</span>
+                                <span className="block text-[8px] font-bold text-slate-400 uppercase">{lbl}</span>
+                              </span>
+                            ))}
+                          </span>
+                        );
+                      }
+                      return currentSalary(p) > 0 ? (
+                        <span className="text-xs font-extrabold text-slate-600 dark:text-slate-300 shrink-0">{fmtM(currentSalary(p))}</span>
+                      ) : null;
+                    })()}
+                    <span className="text-slate-300 shrink-0">›</span>
                   </button>
                 ))}
             </div>
