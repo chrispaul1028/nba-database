@@ -134,12 +134,19 @@ function rankOf(teams, team, key, dir) {
   const sorted = vals.slice().sort((a, b) => (dir === "asc" ? a[key] - b[key] : b[key] - a[key]));
   const rank = sorted.findIndex((t) => t.id === team.id) + 1;
   if (!rank) return null;
-  return "#" + rank + " of " + vals.length;
+  return ordinal(rank);
+}
+
+function ordinal(n) {
+  const rem100 = n % 100;
+  if (rem100 >= 11 && rem100 <= 13) return n + "th";
+  const suffix = { 1: "st", 2: "nd", 3: "rd" }[n % 10] || "th";
+  return n + suffix;
 }
 
 function Tile({ value, label, sub, accent }) {
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 px-2 py-4 text-center shadow-sm">
+    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 px-2 py-4 text-center shadow-sm flex flex-col items-center justify-center">
       <div className={"text-2xl font-extrabold tracking-tight " + (accent ? ACCENT_TEXT : "text-slate-900 dark:text-slate-100")}>{value}</div>
       <div className="text-[10px] font-semibold text-slate-400 tracking-widest uppercase mt-1">{label}</div>
       {sub && <div className="text-[10px] font-bold text-blue-600 dark:text-blue-400 mt-0.5">{sub}</div>}
@@ -585,7 +592,6 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer }) {
                         <span className="text-xs font-extrabold text-slate-600 dark:text-slate-300 shrink-0">{fmtM(currentSalary(p))}</span>
                       ) : null;
                     })()}
-                    <span className="text-slate-300 shrink-0">›</span>
                   </button>
                 ))}
             </div>
