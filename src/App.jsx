@@ -29,7 +29,7 @@ const TEAM_COLORS = {
   PHI: "#006BB6", LAL: "#552583", GSW: "#FDB927", GS: "#FDB927",
   MIA: "#98002E", MIL: "#00471B", CHI: "#CE1141", CLE: "#860038",
   TOR: "#CE1141", BKN: "#000000", WSH: "#E31837", ORL: "#0077C0",
-  CHA: "#1D1160", DET: "#C8102E", HOU: "#CE1141", SAS: "#000000",
+  CHA: "#1D1160", DET: "#1D42BA", HOU: "#CE1141", SAS: "#000000",
   MEM: "#5D76A9", NOP: "#0C2340", PHX: "#E56020", SAC: "#5A2D81",
   POR: "#E03A3E", UTA: "#002B5C", UTAH: "#002B5C", LAC: "#C8102E",
 };
@@ -245,19 +245,6 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full" }) {
           </>
         )}
 
-        {act && salaried(act).length > 0 && (
-          <div className="mt-4"><ContractCard c={act} big /></div>
-        )}
-
-        {past.length > 0 && (
-          <>
-            <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">Contract history</div>
-            <div className="flex flex-col gap-3">
-              {past.map((c, i) => <ContractCard key={i} c={c} />)}
-            </div>
-          </>
-        )}
-
         {mode === "full" && p.stats && p.stats.length > 0 && (
           <>
             <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">Stats</div>
@@ -273,6 +260,20 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full" }) {
             </div>
           </>
         )}
+
+        {act && salaried(act).length > 0 && (
+          <div className="mt-4"><ContractCard c={act} big /></div>
+        )}
+
+        {past.length > 0 && (
+          <>
+            <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">Contract history</div>
+            <div className="flex flex-col gap-3">
+              {past.map((c, i) => <ContractCard key={i} c={c} />)}
+            </div>
+          </>
+        )}
+
 
         {mode === "full" && p.awards && p.awards.length > 0 && (
           <>
@@ -534,15 +535,16 @@ function TeamDetail({ team, players, onBack, onSelectPlayer }) {
                 })
                 .map((p) => (
                   <button key={p.id} onClick={() => onSelectPlayer(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
+                    <span className="w-7 text-center text-[11px] font-extrabold text-slate-400 uppercase shrink-0">{p.pos || "—"}</span>
                     <Avatar p={p} />
                     <span className="flex-1 min-w-0">
                       <span className="flex items-center gap-1.5 min-w-0">
                         <span className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
                         <StatusBadge status={p.status} />
                       </span>
-                      <span className="block text-[11px] text-slate-400 font-medium truncate">
-                        {[p.pos, cleanNo(p.no) ? "#" + cleanNo(p.no) : ""].filter(Boolean).join(" · ") || "—"}
-                      </span>
+                      {cleanNo(p.no) && (
+                        <span className="block text-[11px] text-slate-400 font-medium truncate">#{cleanNo(p.no)}</span>
+                      )}
                       {p.injuryNotes && (
                         <span className="block text-[11px] font-semibold text-red-500 truncate mt-0.5">{p.injuryNotes}</span>
                       )}
@@ -551,11 +553,13 @@ function TeamDetail({ team, players, onBack, onSelectPlayer }) {
                       const st = latestStats(p);
                       if (st && (st.pts != null || st.reb != null || st.ast != null)) {
                         return (
-                          <span className="text-right shrink-0">
-                            <span className="block text-xs font-extrabold text-slate-700 dark:text-slate-200">{fmt1(st.pts) ?? "—"} PTS</span>
-                            <span className="block text-[10px] font-semibold text-slate-400">
-                              {fmt1(st.reb) ?? "—"} REB · {fmt1(st.ast) ?? "—"} AST
-                            </span>
+                          <span className="flex gap-2.5 shrink-0">
+                            {[["PTS", st.pts], ["REB", st.reb], ["AST", st.ast]].map(([lbl, v]) => (
+                              <span key={lbl} className="w-8 text-center">
+                                <span className="block text-xs font-extrabold text-slate-800 dark:text-slate-100 tabular-nums">{fmt1(v) ?? "—"}</span>
+                                <span className="block text-[9px] font-bold text-slate-400 uppercase">{lbl}</span>
+                              </span>
+                            ))}
                           </span>
                         );
                       }
@@ -596,6 +600,7 @@ const STAT_CATS = [
   { key: "blk", label: "BLK" },
   { key: "fg", label: "FG%" },
   { key: "p3", label: "3P%" },
+  { key: "ft", label: "FT%" },
 ];
 
 function StatsTab({ players, onSelect }) {
@@ -615,7 +620,7 @@ function StatsTab({ players, onSelect }) {
     .sort((a, b) => b.st[cat] - a.st[cat]);
 
   const catLabel = STAT_CATS.find((c) => c.key === cat)?.label || "";
-  const isPct = cat === "fg" || cat === "p3";
+  const isPct = cat === "fg" || cat === "p3" || cat === "ft";
 
   return (
     <div>
@@ -722,7 +727,7 @@ function DraftTab({ players, onSelect }) {
                           "—"}
                       </span>
                     </span>
-                    <TeamPill team={p.teamName || (activeOf(p) && activeOf(p).team)} />
+                    <TeamPill team={teamOfPlayer(p) || p.teamName || (activeOf(p) && activeOf(p).team)} />
                     <span className="text-slate-300 shrink-0">›</span>
                   </button>
                 ))}
@@ -764,8 +769,8 @@ function ComingSoon({ icon, title, blurb }) {
 const TABS = [
   { id: "teams", label: "Teams", icon: "🏀" },
   { id: "players", label: "Players", icon: "👤" },
-  { id: "contracts", label: "Contracts", icon: "💰" },
   { id: "stats", label: "Stats", icon: "📊" },
+  { id: "contracts", label: "Contracts", icon: "💰" },
   { id: "draft", label: "Draft", icon: "🎓" },
 ];
 
