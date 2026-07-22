@@ -587,6 +587,90 @@ function pickOf(p) {
   return m ? parseInt(m[1], 10) : 999;
 }
 
+
+const STAT_CATS = [
+  { key: "pts", label: "PTS" },
+  { key: "reb", label: "REB" },
+  { key: "ast", label: "AST" },
+  { key: "stl", label: "STL" },
+  { key: "blk", label: "BLK" },
+  { key: "fg", label: "FG%" },
+  { key: "p3", label: "3P%" },
+];
+
+function StatsTab({ players, onSelect }) {
+  const seasons = Array.from(
+    new Set(players.flatMap((p) => (p.stats || []).map((s) => s.season)).filter(Boolean))
+  ).sort((a, b) => String(b).localeCompare(String(a)));
+  const [selSeason, setSelSeason] = useState(null);
+  const season = selSeason && seasons.includes(selSeason) ? selSeason : (seasons.includes(CURRENT_SEASON) ? CURRENT_SEASON : seasons[0]);
+  const [cat, setCat] = useState("pts");
+
+  const rows = players
+    .map((p) => {
+      const st = (p.stats || []).find((s) => s.season === season);
+      return st && st[cat] != null ? { p, st } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.st[cat] - a.st[cat]);
+
+  const catLabel = STAT_CATS.find((c) => c.key === cat)?.label || "";
+  const isPct = cat === "fg" || cat === "p3";
+
+  return (
+    <div>
+      <div className="bg-blue-600 pb-4 px-4" style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.75rem)" }}>
+        <h1 className="text-3xl font-extrabold text-white mb-3">Stats</h1>
+        {seasons.length > 1 && (
+          <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1" style={{ scrollbarWidth: "none" }}>
+            {seasons.map((s) => (
+              <button key={s} onClick={() => setSelSeason(s)}
+                className={"shrink-0 px-3 py-1 rounded-full text-xs font-bold " + (s === season ? "bg-white text-blue-700" : "bg-blue-500/60 text-blue-100 active:bg-blue-500")}>
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1" style={{ scrollbarWidth: "none" }}>
+          {STAT_CATS.map((c) => (
+            <button key={c.key} onClick={() => setCat(c.key)}
+              className={"shrink-0 px-4 py-1.5 rounded-full text-sm font-bold " + (c.key === cat ? "bg-white text-blue-700" : "bg-blue-500/60 text-blue-100 active:bg-blue-500")}>
+              {c.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="px-4 pb-28 mt-4">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
+          {rows.map(({ p, st }, i) => (
+            <button key={p.id} onClick={() => onSelect(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
+              <span className={"w-6 text-center text-sm font-extrabold shrink-0 " + (i < 3 ? "text-blue-600 dark:text-blue-400" : "text-slate-400")}>{i + 1}</span>
+              <Avatar p={p} />
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
+                <span className="block text-[11px] text-slate-400 font-medium truncate">
+                  {[teamOfPlayer(p), p.pos].filter(Boolean).join(" · ") || "—"}
+                </span>
+              </span>
+              <span className="text-right shrink-0">
+                <span className="block text-base font-extrabold text-slate-900 dark:text-slate-100">
+                  {isPct ? st[cat].toFixed(1) + "%" : st[cat].toFixed(1)}
+                </span>
+                <span className="block text-[10px] font-bold text-slate-400 uppercase">{catLabel}</span>
+              </span>
+            </button>
+          ))}
+          {rows.length === 0 && (
+            <div className="text-center text-sm text-slate-400 py-12 px-6">
+              No {catLabel} entries for {season || "any season"} yet. Fill the Stats table in Airtable and they appear here.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DraftTab({ players, onSelect }) {
   const byYear = {};
   const noData = [];
@@ -733,9 +817,7 @@ export default function App() {
       )}
       {players && tab === "players" && <PlayersTab players={players} onSelect={setSel} />}
       {players && tab === "contracts" && <ContractsTab players={players} onSelect={setSel} />}
-      {players && tab === "stats" && (
-        <ComingSoon icon="📊" title="Stats" blurb="Season averages and leaderboards — waiting on the Stats table design in Airtable." />
-      )}
+      {players && tab === "stats" && <StatsTab players={players} onSelect={setSel} />}
       {players && tab === "draft" && <DraftTab players={players} onSelect={setSel} />}
 
       <div className="fixed bottom-0 inset-x-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex pb-[env(safe-area-inset-bottom)] z-20">

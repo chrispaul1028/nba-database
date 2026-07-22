@@ -52,15 +52,22 @@ const FIELDS = {
   cSigned: ["Signed Date", "Signed", "Date Signed", "Signed Year"],
   ySeason: ["Season", "Year"],
   sSeason: ["Season", "Year"],
-  sGP: ["GP", "Games", "Games Played"],
+  sGP: ["GP", "G", "Games", "Games Played"],
   sMIN: ["MIN", "MPG", "Minutes"],
-  sPTS: ["PTS", "PPG", "Points"],
-  sREB: ["REB", "RPG", "Rebounds"],
-  sAST: ["AST", "APG", "Assists"],
-  sSTL: ["STL", "SPG", "Steals"],
-  sBLK: ["BLK", "BPG", "Blocks"],
-  sFG: ["FG%", "FG", "Field Goal %"],
-  s3P: ["3P%", "3PT%", "3P", "Three Point %"],
+  sPTS: ["PTS", "P", "PPG", "Points"],
+  sREB: ["REB", "R", "RPG", "Rebounds", "TRB"],
+  sAST: ["AST", "A", "APG", "Assists"],
+  sSTL: ["STL", "S", "SPG", "Steals"],
+  sBLK: ["BLK", "B", "BPG", "Blocks"],
+  sFG: ["FG%", "FG Pct", "Field Goal %", "FG"],
+  s3P: ["3P%", "3PT%", "3P Pct", "Three Point %"],
+  sFT: ["FT%", "FT Pct", "Free Throw %"],
+  sFGM: ["FGM", "FG Made"],
+  sFGA: ["FGA", "FG Att", "FG Attempts"],
+  s3PM: ["3PM", "3PTM"],
+  s3PA: ["3PA", "3PTA"],
+  sFTM: ["FTM"],
+  sFTA: ["FTA"],
   ySalary: ["Salary", "Amount", "Cap Hit"],
   yType: ["Type", "Year Type", "Guarantee"],
   yDecision: ["Decision", "Option Decision"],
@@ -244,9 +251,24 @@ export default async function handler(req, res) {
         blk: coerceNum(getField(r.fields, FIELDS.sBLK)),
         fg: coerceNum(getField(r.fields, FIELDS.sFG)),
         p3: coerceNum(getField(r.fields, FIELDS.s3P)),
+        ft: coerceNum(getField(r.fields, FIELDS.sFT)),
+        fgm: coerceNum(getField(r.fields, FIELDS.sFGM)),
+        fga: coerceNum(getField(r.fields, FIELDS.sFGA)),
+        p3m: coerceNum(getField(r.fields, FIELDS.s3PM)),
+        p3a: coerceNum(getField(r.fields, FIELDS.s3PA)),
+        ftm: coerceNum(getField(r.fields, FIELDS.sFTM)),
+        fta: coerceNum(getField(r.fields, FIELDS.sFTA)),
       });
     }
     for (const arr of Object.values(statsByPlayer)) {
+      for (const st of arr) {
+        // percentages: prefer explicit fields; else derive from makes/attempts
+        if (st.fg == null && st.fgm != null && st.fga) st.fg = Math.round((st.fgm / st.fga) * 1000) / 10;
+        if (st.p3 == null && st.p3m != null && st.p3a) st.p3 = Math.round((st.p3m / st.p3a) * 1000) / 10;
+        if (st.ft == null && st.ftm != null && st.fta) st.ft = Math.round((st.ftm / st.fta) * 1000) / 10;
+        // a "48.7%"-style text or 0.487 fraction both normalize to 48.7
+        for (const k of ["fg", "p3", "ft"]) if (st[k] != null && st[k] > 0 && st[k] <= 1) st[k] = Math.round(st[k] * 1000) / 10;
+      }
       arr.sort((a, b) => String(b.season).localeCompare(String(a.season)));
     }
 
