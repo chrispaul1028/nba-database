@@ -376,18 +376,65 @@ function PlayersTab({ players, onSelect }) {
 }
 
 // ═══════════════ TAB: CONTRACTS ══════════════════════════════════
+
+// Upcoming free agency: the earliest UFA/RFA year at/after the current season
+function faStatus(p) {
+  let best = null;
+  for (const c of p.contracts || []) {
+    for (const y of c.years || []) {
+      const t = String(y.type || "").toUpperCase();
+      if (t !== "UFA" && t !== "RFA") continue;
+      if (String(y.season) < CURRENT_SEASON) continue;
+      if (!best || String(y.season) < String(best.season)) best = { type: t, season: y.season };
+    }
+  }
+  if (!best) return null;
+  const yr = String(best.season).slice(0, 4); // "2026-2027" -> hits market summer 2026
+  return { ...best, label: best.type + " " + yr };
+}
+
+function FaPill({ fa }) {
+  if (!fa) return null;
+  const cls = fa.type === "RFA"
+    ? "bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300"
+    : "bg-red-100 text-red-600 dark:bg-red-900/50 dark:text-red-300";
+  return (
+    <span className={"shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wide " + cls}>
+      {fa.label}
+    </span>
+  );
+}
+
 function ContractsTab({ players, onSelect }) {
   const [q, setQ] = useState("");
+  const [faOnly, setFaOnly] = useState(false);
   const list = useMemo(
     () =>
       players
         .filter((p) => p.contracts.length > 0)
-        .filter((p) => matchesQuery(p, q)),
-    [players, q]
+        .filter((p) => matchesQuery(p, q))
+        .filter((p) => !faOnly || faStatus(p))
+        .slice()
+        .sort((x, y) => {
+          const sx = currentSalary(x), sy = currentSalary(y);
+          if (sy !== sx) return sy - sx;               // biggest current-season salary first
+          return x.name.localeCompare(y.name);          // $0 group: alphabetical
+        }),
+    [players, q, faOnly]
   );
   return (
     <div>
       <ListHeader title="Contracts" q={q} setQ={setQ} />
+      <div className="px-4 mt-3 flex gap-2">
+        {[["All", false], ["Upcoming FAs", true]].map(([lbl, v]) => (
+          <button key={lbl} onClick={() => setFaOnly(v)}
+            className={"px-4 py-1.5 rounded-full text-xs font-bold " + (faOnly === v
+              ? "bg-blue-600 text-white"
+              : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800")}>
+            {lbl}
+          </button>
+        ))}
+      </div>
       <div className="px-4 pb-28 mt-4">
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
           {list.map((p) => {
@@ -396,11 +443,17 @@ function ContractsTab({ players, onSelect }) {
               <button key={p.id} onClick={() => onSelect(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
                 <Avatar p={p} />
                 <span className="flex-1 min-w-0">
-                  <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
+                    <FaPill fa={faStatus(p)} />
+                  </span>
                   <span className="block text-[11px] text-slate-400 font-medium truncate">
                     {act ? displayLine(act) : "No contract"}
                   </span>
                 </span>
+                {currentSalary(p) > 0 && (
+                  <span className="text-xs font-extrabold text-slate-700 dark:text-slate-200 shrink-0">{fmtM(currentSalary(p))}</span>
+                )}
                 <TeamPill team={act?.team} />
               </button>
             );
