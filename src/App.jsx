@@ -134,7 +134,11 @@ function rankOf(teams, team, key, dir) {
   const sorted = vals.slice().sort((a, b) => (dir === "asc" ? a[key] - b[key] : b[key] - a[key]));
   const rank = sorted.findIndex((t) => t.id === team.id) + 1;
   if (!rank) return null;
-  return ordinal(rank);
+  const cls =
+    rank <= 10 ? "text-green-600 dark:text-green-400"
+    : rank <= 20 ? "text-amber-600 dark:text-amber-400"
+    : "text-red-600 dark:text-red-400";
+  return { label: "(" + ordinal(rank) + ")", cls };
 }
 
 function ordinal(n) {
@@ -149,7 +153,11 @@ function Tile({ value, label, sub, accent }) {
     <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 px-2 py-4 text-center shadow-sm flex flex-col items-center justify-center">
       <div className={"text-2xl font-extrabold tracking-tight " + (accent ? ACCENT_TEXT : "text-slate-900 dark:text-slate-100")}>{value}</div>
       <div className="text-[10px] font-semibold text-slate-400 tracking-widest uppercase mt-1">{label}</div>
-      {sub && <div className="text-[10px] font-bold text-blue-600 dark:text-blue-400 mt-0.5">{sub}</div>}
+      {sub && (
+        <div className={"text-[10px] font-bold mt-0.5 " + (typeof sub === "object" && sub.cls ? sub.cls : "text-blue-600 dark:text-blue-400")}>
+          {typeof sub === "object" ? sub.label : sub}
+        </div>
+      )}
     </div>
   );
 }
@@ -220,6 +228,7 @@ function BioRow({ k, v }) {
 
 // ═══════════════ PLAYER DETAIL ═══════════════════════════════════
 function PlayerDetail({ p, onBack, backLabel, mode = "full" }) {
+  useEffect(() => { window.scrollTo(0, 0); }, []);
   const act = activeOf(p);
   const past = p.contracts.filter((c) => c !== act);
   const no = cleanNo(p.no);
@@ -357,7 +366,6 @@ function PlayersTab({ players, onSelect }) {
                 </span>
               </span>
               <TeamPill team={p.teamName || activeOf(p)?.team} />
-              <span className="text-slate-300 shrink-0">›</span>
             </button>
           ))}
           {list.length === 0 && <div className="text-center text-sm text-slate-400 py-12">No players match "{q}".</div>}
@@ -394,7 +402,6 @@ function ContractsTab({ players, onSelect }) {
                   </span>
                 </span>
                 <TeamPill team={act?.team} />
-                <span className="text-slate-300 shrink-0">›</span>
               </button>
             );
           })}
@@ -471,7 +478,6 @@ function TeamsTab({ teams, players, onSelect }) {
                       {(t.wins != null || t.losses != null) && (
                         <span className="text-xs font-extrabold text-slate-600 dark:text-slate-300 shrink-0">{t.wins ?? 0}-{t.losses ?? 0}</span>
                       )}
-                      <span className="text-slate-300 shrink-0">›</span>
                     </button>
                   );
                 })}
@@ -500,6 +506,7 @@ function StatusBadge({ status }) {
 }
 
 function TeamDetail({ team, teams, players, onBack, onSelectPlayer }) {
+  useEffect(() => { window.scrollTo(0, 0); }, []);
   const abbr = team.abbr || toAbbr(team.name);
   const roster = players.filter((p) => {
     if (p.teamId && p.teamId === team.id) return true; // exact Airtable link - no naming needed
@@ -752,7 +759,6 @@ function DraftTab({ players, onSelect }) {
                       </span>
                     </span>
                     <TeamPill team={teamOfPlayer(p) || p.teamName || (activeOf(p) && activeOf(p).team)} />
-                    <span className="text-slate-300 shrink-0">›</span>
                   </button>
                 ))}
             </div>
