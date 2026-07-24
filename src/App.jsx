@@ -203,7 +203,7 @@ function ContractCard({ c, big }) {
           </div>
           <div className="text-sm font-extrabold text-slate-800 dark:text-slate-200 mt-0.5">{terms(c)}</div>
         </div>
-        <span className={"text-[10px] font-bold px-2 py-1 rounded-full shrink-0 " + (c.status === "Active" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300" : "bg-slate-100 text-slate-500 dark:text-slate-400")}>
+        <span className={"text-[10px] font-bold px-2 py-1 rounded-full shrink-0 " + (c.status === "Active" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300" : "bg-red-100 text-red-600 dark:bg-red-900/50 dark:text-red-300")}>
           {c.status}
         </span>
       </div>
@@ -251,20 +251,27 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full" }) {
               {no ? "#" + no + " " : ""}{p.name}
             </div>
             <div className="text-sm opacity-80 font-medium mt-0.5 truncate">
-              {[p.pos, p.teamName].filter(Boolean).join(" · ")}
+              {p.pos || ""}
             </div>
           </div>
         </div>
       </div>
 
       <div className="px-4 -mt-3">
-        {act && salaried(act).length > 0 && (
-          <div className="grid grid-cols-3 gap-2">
-            <Tile value={fmtM(total(act))} label="Total" />
-            <Tile value={fmtM(total(act) / salaried(act).length)} label="Per Year" />
-            <Tile value={salaried(act).length} label="Years" />
-          </div>
-        )}
+        <div className="grid grid-cols-3 gap-2">
+          <Tile value={p.rating2k != null ? Math.round(p.rating2k) : "—"} label="2K Rating" />
+          <Tile value={currentSalary(p) > 0 ? fmtM(currentSalary(p)) : "—"} label={CURRENT_SEASON.slice(2, 4) + "-" + CURRENT_SEASON.slice(7) + " Salary"} />
+          {(() => {
+            const fa = faStatus(p);
+            return (
+              <Tile
+                value={fa ? String(fa.season).slice(0, 4) : "—"}
+                label="Free Agent"
+                sub={fa ? { label: fa.type, cls: fa.type === "RFA" ? "text-purple-600 dark:text-purple-400" : "text-red-600 dark:text-red-400" } : null}
+              />
+            );
+          })()}
+        </div>
 
         {mode === "full" && (p.height || p.weight || p.age || p.draft || p.birthplace || p.draftYear) && (
           <>
