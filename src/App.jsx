@@ -376,16 +376,23 @@ function PlayersTab({ players, onSelect }) {
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
           {list.map((p) => (
             <button key={p.id} onClick={() => onSelect(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
+              <span className="w-7 text-center text-[11px] font-extrabold text-slate-400 uppercase shrink-0">{p.pos || "—"}</span>
               <Avatar p={p} />
               <span className="flex-1 min-w-0">
                 <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
                 <span className="block text-[11px] text-slate-400 font-medium truncate">
-                  {[p.pos, p.archetype, p.age ? p.age + " yrs" : ""]
+                  {[p.height, p.weight, p.age ? p.age + " yrs" : ""]
                     .filter(Boolean)
                     .join(" · ") || "—"}
                 </span>
+                {(p.rating2k != null || p.archetype) && (
+                  <span className="flex items-center gap-1.5 mt-1 min-w-0">
+                    <Rating2kBadge r={p.rating2k} />
+                    {p.archetype && <span className="text-[10px] font-semibold text-slate-400 truncate">{p.archetype}</span>}
+                  </span>
+                )}
               </span>
-              <TeamPill team={p.teamName || activeOf(p)?.team} />
+              <TeamPill team={teamOfPlayer(p) || p.teamName || activeOf(p)?.team} />
             </button>
           ))}
           {list.length === 0 && <div className="text-center text-sm text-slate-400 py-12">No players match "{q}".</div>}
@@ -413,14 +420,51 @@ function faStatus(p) {
   return { ...best, label: best.type + " " + yr };
 }
 
-function FaPill({ fa }) {
-  if (!fa) return null;
-  const cls = fa.type === "RFA"
-    ? "bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300"
-    : "bg-red-100 text-red-600 dark:bg-red-900/50 dark:text-red-300";
+
+function Rating2kBadge({ r }) {
+  if (r == null) return null;
+  const n = Math.round(r);
+  const cls =
+    n >= 90 ? "bg-amber-100 text-amber-700 dark:bg-amber-900/60 dark:text-amber-300"        // gold
+    : n >= 80 ? "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300"          // silver
+    : "bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-300";            // bronze
+  return (
+    <span className={"shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold " + cls}>
+      {n} OVR
+    </span>
+  );
+}
+
+// Next contract event: earliest pending PO/TO or upcoming UFA/RFA on the active deal
+function nextEvent(p) {
+  let best = null;
+  for (const c of p.contracts || []) {
+    if (c.status !== "Active") continue;
+    for (const y of c.years || []) {
+      if (String(y.season) < CURRENT_SEASON) continue;
+      const t = String(y.type || "").toUpperCase();
+      let kind = null;
+      if ((t === "PO" || t === "TO") && !y.decision) kind = t;
+      else if (t === "UFA" || t === "RFA") kind = t;
+      if (!kind) continue;
+      if (!best || String(y.season) < String(best.season)) best = { kind, season: y.season };
+    }
+  }
+  if (!best) return null;
+  return { ...best, label: best.kind + " " + String(best.season).slice(0, 4) };
+}
+
+function EventPill({ ev }) {
+  if (!ev) return null;
+  const cls = {
+    PO: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300",
+    TO: "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300",
+    UFA: "bg-red-100 text-red-600 dark:bg-red-900/50 dark:text-red-300",
+    RFA: "bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300",
+  }[ev.kind] || "bg-slate-100 text-slate-500 dark:text-slate-400";
   return (
     <span className={"shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wide " + cls}>
-      {fa.label}
+      {ev.label}
     </span>
   );
 }
@@ -465,7 +509,7 @@ function ContractsTab({ players, onSelect }) {
                 <span className="flex-1 min-w-0">
                   <span className="flex items-center gap-1.5 min-w-0">
                     <span className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
-                    <FaPill fa={faStatus(p)} />
+                    <EventPill ev={nextEvent(p)} />
                   </span>
                   <span className="block text-[11px] text-slate-400 font-medium truncate">
                     {act ? displayLine(act) : "No contract"}
@@ -474,7 +518,7 @@ function ContractsTab({ players, onSelect }) {
                 {currentSalary(p) > 0 && (
                   <span className="text-xs font-extrabold text-slate-700 dark:text-slate-200 shrink-0">{fmtM(currentSalary(p))}</span>
                 )}
-                <TeamPill team={act?.team} />
+                <TeamPill team={teamOfPlayer(p) || act?.team} />
               </button>
             );
           })}
@@ -631,7 +675,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer }) {
         </div>
 
         <div className="flex gap-2 mt-4">
-          {[["roster", "Roster"], ["contracts", "Contracts"], ["fa", "Free Agents"]].map(([k, lbl]) => (
+          {[["roster", "Depth Chart"], ["contracts", "Contracts"], ["stats", "Stats"]].map(([k, lbl]) => (
             <button key={k} onClick={() => setSeg(k)}
               className={"flex-1 py-2 rounded-full text-xs font-bold transition-colors " + (seg === k
                 ? "text-white"
@@ -663,6 +707,12 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer }) {
                         {cleanNo(p.no) && <span className="text-[11px] text-slate-400 font-medium">#{cleanNo(p.no)}</span>}
                         <StatusBadge status={p.status} />
                       </span>
+                      {(p.rating2k != null || p.archetype) && (
+                        <span className="flex items-center gap-1.5 mt-1 min-w-0">
+                          <Rating2kBadge r={p.rating2k} />
+                          {p.archetype && <span className="text-[10px] font-semibold text-slate-400 truncate">{p.archetype}</span>}
+                        </span>
+                      )}
                       {p.injuryNotes && (
                         <span className="block text-[11px] font-semibold text-red-500 truncate mt-0.5">{p.injuryNotes}</span>
                       )}
@@ -708,7 +758,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer }) {
                       <span className="flex-1 min-w-0">
                         <span className="flex items-center gap-1.5 min-w-0">
                           <span className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
-                          <FaPill fa={faStatus(p)} />
+                          <EventPill ev={nextEvent(p)} />
                         </span>
                         <span className="block text-[11px] text-slate-400 font-medium truncate">
                           {act ? (act.terms || displayLine(act)) : "No contract"}
@@ -725,36 +775,36 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer }) {
           </>
         )}
 
-        {seg === "fa" && (
+        {seg === "stats" && (
           <>
-            <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">Upcoming Free Agents</div>
+            <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">Season Averages</div>
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
               {(() => {
-                const fas = roster
-                  .map((p) => ({ p, fa: faStatus(p) }))
-                  .filter((x) => x.fa)
-                  .sort((a, b) => String(a.fa.season).localeCompare(String(b.fa.season)) || currentSalary(b.p) - currentSalary(a.p));
-                if (fas.length === 0) {
-                  return <div className="text-center text-sm text-slate-400 py-10 px-6">No upcoming free agents entered. Add UFA/RFA years in Contract Years and they appear here.</div>;
+                const rows = roster
+                  .map((p) => ({ p, st: latestStats(p) }))
+                  .filter((x) => x.st && (x.st.pts != null || x.st.reb != null || x.st.ast != null))
+                  .sort((a, b) => (b.st.pts ?? -1) - (a.st.pts ?? -1));
+                if (rows.length === 0) {
+                  return <div className="text-center text-sm text-slate-400 py-10 px-6">No stats entered for this roster yet. Fill the Stats table in Airtable and they appear here.</div>;
                 }
-                return fas.map(({ p, fa }) => {
-                  const act = activeOf(p);
-                  return (
-                    <button key={p.id} onClick={() => onSelectPlayer(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
-                      <Avatar p={p} />
-                      <span className="flex-1 min-w-0">
-                        <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
-                        <span className="block text-[11px] text-slate-400 font-medium truncate">
-                          {act ? (act.terms || displayLine(act)) : "No contract"}
+                return rows.map(({ p, st }) => (
+                  <button key={p.id} onClick={() => onSelectPlayer(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
+                    <span className="w-7 text-center text-[11px] font-extrabold text-slate-400 uppercase shrink-0">{p.pos || "—"}</span>
+                    <Avatar p={p} />
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
+                      <span className="block text-[11px] text-slate-400 font-medium truncate">{st.season || ""}</span>
+                    </span>
+                    <span className="flex gap-2 shrink-0">
+                      {[["PTS", fmt1(st.pts)], ["REB", fmt1(st.reb)], ["AST", fmt1(st.ast)], ["FG%", st.fg != null ? st.fg.toFixed(1) : null]].map(([lbl, v]) => (
+                        <span key={lbl} className="w-8 text-center">
+                          <span className="block text-[11px] font-extrabold text-slate-800 dark:text-slate-100 tabular-nums">{v ?? "—"}</span>
+                          <span className="block text-[8px] font-bold text-slate-400 uppercase">{lbl}</span>
                         </span>
-                      </span>
-                      <FaPill fa={fa} />
-                      <span className="text-xs font-extrabold text-slate-700 dark:text-slate-200 shrink-0">
-                        {currentSalary(p) > 0 ? fmtM(currentSalary(p)) : "—"}
-                      </span>
-                    </button>
-                  );
-                });
+                      ))}
+                    </span>
+                  </button>
+                ));
               })()}
             </div>
           </>
