@@ -257,12 +257,12 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full" }) {
             <div className="text-2xl font-extrabold leading-tight truncate">
               {p.name}
             </div>
-            <div className="text-sm opacity-80 font-medium mt-0.5 truncate">
-              {[cleanNo(p.no) ? "#" + cleanNo(p.no) : "", p.pos].filter(Boolean).join(" · ")}
+            <div className="flex items-center gap-2 mt-0.5 min-w-0">
+              <span className="text-sm opacity-80 font-medium truncate">
+                {[cleanNo(p.no) ? "#" + cleanNo(p.no) : "", p.pos].filter(Boolean).join(" · ")}
+              </span>
+              <StatusBadge status={p.status} />
             </div>
-            {p.status && (
-              <div className="mt-1.5"><StatusBadge status={p.status} /></div>
-            )}
             {p.injuryNotes && (
               <div className="text-xs font-semibold text-red-200 mt-1 truncate">{p.injuryNotes}</div>
             )}
@@ -493,7 +493,7 @@ function EventPill({ ev }) {
   const cls = EVENT_COLORS[ev.kind] || EVENT_COLORS.UFA;
   return (
     <span className={"inline-flex shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wide " + cls}>
-      {EVENT_WORDS[ev.kind] || ev.kind} {String(ev.season).slice(0, 4)}
+      {EVENT_WORDS[ev.kind] || ev.kind} {seasonTick({ season: ev.season })}
     </span>
   );
 }
