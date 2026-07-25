@@ -209,7 +209,14 @@ function ContractCard({ c, big }) {
       </div>
       <SalaryBars years={c.years} />
       <div className="flex flex-wrap gap-1.5 mt-3">
-        {c.years.filter((y) => y.type !== "G").map((y, i) => (
+        {c.years
+          .filter((y) => y.type !== "G")
+          .filter((y, _, arr) => {
+            const isFA = y.type === "UFA" || y.type === "RFA";
+            const hasOption = arr.some((o) => (o.type === "PO" || o.type === "TO") && !o.decision);
+            return !(isFA && hasOption); // option chip covers it - FA chip is redundant
+          })
+          .map((y, i) => (
           <span key={i} className={"text-[11px] font-semibold px-2 py-1 rounded-full " + (BADGE[y.type] || "bg-slate-100 text-slate-500 dark:text-slate-400")}>
             {y.season || y.s} · {TYPE_LABEL[y.type] || y.type}
             {y.decision ? " · " + y.decision : ""}
@@ -253,6 +260,12 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full" }) {
             <div className="text-sm opacity-80 font-medium mt-0.5 truncate">
               {[cleanNo(p.no) ? "#" + cleanNo(p.no) : "", p.pos].filter(Boolean).join(" · ")}
             </div>
+            {p.status && (
+              <div className="mt-1.5"><StatusBadge status={p.status} /></div>
+            )}
+            {p.injuryNotes && (
+              <div className="text-xs font-semibold text-red-200 mt-1 truncate">{p.injuryNotes}</div>
+            )}
           </div>
         </div>
       </div>
@@ -273,8 +286,8 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full" }) {
             const labels = { PO: "Player Option", TO: "Team Option", UFA: "Free Agent", RFA: "Restricted FA" };
             const colors = {
               PO: "text-emerald-600 dark:text-emerald-400",
-              TO: "text-amber-600 dark:text-amber-400",
-              UFA: "text-red-600 dark:text-red-400",
+              TO: "text-red-600 dark:text-red-400",
+              UFA: "text-slate-500 dark:text-slate-400",
               RFA: "text-purple-600 dark:text-purple-400",
             };
             return (
@@ -485,6 +498,14 @@ function EventPill({ ev }) {
   );
 }
 
+
+// The season after the current one - "2025-2026" -> "2026-2027". Rolls forward with CURRENT_SEASON.
+function nextSeason(s) {
+  const m = String(s).match(/(\d{4})\s*-\s*(\d{4})/);
+  if (!m) return null;
+  return (Number(m[1]) + 1) + "-" + (Number(m[2]) + 1);
+}
+
 function ContractsTab({ players, onSelect }) {
   const [q, setQ] = useState("");
   const [faOnly, setFaOnly] = useState(false);
@@ -493,7 +514,7 @@ function ContractsTab({ players, onSelect }) {
       players
         .filter((p) => p.contracts.length > 0)
         .filter((p) => matchesQuery(p, q))
-        .filter((p) => !faOnly || faStatus(p))
+        .filter((p) => !faOnly || (faStatus(p) && faStatus(p).season === nextSeason(CURRENT_SEASON)))
         .slice()
         .sort((x, y) => {
           const sx = currentSalary(x), sy = currentSalary(y);
@@ -506,7 +527,7 @@ function ContractsTab({ players, onSelect }) {
     <div>
       <ListHeader title="Contracts" q={q} setQ={setQ} />
       <div className="px-4 mt-3 flex gap-2">
-        {[["All", false], ["Upcoming FAs", true]].map(([lbl, v]) => (
+        {[["All", false], ["Free Agency", true]].map(([lbl, v]) => (
           <button key={lbl} onClick={() => setFaOnly(v)}
             className={"px-4 py-1.5 rounded-full text-xs font-bold " + (faOnly === v
               ? "bg-blue-600 text-white"
