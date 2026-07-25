@@ -148,11 +148,11 @@ function ordinal(n) {
   return n + suffix;
 }
 
-function Tile({ value, label, sub, accent }) {
+function Tile({ value, label, sub, accent, valueClass }) {
   return (
     <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 px-2 py-4 text-center shadow-sm flex flex-col items-center justify-center">
-      <div className={"text-2xl font-extrabold tracking-tight " + (accent ? ACCENT_TEXT : "text-slate-900 dark:text-slate-100")}>{value}</div>
-      <div className="text-[10px] font-semibold text-slate-400 tracking-widest uppercase mt-1">{label}</div>
+      <div className="text-[10px] font-semibold text-slate-400 tracking-widest uppercase mb-1">{label}</div>
+      <div className={"text-2xl font-extrabold tracking-tight " + (valueClass ? valueClass : accent ? ACCENT_TEXT : "text-slate-900 dark:text-slate-100")}>{value}</div>
       {sub && (
         <div className={"text-[10px] font-bold mt-0.5 " + (typeof sub === "object" && sub.cls ? sub.cls : "text-blue-600 dark:text-blue-400")}>
           {typeof sub === "object" ? sub.label : sub}
@@ -259,15 +259,29 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full" }) {
 
       <div className="px-4 -mt-3">
         <div className="grid grid-cols-3 gap-2">
-          <Tile value={p.rating2k != null ? Math.round(p.rating2k) : "—"} label="2K Rating" />
+          <Tile
+            value={p.rating2k != null ? Math.round(p.rating2k) : "—"}
+            label="2K Rating"
+            valueClass={p.rating2k == null ? null
+              : Math.round(p.rating2k) >= 90 ? "text-amber-500 dark:text-amber-400"
+              : Math.round(p.rating2k) >= 80 ? "text-slate-500 dark:text-slate-300"
+              : "text-orange-700 dark:text-orange-400"}
+          />
           <Tile value={currentSalary(p) > 0 ? fmtM(currentSalary(p)) : "—"} label={CURRENT_SEASON.slice(2, 4) + "-" + CURRENT_SEASON.slice(7) + " Salary"} />
           {(() => {
-            const fa = faStatus(p);
+            const ev = nextEvent(p);
+            const labels = { PO: "Player Option", TO: "Team Option", UFA: "Free Agent", RFA: "Restricted FA" };
+            const colors = {
+              PO: "text-emerald-600 dark:text-emerald-400",
+              TO: "text-amber-600 dark:text-amber-400",
+              UFA: "text-red-600 dark:text-red-400",
+              RFA: "text-purple-600 dark:text-purple-400",
+            };
             return (
               <Tile
-                value={fa ? String(fa.season).slice(0, 4) : "—"}
-                label="Free Agent"
-                sub={fa ? { label: fa.type, cls: fa.type === "RFA" ? "text-purple-600 dark:text-purple-400" : "text-red-600 dark:text-red-400" } : null}
+                value={ev ? String(ev.season).slice(0, 4) : "—"}
+                label={ev ? labels[ev.kind] : "Free Agent"}
+                valueClass={ev ? colors[ev.kind] : null}
               />
             );
           })()}
@@ -298,8 +312,8 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full" }) {
                   <span className="flex gap-3">
                     {[["PTS", st.pts], ["REB", st.reb], ["AST", st.ast]].map(([lbl, v]) => (
                       <span key={lbl} className="w-9 text-center">
-                        <span className="block text-xs font-extrabold text-slate-800 dark:text-slate-100 tabular-nums">{fmt1(v) ?? "—"}</span>
                         <span className="block text-[8px] font-bold text-slate-400 uppercase">{lbl}</span>
+                        <span className="block text-xs font-extrabold text-slate-800 dark:text-slate-100 tabular-nums">{fmt1(v) ?? "—"}</span>
                       </span>
                     ))}
                   </span>
@@ -724,8 +738,8 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer }) {
                           <span className="flex gap-2 shrink-0">
                             {[["PTS", st.pts], ["REB", st.reb], ["AST", st.ast]].map(([lbl, v]) => (
                               <span key={lbl} className="w-7 text-center">
-                                <span className="block text-[11px] font-extrabold text-slate-800 dark:text-slate-100 tabular-nums">{fmt1(v) ?? "—"}</span>
                                 <span className="block text-[8px] font-bold text-slate-400 uppercase">{lbl}</span>
+                                <span className="block text-[11px] font-extrabold text-slate-800 dark:text-slate-100 tabular-nums">{fmt1(v) ?? "—"}</span>
                               </span>
                             ))}
                           </span>
@@ -798,8 +812,8 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer }) {
                     <span className="flex gap-2 shrink-0">
                       {[["PTS", fmt1(st.pts)], ["REB", fmt1(st.reb)], ["AST", fmt1(st.ast)], ["FG%", st.fg != null ? st.fg.toFixed(1) : null]].map(([lbl, v]) => (
                         <span key={lbl} className="w-8 text-center">
-                          <span className="block text-[11px] font-extrabold text-slate-800 dark:text-slate-100 tabular-nums">{v ?? "—"}</span>
                           <span className="block text-[8px] font-bold text-slate-400 uppercase">{lbl}</span>
+                          <span className="block text-[11px] font-extrabold text-slate-800 dark:text-slate-100 tabular-nums">{v ?? "—"}</span>
                         </span>
                       ))}
                     </span>
@@ -822,6 +836,16 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer }) {
 
 
 // ═══════════════ TAB: DRAFT ══════════════════════════════════════
+
+function roundOf(p) {
+  if (p.draftRound != null) return Number(p.draftRound) || null;
+  const m = String(p.draft || "").match(/round\s*(\d)/i);
+  return m ? Number(m[1]) : null;
+}
+function draftedBy(p) {
+  const m = String(p.draft || "").match(/\(([A-Za-z]{2,4})\)\s*$/);
+  return m ? m[1].toUpperCase() : null;
+}
 function pickOf(p) {
   if (p.draftPick != null) return p.draftPick;
   const m = String(p.draft || "").match(/pick\s*(\d+)/i);
@@ -895,10 +919,10 @@ function StatsTab({ players, onSelect }) {
                 </span>
               </span>
               <span className="text-right shrink-0">
+                <span className="block text-[10px] font-bold text-slate-400 uppercase">{catLabel}</span>
                 <span className="block text-base font-extrabold text-slate-900 dark:text-slate-100">
                   {isPct ? st[cat].toFixed(1) + "%" : st[cat].toFixed(1)}
                 </span>
-                <span className="block text-[10px] font-bold text-slate-400 uppercase">{catLabel}</span>
               </span>
             </button>
           ))}
@@ -943,33 +967,40 @@ function DraftTab({ players, onSelect }) {
         </div>
       </div>
       <div className="px-4 pb-28 mt-4">
-        {[yr].filter((y) => y != null).map((yr) => (
-          <div key={yr}>
-            <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">
-              {yr} Draft Class
+        {[yr].filter((y) => y != null).map((yr) => {
+          const cls = byYear[yr];
+          const rounds = [
+            ["Round 1", cls.filter((p) => roundOf(p) === 1)],
+            ["Round 2", cls.filter((p) => roundOf(p) === 2)],
+            ["Round Unknown", cls.filter((p) => roundOf(p) == null || roundOf(p) > 2)],
+          ].filter(([, g]) => g.length > 0);
+          return (
+            <div key={yr}>
+              {rounds.map(([label, group]) => (
+                <div key={label}>
+                  <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">
+                    {yr} · {label}
+                  </div>
+                  <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
+                    {group
+                      .sort((a, b) => pickOf(a) - pickOf(b))
+                      .map((p) => (
+                        <button key={p.id} onClick={() => onSelect(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
+                          <span className="w-7 text-center text-sm font-extrabold text-slate-400 tabular-nums shrink-0">{pickOf(p) !== 999 ? pickOf(p) : "—"}</span>
+                          <Avatar p={p} />
+                          <span className="flex-1 min-w-0">
+                            <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
+                            <span className="block text-[11px] text-slate-400 font-medium truncate">{p.college || "—"}</span>
+                          </span>
+                          <TeamPill team={draftedBy(p) || teamOfPlayer(p)} />
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              ))}
             </div>
-            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
-              {byYear[yr]
-                .sort((a, b) => pickOf(a) - pickOf(b))
-                .map((p) => (
-                  <button key={p.id} onClick={() => onSelect(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
-                    <Avatar p={p} />
-                    <span className="flex-1 min-w-0">
-                      <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
-                      <span className="block text-[11px] text-slate-400 font-medium truncate">
-                        {p.draft ||
-                          [p.draftRound ? "Rd " + p.draftRound : "", pickOf(p) !== 999 ? "Pick " + pickOf(p) : ""]
-                            .filter(Boolean)
-                            .join(" · ") ||
-                          "—"}
-                      </span>
-                    </span>
-                    <TeamPill team={teamOfPlayer(p) || p.teamName || (activeOf(p) && activeOf(p).team)} />
-                  </button>
-                ))}
-            </div>
-          </div>
-        ))}
+          );
+        })}
         {noData.length > 0 && (
           <div className="text-center text-xs text-slate-400 mt-8">
             {noData.length} player{noData.length === 1 ? "" : "s"} without draft data yet
