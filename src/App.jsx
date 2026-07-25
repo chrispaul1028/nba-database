@@ -248,10 +248,10 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full" }) {
           <Avatar p={p} size="lg" />
           <div className="min-w-0">
             <div className="text-2xl font-extrabold leading-tight truncate">
-              {no ? "#" + no + " " : ""}{p.name}
+              {p.name}
             </div>
             <div className="text-sm opacity-80 font-medium mt-0.5 truncate">
-              {p.pos || ""}
+              {[cleanNo(p.no) ? "#" + cleanNo(p.no) : "", p.pos].filter(Boolean).join(" · ")}
             </div>
           </div>
         </div>
@@ -279,7 +279,7 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full" }) {
             };
             return (
               <Tile
-                value={ev ? String(ev.season).slice(0, 4) : "—"}
+                value={ev ? seasonTick({ season: ev.season }) : "—"}
                 label={ev ? labels[ev.kind] : "Free Agent"}
                 valueClass={ev ? colors[ev.kind] : null}
               />
@@ -291,8 +291,7 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full" }) {
           <>
             <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">Bio</div>
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800">
-              <BioRow k="Height" v={p.height} />
-              <BioRow k="Weight" v={p.weight} />
+              <BioRow k="Height / Weight" v={[p.height, p.weight].filter(Boolean).join(" · ")} />
               <BioRow k="Age" v={p.age} />
               <BioRow k="Draft" v={[p.draftYear, p.draft].filter(Boolean).join(": ")} />
               <BioRow k="Experience" v={experienceOf(p)} />
@@ -468,17 +467,20 @@ function nextEvent(p) {
   return { ...best, label: best.kind + " " + String(best.season).slice(0, 4) };
 }
 
+const EVENT_WORDS = { PO: "Player Option", TO: "Team Option", UFA: "Free Agent", RFA: "Restricted FA" };
+const EVENT_COLORS = {
+  PO: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300",
+  TO: "bg-red-100 text-red-600 dark:bg-red-900/50 dark:text-red-300",
+  UFA: "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400",
+  RFA: "bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300",
+};
+
 function EventPill({ ev }) {
   if (!ev) return null;
-  const cls = {
-    PO: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300",
-    TO: "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300",
-    UFA: "bg-red-100 text-red-600 dark:bg-red-900/50 dark:text-red-300",
-    RFA: "bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300",
-  }[ev.kind] || "bg-slate-100 text-slate-500 dark:text-slate-400";
+  const cls = EVENT_COLORS[ev.kind] || EVENT_COLORS.UFA;
   return (
-    <span className={"shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wide " + cls}>
-      {ev.label}
+    <span className={"inline-flex shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wide " + cls}>
+      {EVENT_WORDS[ev.kind] || ev.kind} {String(ev.season).slice(0, 4)}
     </span>
   );
 }
@@ -521,13 +523,13 @@ function ContractsTab({ players, onSelect }) {
               <button key={p.id} onClick={() => onSelect(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
                 <Avatar p={p} />
                 <span className="flex-1 min-w-0">
-                  <span className="flex items-center gap-1.5 min-w-0">
-                    <span className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
-                    <EventPill ev={nextEvent(p)} />
-                  </span>
+                  <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
                   <span className="block text-[11px] text-slate-400 font-medium truncate">
                     {act ? displayLine(act) : "No contract"}
                   </span>
+                  {nextEvent(p) && (
+                    <span className="block mt-1"><EventPill ev={nextEvent(p)} /></span>
+                  )}
                 </span>
                 {currentSalary(p) > 0 && (
                   <span className="text-xs font-extrabold text-slate-700 dark:text-slate-200 shrink-0">{fmtM(currentSalary(p))}</span>
@@ -777,13 +779,13 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer }) {
                     <button key={p.id} onClick={() => onSelectPlayer(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
                       <Avatar p={p} />
                       <span className="flex-1 min-w-0">
-                        <span className="flex items-center gap-1.5 min-w-0">
-                          <span className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
-                          <EventPill ev={nextEvent(p)} />
-                        </span>
+                        <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
                         <span className="block text-[11px] text-slate-400 font-medium truncate">
                           {act ? (act.terms || displayLine(act)) : "No contract"}
                         </span>
+                        {nextEvent(p) && (
+                          <span className="block mt-1"><EventPill ev={nextEvent(p)} /></span>
+                        )}
                       </span>
                       <span className="text-xs font-extrabold text-slate-700 dark:text-slate-200 shrink-0">
                         {currentSalary(p) > 0 ? fmtM(currentSalary(p)) : "—"}
