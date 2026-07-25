@@ -604,10 +604,17 @@ function TeamsTab({ teams, players, onSelect }) {
                       )}
                       <span className="flex-1 min-w-0">
                         <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{t.name}</span>
-                        <span className="block text-[11px] text-slate-400 font-medium truncate">{t.division || "—"}</span>
+                        <span className="block text-[11px] text-slate-400 font-medium truncate">{t.division ? t.division + " Division" : "—"}</span>
                       </span>
                       {(t.wins != null || t.losses != null) && (
-                        <span className="text-xs font-extrabold text-slate-600 dark:text-slate-300 shrink-0">{t.wins ?? 0}-{t.losses ?? 0}</span>
+                        <span className="flex gap-2.5 shrink-0">
+                          {[["W", t.wins ?? 0], ["L", t.losses ?? 0]].map(([lbl, v]) => (
+                            <span key={lbl} className="w-7 text-center">
+                              <span className="block text-[8px] font-bold text-slate-400 uppercase">{lbl}</span>
+                              <span className="block text-xs font-extrabold text-slate-800 dark:text-slate-100 tabular-nums">{v}</span>
+                            </span>
+                          ))}
+                        </span>
                       )}
                     </button>
                   );
@@ -838,9 +845,18 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer }) {
 // ═══════════════ TAB: DRAFT ══════════════════════════════════════
 
 function roundOf(p) {
+  if (isUndrafted(p)) return null;
   if (p.draftRound != null) return Number(p.draftRound) || null;
-  const m = String(p.draft || "").match(/round\s*(\d)/i);
-  return m ? Number(m[1]) : null;
+  const t = String(p.draft || "");
+  let m = t.match(/(?:round|rnd|rd|r)\s*\.?\s*(\d)/i) || t.match(/(\d)(?:st|nd)\s*round/i);
+  if (m) return Number(m[1]);
+  // fall back to the pick number: 1-30 first round, 31-60 second
+  const pk = pickOf(p);
+  if (pk !== 999) return pk <= 30 ? 1 : 2;
+  return null;
+}
+function isUndrafted(p) {
+  return /undrafted/i.test(String(p.draft || ""));
 }
 function draftedBy(p) {
   const m = String(p.draft || "").match(/\(([A-Za-z]{2,4})\)\s*$/);
@@ -972,14 +988,15 @@ function DraftTab({ players, onSelect }) {
           const rounds = [
             ["Round 1", cls.filter((p) => roundOf(p) === 1)],
             ["Round 2", cls.filter((p) => roundOf(p) === 2)],
-            ["Round Unknown", cls.filter((p) => roundOf(p) == null || roundOf(p) > 2)],
+            ["Undrafted", cls.filter((p) => isUndrafted(p))],
+            ["Round Unknown", cls.filter((p) => !isUndrafted(p) && (roundOf(p) == null || roundOf(p) > 2))],
           ].filter(([, g]) => g.length > 0);
           return (
             <div key={yr}>
               {rounds.map(([label, group]) => (
                 <div key={label}>
                   <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">
-                    {yr} · {label}
+                    {label}
                   </div>
                   <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
                     {group
@@ -990,7 +1007,7 @@ function DraftTab({ players, onSelect }) {
                           <Avatar p={p} />
                           <span className="flex-1 min-w-0">
                             <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
-                            <span className="block text-[11px] text-slate-400 font-medium truncate">{p.college || "—"}</span>
+                            <span className="block text-[11px] text-slate-400 font-medium truncate">{[p.pos, p.college].filter(Boolean).join(" · ") || "—"}</span>
                           </span>
                           <TeamPill team={draftedBy(p) || teamOfPlayer(p)} />
                         </button>
