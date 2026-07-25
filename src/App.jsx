@@ -421,7 +421,8 @@ function PlayersTab({ players, onSelect }) {
               <TeamPill team={teamOfPlayer(p) || p.teamName || activeOf(p)?.team} />
             </button>
           ))}
-          {list.length === 0 && <div className="text-center text-sm text-slate-400 py-12">No players match "{q}".</div>}
+          {list.length === 0 && faOnly && <div className="text-center text-sm text-slate-400 py-12 px-6">No events for the {startYear(CURRENT_SEASON) + 1} offseason yet. Add UFA/RFA rows or option years in Contract Years.</div>}
+          {list.length === 0 && !faOnly && <div className="text-center text-sm text-slate-400 py-12">No players match "{q}".</div>}
         </div>
       </div>
     </div>
@@ -462,12 +463,19 @@ function Rating2kBadge({ r }) {
 }
 
 // Next contract event: earliest pending PO/TO or upcoming UFA/RFA on the active deal
+
+// First year of a season string: "2026-2027" | "2026-27" -> 2026
+function startYear(s) {
+  const m = String(s || "").match(/(\d{4})/);
+  return m ? Number(m[1]) : null;
+}
+
 function nextEvent(p) {
   let best = null;
   for (const c of p.contracts || []) {
-    if (c.status !== "Active") continue;
+    if (String(c.status).toLowerCase() === "expired") continue; // blank status still counts
     for (const y of c.years || []) {
-      if (String(y.season) < CURRENT_SEASON) continue;
+      if (startYear(y.season) != null && startYear(y.season) < startYear(CURRENT_SEASON)) continue;
       const t = String(y.type || "").toUpperCase();
       let kind = null;
       if ((t === "PO" || t === "TO") && !y.decision) kind = t;
@@ -514,9 +522,19 @@ function ContractsTab({ players, onSelect }) {
       players
         .filter((p) => p.contracts.length > 0)
         .filter((p) => matchesQuery(p, q))
-        .filter((p) => !faOnly || (faStatus(p) && faStatus(p).season === nextSeason(CURRENT_SEASON)))
+        .filter((p) => {
+          if (!faOnly) return true;
+          const ev = nextEvent(p);                       // UFA, RFA, player + team options
+          return ev && startYear(ev.season) === startYear(CURRENT_SEASON) + 1;
+        })
         .slice()
         .sort((x, y) => {
+          if (faOnly) {
+            const rank = { UFA: 0, RFA: 1, PO: 2, TO: 3 };
+            const ex = nextEvent(x), ey = nextEvent(y);
+            const rx = rank[ex?.kind] ?? 9, ry = rank[ey?.kind] ?? 9;
+            if (rx !== ry) return rx - ry;              // free agents first, then options
+          }
           const sx = currentSalary(x), sy = currentSalary(y);
           if (sy !== sx) return sy - sx;               // biggest current-season salary first
           return x.name.localeCompare(y.name);          // $0 group: alphabetical
@@ -527,7 +545,7 @@ function ContractsTab({ players, onSelect }) {
     <div>
       <ListHeader title="Contracts" q={q} setQ={setQ} />
       <div className="px-4 mt-3 flex gap-2">
-        {[["All", false], ["Free Agency", true]].map(([lbl, v]) => (
+        {[["All", false], ["Free Agency " + (startYear(CURRENT_SEASON) + 1), true]].map(([lbl, v]) => (
           <button key={lbl} onClick={() => setFaOnly(v)}
             className={"px-4 py-1.5 rounded-full text-xs font-bold " + (faOnly === v
               ? "bg-blue-600 text-white"
