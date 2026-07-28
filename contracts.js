@@ -55,7 +55,7 @@ const FIELDS = {
   cSigned: ["Signed Date", "Signed", "Date Signed", "Signed Year"],
   ySeason: ["Season", "Year"],
   sSeason: ["Season", "Year"],
-  sGP: ["GP", "G", "Games", "Games Played"],
+  sGP: ["GP", "G", "Games", "Games Played", "Gms", "# Games", "Game Count", "GP (Games Played)"],
   sMIN: ["MIN", "MPG", "Minutes", "MP"],
   sPTS: ["PTS", "P", "PPG", "Points"],
   sREB: ["REB", "R", "RPG", "Rebounds", "TRB"],
@@ -275,9 +275,10 @@ export default async function handler(req, res) {
     }
     for (const arr of Object.values(statsByPlayer)) {
       for (const st of arr) {
-        // Totals import (e.g. Basketball-Reference "Totals" table): convert to per-game.
-        // Heuristic: nobody averages 150+ minutes or 100+ points per game.
-        if (st.gp > 1 && ((st.min != null && st.min > 150) || (st.pts != null && st.pts > 100))) {
+        // Airtable stores SEASON TOTALS. Convert every counting stat to
+        // per-game whenever we know games played (GP > 1).
+        // Example: 1927 PTS / 65 GP = 29.6 PPG.
+        if (st.gp != null && st.gp > 1) {
           for (const k of ["min", "pts", "reb", "ast", "stl", "blk"]) {
             if (st[k] != null) st[k] = Math.round((st[k] / st.gp) * 10) / 10;
           }
