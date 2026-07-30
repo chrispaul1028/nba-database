@@ -55,8 +55,8 @@ const FIELDS = {
   cSigned: ["Signed Date", "Signed", "Date Signed", "Signed Year"],
   ySeason: ["Season", "Year"],
   sSeason: ["Season", "Year"],
-  sGP: ["GP", "G", "Games", "Games Played"],
-  sMIN: ["MIN", "MPG", "Minutes"],
+  sGP: ["GP", "G", "Games", "Games Played", "Gms", "# Games", "Game Count", "GP (Games Played)"],
+  sMIN: ["MIN", "MPG", "Minutes", "MP"],
   sPTS: ["PTS", "P", "PPG", "Points"],
   sREB: ["REB", "R", "RPG", "Rebounds", "TRB"],
   sAST: ["AST", "A", "APG", "Assists"],
@@ -265,8 +265,24 @@ export default async function handler(req, res) {
         fta: coerceNum(getField(r.fields, FIELDS.sFTA)),
       });
     }
+    for (const [pid, arr] of Object.entries(statsByPlayer)) {
+      const bySeason = {};
+      for (const st of arr) {
+        const key = String(st.season);
+        if (!bySeason[key] || (st.gp ?? 0) > (bySeason[key].gp ?? 0)) bySeason[key] = st;
+      }
+      statsByPlayer[pid] = Object.values(bySeason);
+    }
     for (const arr of Object.values(statsByPlayer)) {
       for (const st of arr) {
+        // Airtable stores SEASON TOTALS. Convert every counting stat to
+        // per-game whenever we know games played (GP > 1).
+        // Example: 1927 PTS / 65 GP = 29.6 PPG.
+        if (st.gp != null && st.gp > 1) {
+          for (const k of ["min", "pts", "reb", "ast", "stl", "blk"]) {
+            if (st[k] != null) st[k] = Math.round((st[k] / st.gp) * 10) / 10;
+          }
+        }
         // percentages: prefer explicit fields; else derive from makes/attempts
         if (st.fg == null && st.fgm != null && st.fga) st.fg = Math.round((st.fgm / st.fga) * 1000) / 10;
         if (st.p3 == null && st.p3m != null && st.p3a) st.p3 = Math.round((st.p3m / st.p3a) * 1000) / 10;
@@ -356,7 +372,7 @@ export default async function handler(req, res) {
       .sort((a, b) => a.name.localeCompare(b.name));
 
     res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
-    return res.status(200).json({ players: out, teams: teamsOut });
+    return res.status(200).json({ apiVersion: "v23.4", players: out, teams: teamsOut });
   } catch (e) {
     return res.status(500).json({ error: String(e.message || e) });
   }
