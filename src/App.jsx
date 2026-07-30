@@ -318,19 +318,30 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full" }) {
           <>
             <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">Stats</div>
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800">
-              {p.stats.map((st, i) => (
-                <div key={i} className="flex items-center justify-between px-4 py-3">
-                  <span className="text-xs font-bold text-slate-500 dark:text-slate-400">{st.season || "—"}</span>
-                  <span className="flex gap-2">
-                    {[["G", st.gp != null ? Math.round(st.gp) : null], ["PTS", fmt1(st.pts)], ["REB", fmt1(st.reb)], ["AST", fmt1(st.ast)]].map(([lbl, v]) => (
-                      <span key={lbl} className="w-8 text-center">
-                        <span className="block text-[8px] font-bold text-slate-400 uppercase">{lbl}</span>
-                        <span className="block text-xs font-extrabold text-slate-800 dark:text-slate-100 tabular-nums">{v ?? "—"}</span>
-                      </span>
-                    ))}
-                  </span>
-                </div>
-              ))}
+              {p.stats.map((st, i) => {
+                const fmtPct = (v) => (v == null ? null : Number(v).toFixed(1) + "%");
+                return (
+                  <div key={i} className="px-4 py-3">
+                    <div className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5">{st.season || "—"}</div>
+                    <div className="flex justify-between">
+                      {[["G", st.gp != null ? Math.round(st.gp) : null], ["PTS", fmt1(st.pts)], ["REB", fmt1(st.reb)], ["AST", fmt1(st.ast)], ["STL", fmt1(st.stl)], ["BLK", fmt1(st.blk)], ["TO", fmt1(st.tov)]].map(([lbl, v]) => (
+                        <span key={lbl} className="flex-1 text-center">
+                          <span className="block text-[8px] font-bold text-slate-400 uppercase">{lbl}</span>
+                          <span className="block text-xs font-extrabold text-slate-800 dark:text-slate-100 tabular-nums">{v ?? "—"}</span>
+                        </span>
+                      ))}
+                    </div>
+                    <div className="flex justify-between mt-2">
+                      {[["FG%", fmtPct(st.fg)], ["FT%", fmtPct(st.ft)], ["3P%", fmtPct(st.p3)]].map(([lbl, v]) => (
+                        <span key={lbl} className="flex-1 text-center">
+                          <span className="block text-[8px] font-bold text-slate-400 uppercase">{lbl}</span>
+                          <span className="block text-xs font-extrabold text-slate-800 dark:text-slate-100 tabular-nums">{v ?? "—"}</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </>
         )}
@@ -381,9 +392,16 @@ function ListHeader({ title, q, setQ, placeholder }) {
   );
 }
 
+// Populated once data loads: abbr -> logo URL
+const TEAM_LOGOS = {};
+
 function TeamPill({ team }) {
   const abbr = toAbbr(team) || team;
   if (!abbr) return null;
+  const logo = TEAM_LOGOS[abbr];
+  if (logo) {
+    return <img src={logo} alt={abbr} className="w-8 h-8 rounded-full object-contain bg-slate-100 dark:bg-slate-800 shrink-0" />;
+  }
   return (
     <span className="text-[10px] font-bold text-white px-2 py-1 rounded-full shrink-0" style={{ backgroundColor: teamColor(abbr) }}>
       {abbr}
@@ -781,7 +799,14 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer }) {
           <div className="min-w-0">
             <div className="text-2xl font-extrabold leading-tight truncate">{team.name}</div>
             <div className="text-sm opacity-80 font-medium mt-0.5 truncate">
-              {[team.conference, team.division].filter(Boolean).join(" · ")}
+              {(() => {
+                if (!team.division) return [team.conference].filter(Boolean).join(" · ") || "—";
+                const rivals = (teams || []).filter((t) => t.division === team.division)
+                  .sort((a, b) => winPct(b) - winPct(a) || (b.wins ?? 0) - (a.wins ?? 0));
+                const i = rivals.findIndex((t) => t.id === team.id);
+                const ord = i >= 0 ? (ORDINALS[i] || `${i + 1}th`) : null;
+                return ord ? `${ord} in ${team.division} Division` : `${team.division} Division`;
+              })()}
             </div>
           </div>
         </div>
@@ -1303,7 +1328,10 @@ export default function App() {
   useEffect(() => {
     fetch("/api/contracts")
       .then((r) => r.json())
-      .then((d) => { if (d.error) setError(d.error); else { setPlayers(d.players); setTeams(d.teams || []); } })
+      .then((d) => { if (d.error) setError(d.error); else {
+        for (const t of d.teams || []) { const a = t.abbr || toAbbr(t.name); if (a && t.logo) TEAM_LOGOS[a] = t.logo; }
+        setPlayers(d.players); setTeams(d.teams || []);
+      } })
       .catch((e) => setError(String(e)));
   }, []);
 
