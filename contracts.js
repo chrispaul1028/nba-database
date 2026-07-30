@@ -62,6 +62,7 @@ const FIELDS = {
   sAST: ["AST", "A", "APG", "Assists"],
   sSTL: ["STL", "S", "SPG", "Steals"],
   sBLK: ["BLK", "B", "BPG", "Blocks"],
+  sTOV: ["TOV", "TO", "Turnovers", "TOs", "Turnover"],
   sFG: ["FG%", "FG Pct", "Field Goal %", "FG"],
   s3P: ["3P%", "3PT%", "3P Pct", "Three Point %"],
   sFT: ["FT%", "FT Pct", "Free Throw %"],
@@ -254,6 +255,7 @@ export default async function handler(req, res) {
         ast: coerceNum(getField(r.fields, FIELDS.sAST)),
         stl: coerceNum(getField(r.fields, FIELDS.sSTL)),
         blk: coerceNum(getField(r.fields, FIELDS.sBLK)),
+        tov: coerceNum(getField(r.fields, FIELDS.sTOV)),
         fg: coerceNum(getField(r.fields, FIELDS.sFG)),
         p3: coerceNum(getField(r.fields, FIELDS.s3P)),
         ft: coerceNum(getField(r.fields, FIELDS.sFT)),
@@ -279,7 +281,7 @@ export default async function handler(req, res) {
         // per-game whenever we know games played (GP > 1).
         // Example: 1927 PTS / 65 GP = 29.6 PPG.
         if (st.gp != null && st.gp > 1) {
-          for (const k of ["min", "pts", "reb", "ast", "stl", "blk"]) {
+          for (const k of ["min", "pts", "reb", "ast", "stl", "blk", "tov"]) {
             if (st[k] != null) st[k] = Math.round((st[k] / st.gp) * 10) / 10;
           }
         }
