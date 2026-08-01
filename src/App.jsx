@@ -510,7 +510,7 @@ const EVENT_WORDS = { PO: "Player Option", TO: "Team Option", UFA: "Free Agent",
 const EVENT_COLORS = {
   PO: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300",
   TO: "bg-red-100 text-red-600 dark:bg-red-900/50 dark:text-red-300",
-  UFA: "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400",
+  UFA: "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300",
   RFA: "bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300",
 };
 
@@ -519,7 +519,9 @@ function EventPill({ ev }) {
   const cls = EVENT_COLORS[ev.kind] || EVENT_COLORS.UFA;
   return (
     <span className={"inline-flex shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wide " + cls}>
-      {EVENT_WORDS[ev.kind] || ev.kind} {seasonTick({ season: ev.season })}
+      {ev.kind === "UFA"
+        ? <>Free Agent {startYear(ev.season) ?? seasonTick({ season: ev.season })}</>
+        : <>{EVENT_WORDS[ev.kind] || ev.kind} {seasonTick({ season: ev.season })}</>}
     </span>
   );
 }
