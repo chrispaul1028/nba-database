@@ -285,6 +285,9 @@ export default async function handler(req, res) {
             if (st[k] != null) st[k] = Math.round((st[k] / st.gp) * 10) / 10;
           }
         }
+        // A shooting percentage must be 0-100. Values above 100 mean the
+        // column holds something else (e.g. total makes) - discard those.
+        for (const k of ["fg", "p3", "ft"]) if (st[k] != null && (st[k] > 100 || st[k] < 0)) st[k] = null;
         // percentages: prefer explicit fields; else derive from makes/attempts
         if (st.fg == null && st.fgm != null && st.fga) st.fg = Math.round((st.fgm / st.fga) * 1000) / 10;
         if (st.p3 == null && st.p3m != null && st.p3a) st.p3 = Math.round((st.p3m / st.p3a) * 1000) / 10;
