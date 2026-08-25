@@ -1,0 +1,5 @@
+{
+  "crons": [
+    { "path": "/api/sync-injuries", "schedule": "0 16 * * *" }
+  ]
+}
