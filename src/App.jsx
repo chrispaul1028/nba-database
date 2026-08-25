@@ -742,7 +742,7 @@ function StatusBadge({ status }) {
   let cls = "bg-slate-100 text-slate-500 dark:text-slate-400";
   if (s === "ir" || s.includes("injured reserve") || s.includes("out")) cls = "bg-red-100 text-red-600 dark:bg-red-900/50 dark:text-red-300";
   else if (s.includes("active") || s.includes("available")) cls = "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300";
-  else if (s.includes("injur") || s.includes("day") || s.includes("question") || s.includes("doubt")) cls = "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300";
+  else if (s.includes("game time") || s === "gtd" || s.includes("injur") || s.includes("day") || s.includes("question") || s.includes("doubt") || s.includes("probable")) cls = "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300";
   return (
     <span className={"shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wide " + cls}>
       {status}
