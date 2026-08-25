@@ -45,3 +45,23 @@ and Vercel redeploys automatically.
 
 ## Updating data
 No steps. Edit Airtable → refresh the app. (Results are cached ~5 min.)
+
+## Injury sync (automatic)
+`api/sync-injuries.js` pulls ESPN's NBA injury report and writes it into the
+Players table:
+- **Status** → `Active`, `Game Time Decision`, or `IR`
+- **Injury Notes** → e.g. `Left Ankle Sprain (est. return Nov 12)`
+
+Setup (one time):
+1. Airtable token needs **data.records:write** (edit the existing token or make
+   a new one and update `AIRTABLE_TOKEN` in Vercel).
+2. In Vercel → Settings → Environment Variables add `CRON_SECRET` = any long
+   random string. Redeploy.
+3. `vercel.json` runs it once a day (Hobby plan limit). To force a run any time,
+   open `https://<your-app>.vercel.app/api/sync-injuries?key=<CRON_SECRET>`.
+   Add `&dry=1` to preview changes without writing.
+4. For hourly refreshes on game days, point a free external pinger
+   (cron-job.org, etc.) at that same URL.
+
+Any Status you set by hand other than Active / GTD / IR (e.g. "Two-Way") is
+left alone unless that player appears on the injury report.
