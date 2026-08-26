@@ -1,5 +1,8 @@
-// Vercel serverless function: pulls the NBA injury report from ESPN's public
-// JSON feed and writes it into the Airtable Players table.
+// Vercel serverless function: pulls the NBA injury report from TWO sources
+// and writes it into the Airtable Players table.
+//   - ESPN's JSON feed  (rich detail: "Right Ankle Sprain"; sleeps in the offseason)
+//   - CBS Sports' injuries page (updates year-round; body part + return date)
+// For each player the source with the NEWER update wins.
 //
 //   Status        -> "Active" | "Game Time Decision" | "IR"
 //   Injury Notes  -> e.g. "Left Ankle Sprain (est. return Nov 12)"
@@ -29,6 +32,12 @@
 // Optional overrides: INJURY_STATUS_FIELD, INJURY_NOTES_FIELD
 
 const ESPN_URL = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries";
+const CBS_URL = "https://www.cbssports.com/nba/injuries/";
+
+// In the offseason CBS tags almost everyone who ended the year hurt as
+// "Questionable for start of season" (Giannis, Bam, Tatum...). Flip to true
+// if you want those shown as Game Time Decision too.
+const INCLUDE_PRESEASON_QUESTIONABLE = false;
 
 const TABLES = { players: "Players", teams: "Teams" };
 
@@ -53,7 +62,7 @@ const INCLUDE_RETURN_DATE = true;
 
 // ESPN abbreviations that differ from the common ones. Only used to break
 // ties when two players in your base share a name.
-const ESPN_ABBR = { GS: "GSW", NY: "NYK", NO: "NOP", SA: "SAS", UTAH: "UTA", WSH: "WAS", PHX: "PHX" };
+const ESPN_ABBR = { GS: "GSW", NY: "NYK", NO: "NOP", SA: "SAS", UTAH: "UTA", WSH: "WAS", PHO: "PHX" };
 
 // ---------------------------------------------------------------- helpers
 
@@ -191,6 +200,64 @@ function buildNote(entry) {
   return note;
 }
 
+// ------------------------------------------------------------- CBS parsing
+
+const stripTags = (h) => String(h).replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/&#39;|&apos;/g, "'").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+
+// "Mon, Aug 24" -> ISO date, assuming the most recent past occurrence.
+function cbsDate(txt) {
+  const m = /([A-Z][a-z]{2})\.? (\d{1,2})/.exec(txt || "");
+  if (!m) return "";
+  const mon = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"].indexOf(m[1].toLowerCase());
+  if (mon < 0) return "";
+  const now = new Date();
+  let d = new Date(Date.UTC(now.getUTCFullYear(), mon, Number(m[2])));
+  if (d.getTime() > now.getTime() + 86400e3) d = new Date(Date.UTC(now.getUTCFullYear() - 1, mon, Number(m[2])));
+  return d.toISOString();
+}
+
+// "Expected to be out until at least Mar 1" -> "Mar 1" (next occurrence)
+function cbsReturn(status) {
+  const m = /until at least ([A-Z][a-z]{2})\.? (\d{1,2})/.exec(status || "");
+  return m ? `${m[1]} ${m[2]}` : "";
+}
+
+// Walks the CBS HTML in order: remembers the last team header seen, then
+// turns every table row that links to a player page into an entry.
+function parseCbs(html) {
+  const out = [];
+  let team = "";
+  const re = /\/nba\/teams\/([A-Z]{2,4})\/[a-z0-9-]+\/|<tr[\s\S]*?<\/tr>/g;
+  let m;
+  while ((m = re.exec(html))) {
+    if (m[1]) { team = m[1]; continue; }
+    const row = m[0];
+    const links = [...row.matchAll(/href="[^"]*\/nba\/players\/\d+\/([a-z0-9-]+)\/?"[^>]*>([^<]*)</g)];
+    if (!links.length) continue;
+    const slug = links[0][1];
+    const name = links.map((l) => stripTags(l[2])).sort((a, b) => b.length - a.length)[0] || slug.replace(/-/g, " ");
+    const cells = [...row.matchAll(/<td[\s\S]*?<\/td>/g)].map((c) => stripTags(c[0]));
+    if (cells.length < 4) continue;
+    const [pos, updated, injury, status] = cells.slice(-4);
+    out.push({ source: "cbs", name, slug, teamAbbr: team, pos, updated: cbsDate(updated), injury, status });
+  }
+  return out;
+}
+
+// Turn a CBS row into the same shape the ESPN path produces.
+function cbsToTarget(e) {
+  const st = (e.status || "").toLowerCase();
+  const preseasonQ = /questionable for (the )?start of (the )?season/.test(st);
+  if (preseasonQ && !INCLUDE_PRESEASON_QUESTIONABLE) return null;
+  const status = /\bout\b/.test(st) ? STATUS.ir : STATUS.gtd;
+  let note = cap((e.injury || "").trim());
+  if (/undisclosed|rest|not injury related/i.test(note)) note = e.status;
+  else if (preseasonQ) note += " (questionable for season start)";
+  const ret = cbsReturn(e.status);
+  if (INCLUDE_RETURN_DATE && ret) note += ` (est. return ${ret})`;
+  return { status, note, espnName: e.name, date: e.updated || "", source: "cbs" };
+}
+
 // ---------------------------------------------------------------- handler
 
 export default async function handler(req, res) {
@@ -209,14 +276,22 @@ export default async function handler(req, res) {
     const dry = String(req.query?.dry || "") === "1";
 
     // 1. Load everything.
-    const [players, espnRes] = await Promise.all([
+    const UA = "Mozilla/5.0 (compatible; nba-database-sync/1.0)";
+    const [players, espnRes, cbsRes] = await Promise.all([
       airtableFetchAll(base, TABLES.players, token),
-      fetch(ESPN_URL, { headers: { "User-Agent": "nba-database-sync" } }),
+      fetch(ESPN_URL, { headers: { "User-Agent": UA } }).catch(() => null),
+      fetch(CBS_URL, { headers: { "User-Agent": UA, Accept: "text/html" } }).catch(() => null),
     ]);
-    if (!espnRes.ok) throw new Error(`ESPN ${espnRes.status}`);
-    const espnJson = await espnRes.json();
-    const espn = flattenEspn(espnJson);
-    const espnTimestamp = espnJson.timestamp || null;
+    let espn = [], espnTimestamp = null, espnError = null;
+    if (espnRes && espnRes.ok) {
+      const espnJson = await espnRes.json();
+      espn = flattenEspn(espnJson);
+      espnTimestamp = espnJson.timestamp || null;
+    } else espnError = `ESPN ${espnRes ? espnRes.status : "unreachable"}`;
+    let cbs = [], cbsError = null;
+    if (cbsRes && cbsRes.ok) cbs = parseCbs(await cbsRes.text());
+    else cbsError = `CBS ${cbsRes ? cbsRes.status : "unreachable"}`;
+    if (!espn.length && !cbs.length) throw new Error(`No injury data: ${espnError || ""} ${cbsError || ""}`.trim());
 
     // Optional Teams table -> lets us break name ties by team.
     const teamAbbrById = {};
@@ -246,24 +321,38 @@ export default async function handler(req, res) {
     };
 
     // 3. Decide the target state for every player.
-    const target = new Map(); // recordId -> { status, note, espnName }
+    const target = new Map(); // recordId -> { status, note, espnName, date, source }
     const unmatched = [];
-    for (const e of espn) {
-      const espnName = e.athlete?.displayName || `${e.athlete?.firstName || ""} ${e.athlete?.lastName || ""}`;
-      let matches = byName.get(normName(espnName)) || [];
+    const findRecord = (name, teamAbbr, altKey) => {
+      let matches = byName.get(normName(name)) || [];
+      if (!matches.length && altKey) matches = byName.get(normName(altKey)) || [];
       if (matches.length > 1) {
-        const abbr = norm(ESPN_ABBR[e.teamAbbr] || e.teamAbbr);
+        const abbr = norm(ESPN_ABBR[teamAbbr] || teamAbbr);
         const narrowed = matches.filter((p) => teamOf(p) === abbr);
         if (narrowed.length) matches = narrowed;
       }
-      if (!matches.length) { unmatched.push(`${espnName} (${e.teamAbbr})`); continue; }
-      // If ESPN lists the same player twice, keep the most severe / newest.
-      const rec = matches[0];
-      const next = { status: mapStatus(e), note: buildNote(e), espnName, date: e.date || "" };
+      return matches[0] || null;
+    };
+    // Newer update wins; on a tie ESPN wins (its notes are more detailed).
+    const consider = (rec, next) => {
       const prev = target.get(rec.id);
-      if (!prev || (prev.status !== STATUS.ir && next.status === STATUS.ir) || (prev.status === next.status && next.date > prev.date)) {
-        target.set(rec.id, next);
-      }
+      if (!prev) return target.set(rec.id, next);
+      if (next.date > prev.date) return target.set(rec.id, next);
+      if (next.date === prev.date && next.source === "espn" && prev.source !== "espn") target.set(rec.id, next);
+    };
+
+    for (const e of espn) {
+      const espnName = e.athlete?.displayName || `${e.athlete?.firstName || ""} ${e.athlete?.lastName || ""}`;
+      const rec = findRecord(espnName, e.teamAbbr);
+      if (!rec) { unmatched.push(`${espnName} (${e.teamAbbr}, ESPN)`); continue; }
+      consider(rec, { status: mapStatus(e), note: buildNote(e), espnName, date: e.date || "", source: "espn" });
+    }
+    for (const e of cbs) {
+      const t = cbsToTarget(e);
+      if (!t) continue;
+      const rec = findRecord(e.name, e.teamAbbr, e.slug.replace(/-/g, " "));
+      if (!rec) { unmatched.push(`${e.name} (${e.teamAbbr}, CBS)`); continue; }
+      consider(rec, t);
     }
 
     // 4. Build the update list (only real changes).
@@ -309,6 +398,9 @@ export default async function handler(req, res) {
       ok: true,
       dryRun: dry,
       espnEntries: espn.length,
+      cbsEntries: cbs.length,
+      cbsFeedError: cbsError,
+      espnFeedError: espnError,
       matched: target.size,
       changed: updates.length,
       fields: { name: nameField, status: statusField, notes: notesField, auto: hasAuto ? AUTO_FIELD : `MISSING - add a checkbox field named "${AUTO_FIELD}" so the sync can clear healed players` },
