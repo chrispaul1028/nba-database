@@ -8,11 +8,15 @@
 //   1. Fetch every player from Airtable + every injury from ESPN.
 //   2. Match ESPN athletes to Airtable players by normalized name
 //      (case, accents, punctuation and Jr./III suffixes ignored).
-//   3. Players on the report -> Status + Injury Notes are set.
-//      Players NOT on the report whose Status is blank/Active/GTD/IR
-//      -> Status = Active, Injury Notes cleared.
-//      Any other Status you set by hand (e.g. "Two-Way", "Suspended")
-//      is left alone unless that player shows up on the report.
+//   3. Players on the report -> Status + Injury Notes are set, and the
+//      "Auto Injury" checkbox is ticked so we know the sync wrote it.
+//      Players NOT on the report:
+//        - if "Auto Injury" is ticked  -> back to Active, notes cleared
+//        - if Status is blank          -> set to Active
+//        - anything you typed by hand  -> LEFT ALONE (offseason injuries,
+//          Two-Way, Suspended, etc.). The sync only clears its own work.
+//      If the "Auto Injury" checkbox field doesn't exist in Airtable the
+//      sync still adds injuries but never clears anything.
 //   4. Only records that actually changed are written (batches of 10).
 //
 // Triggering:
@@ -38,16 +42,11 @@ const CANDIDATES = {
   teamName: ["Name", "Team Name", "Team"],
 };
 
+// Checkbox field in Players that marks "this injury was written by the sync".
+const AUTO_FIELD = process.env.INJURY_AUTO_FIELD || "Auto Injury";
+
 // The three values the sync manages.
 const STATUS = { active: "Active", gtd: "Game Time Decision", ir: "IR" };
-
-// Statuses the sync is allowed to overwrite back to "Active" when a player
-// drops off the report. Normalized (lowercase, alphanumerics only).
-const MANAGED = new Set([
-  "", "active", "available", "healthy",
-  "ir", "injuredreserve", "out",
-  "gametimedecision", "gtd", "daytoday", "dtd", "questionable", "doubtful", "probable",
-]);
 
 // Put "(est. return Nov 12)" at the end of the note when ESPN has a date.
 const INCLUDE_RETURN_DATE = true;
@@ -112,6 +111,15 @@ async function airtableFetchAll(base, table, token) {
     offset = data.offset;
   } while (offset);
   return out;
+}
+
+// Does a field exist? Asking for an unknown field name returns a 422.
+async function fieldExists(base, table, token, field) {
+  const url = new URL(`https://api.airtable.com/v0/${base}/${encodeURIComponent(table)}`);
+  url.searchParams.append("fields[]", field);
+  url.searchParams.set("maxRecords", "1");
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  return res.ok;
 }
 
 async function airtablePatch(base, table, token, records) {
@@ -206,7 +214,9 @@ export default async function handler(req, res) {
       fetch(ESPN_URL, { headers: { "User-Agent": "nba-database-sync" } }),
     ]);
     if (!espnRes.ok) throw new Error(`ESPN ${espnRes.status}`);
-    const espn = flattenEspn(await espnRes.json());
+    const espnJson = await espnRes.json();
+    const espn = flattenEspn(espnJson);
+    const espnTimestamp = espnJson.timestamp || null;
 
     // Optional Teams table -> lets us break name ties by team.
     const teamAbbrById = {};
@@ -215,6 +225,8 @@ export default async function handler(req, res) {
         teamAbbrById[t.id] = norm(asText(getField(t.fields, CANDIDATES.teamAbbr)) || asText(getField(t.fields, CANDIDATES.teamName)));
       }
     } catch { /* no Teams table - fine */ }
+
+    const hasAuto = await fieldExists(base, TABLES.players, token, AUTO_FIELD);
 
     const nameField = detectField(players, CANDIDATES.name, "Name");
     const statusField = process.env.INJURY_STATUS_FIELD || detectField(players, CANDIDATES.status, "Status");
@@ -260,20 +272,30 @@ export default async function handler(req, res) {
     for (const p of players) {
       const curStatus = asText(p.fields[statusField]);
       const curNote = asText(p.fields[notesField]).trim();
+      const curAuto = hasAuto ? p.fields[AUTO_FIELD] === true : false;
       const t = target.get(p.id);
-      let nextStatus = curStatus, nextNote = curNote;
+      let nextStatus = curStatus, nextNote = curNote, nextAuto = curAuto;
 
       if (t) {
+        // On ESPN's report: ESPN wins.
         nextStatus = t.status;
         nextNote = t.note;
-      } else if (MANAGED.has(norm(curStatus))) {
+        nextAuto = true;
+      } else if (curAuto) {
+        // The sync put this injury there and ESPN no longer lists it: clear it.
         nextStatus = STATUS.active;
         nextNote = "";
+        nextAuto = false;
+      } else if (!curStatus.trim()) {
+        // Never touched: default to Active. Leave any hand-typed note alone.
+        nextStatus = STATUS.active;
       }
+      // else: a status/note you set by hand -> untouched.
 
       const fields = {};
       if (norm(nextStatus) !== norm(curStatus)) fields[statusField] = nextStatus;
       if (nextNote !== curNote) fields[notesField] = nextNote;
+      if (hasAuto && nextAuto !== curAuto) fields[AUTO_FIELD] = nextAuto;
       if (Object.keys(fields).length) {
         updates.push({ id: p.id, fields });
         plan.push(`${asText(p.fields[nameField])}: ${curStatus || "(blank)"} -> ${nextStatus}${nextNote ? " | " + nextNote : ""}`);
@@ -289,7 +311,8 @@ export default async function handler(req, res) {
       espnEntries: espn.length,
       matched: target.size,
       changed: updates.length,
-      fields: { name: nameField, status: statusField, notes: notesField },
+      fields: { name: nameField, status: statusField, notes: notesField, auto: hasAuto ? AUTO_FIELD : `MISSING - add a checkbox field named "${AUTO_FIELD}" so the sync can clear healed players` },
+      espnFeedUpdated: espnTimestamp,
       changes: plan,
       unmatchedEspnPlayers: unmatched,
       ranAt: new Date().toISOString(),
