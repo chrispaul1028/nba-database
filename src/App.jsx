@@ -86,7 +86,7 @@ function ContractLine({ c }) {
       {abbr && (logo
         ? <img src={logo} alt={abbr} title={c.team} className="w-4 h-4 rounded-full object-contain bg-white shrink-0" />
         : <span className="text-[9px] font-extrabold text-slate-400 shrink-0">{abbr}</span>)}
-      <span className="truncate">· {c.kind}{faDeadline(c) ? ` (deadline ${faDeadline(c)})` : ""}</span>
+      <span className="truncate">· {c.kind}</span>
     </span>
   );
 }
@@ -647,7 +647,7 @@ function EventPill({ ev, withDate }) {
           ? <>Free Agent {startYear(ev.season) ?? seasonTick({ season: ev.season })}</>
           : <>{EVENT_WORDS[ev.kind] || ev.kind} {seasonTick({ season: ev.season })}</>}
       </span>
-      {dl && <span className="text-[9px] font-semibold text-slate-400 truncate">{ev.kind === "UFA" || ev.kind === "RFA" ? "opens " : "due "}{dl.label}</span>}
+      {dl && <span className="text-[9px] font-semibold text-slate-400 truncate">deadline {dl.label}</span>}
     </span>
   );
 }
@@ -988,12 +988,24 @@ function pickStartingFive(roster, abbr) {
     const hit = healthyStarters.filter((p) => !used.has(p.id) && POS_ALIASES[s.lbl].includes(posOf(p))).sort(byFit(s))[0];
     if (hit) take(i, hit);
   });
-  // pass 3: any healthy starter left over
-  COURT_SLOTS.forEach((s, i) => {
-    if (assigned[i]) return;
-    const hit = healthyStarters.find((p) => !used.has(p.id));
-    if (hit) take(i, hit);
-  });
+  // pass 3: a starter whose natural spots are full. Slide a neighbor one
+  // step (PF → C, SG → PG, …) to open a compatible slot for him. A forward
+  // never lands at PG this way — if nothing opens, he sits and the bench
+  // fills the hole with the right position instead.
+  const STRETCH = { PG: ["SG"], SG: ["PG", "SF"], SF: ["SG", "PF"], PF: ["SF", "C"], C: ["PF"] };
+  const fits = (p, lbl, loose) => POS_ALIASES[lbl].includes(posOf(p)) || (loose && STRETCH[lbl].some((n) => POS_ALIASES[n].includes(posOf(p))));
+  for (const p of healthyStarters.filter((p) => !used.has(p.id))) {
+    let placed = false;
+    for (let i = 0; i < COURT_SLOTS.length && !placed; i++) {
+      const s = COURT_SLOTS[i];
+      if (!fits(p, s.lbl, false)) continue;
+      if (!assigned[i]) { take(i, p); placed = true; break; }
+      // occupied: can the occupant step to an empty neighboring slot?
+      const occ = assigned[i];
+      const j = COURT_SLOTS.findIndex((t, k) => !assigned[k] && STRETCH[s.lbl].includes(t.lbl) && fits(occ, t.lbl, true));
+      if (j >= 0) { assigned[j] = occ; assigned[i] = p; used.add(p.id); placed = true; }
+    }
+  }
   // pass 4: next man up from the bench, by position then depth
   const bench = roster.filter((p) => p.role !== "Starter" && healthOf(p) !== "out").sort(bySort);
   COURT_SLOTS.forEach((s, i) => {
@@ -1161,9 +1173,6 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
                   <span className="absolute top-1/2 -translate-y-1/2 -left-3 px-1 rounded text-[8px] font-extrabold bg-white/90 text-slate-700 shadow">
                     {s.lbl}
                   </span>
-                )}
-                {p && nextUp[i] && (
-                  <span className="absolute top-1/2 -translate-y-1/2 -right-3 px-1 rounded text-[7px] font-extrabold bg-sky-500 text-white shadow">UP</span>
                 )}
                 {p && <RatingPill r={p.rating2k} />}
                 {p && <HealthBadge p={p} />}
@@ -1734,7 +1743,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, backLabel })
                           {act ? <ContractLine c={act} /> : "No contract"}
                         </span>
                         {nextEvent(p) && (
-                          <span className="block mt-1"><EventPill ev={nextEvent(p)} /></span>
+                          <span className="block mt-1"><EventPill ev={nextEvent(p)} withDate /></span>
                         )}
                       </span>
                       <span className="text-xs font-extrabold text-slate-700 dark:text-slate-200 shrink-0">
