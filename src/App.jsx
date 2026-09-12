@@ -2136,33 +2136,13 @@ const TABS = [
 
 // Branded loading state: a ball bouncing on a hardwood strip.
 function LoadingScreen() {
-  const Bone = ({ w = "w-full", h = "h-3", cls = "" }) => <div className={"rounded-md bg-slate-200 dark:bg-slate-800 " + w + " " + h + " " + cls} style={{ animation: "hrbShimmer 1.4s ease-in-out infinite" }} />;
   return (
-    <div className="min-h-screen bg-slate-100 dark:bg-slate-950">
-      <style>{`@keyframes hrbShimmer { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }`}</style>
-      <div className="bg-blue-600 px-4 pb-3" style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.75rem)" }}>
-        <div className="h-6 w-40 rounded-md bg-blue-500/70" />
-        <div className="flex gap-1.5 mt-3">{[72, 64, 72, 48, 48].map((w, i) => <div key={i} className="h-8 rounded-full bg-blue-500/60" style={{ width: w }} />)}</div>
-      </div>
-      <div className="px-4 pt-3 space-y-1.5">
-        <Bone w="w-20" h="h-2.5" cls="mb-2" />
-        {[0, 1, 2, 3, 4].map((i) => (
-          <div key={i} className="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm px-3 py-2 flex items-center gap-2" style={{ animationDelay: i * 80 + "ms" }}>
-            <div className="flex-1 space-y-2">
-              {[0, 1].map((r) => (
-                <div key={r} className="flex items-center gap-2.5">
-                  <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-800" style={{ animation: "hrbShimmer 1.4s ease-in-out infinite", animationDelay: (i * 80 + r * 40) + "ms" }} />
-                  <div className="flex-1 space-y-1.5"><Bone w="w-24" /><Bone w="w-32" h="h-2" /></div>
-                </div>
-              ))}
-            </div>
-            <div className="w-20 border-l border-slate-100 dark:border-slate-800 pl-2 space-y-1.5"><Bone w="w-12" cls="mx-auto" /><Bone w="w-8" h="h-2" cls="mx-auto" /></div>
-          </div>
-        ))}
-      </div>
-      <div className="fixed bottom-0 inset-x-0 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex justify-around py-3" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.75rem)" }}>
-        {["Matchups", "Teams", "Players", "Stats"].map((l) => <div key={l} className="flex flex-col items-center gap-1.5"><Bone w="w-6" h="h-6" cls="rounded-lg" /><Bone w="w-12" h="h-2" /></div>)}
-      </div>
+    <div className="min-h-screen bg-slate-100 dark:bg-slate-950 flex flex-col items-center justify-center">
+      <style>{`@keyframes hrbBounce { 0%, 100% { transform: translateY(0) scale(1, 1); } 45% { transform: translateY(-36px) scale(0.98, 1.02); } 55% { transform: translateY(-36px); } 100% { transform: translateY(0) scale(1.08, 0.92); } }
+@keyframes hrbShadow { 0%, 100% { transform: scaleX(1); opacity: .35; } 50% { transform: scaleX(.55); opacity: .15; } }`}</style>
+      <div className="text-5xl" style={{ animation: "hrbBounce .9s cubic-bezier(.3,0,.5,1) infinite" }}>🏀</div>
+      <div className="mt-2 h-1.5 w-10 rounded-full bg-slate-400" style={{ animation: "hrbShadow .9s cubic-bezier(.3,0,.5,1) infinite" }} />
+      <div className="mt-6 text-sm font-bold text-slate-500 dark:text-slate-400 tracking-wide">Loading…</div>
     </div>
   );
 }
