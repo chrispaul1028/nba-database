@@ -86,15 +86,20 @@ function ContractLine({ c }) {
       {abbr && (logo
         ? <img src={logo} alt={abbr} title={c.team} className="w-4 h-4 rounded-full object-contain bg-white shrink-0" />
         : <span className="text-[9px] font-extrabold text-slate-400 shrink-0">{abbr}</span>)}
-      <span className="truncate">· {c.kind}</span>
-      {contractEnd(c) && <span className="shrink-0 text-[10px] font-bold text-slate-500 dark:text-slate-300">· thru {contractEnd(c)}</span>}
+      <span className="truncate">· {c.kind}{faDeadline(c) ? ` (deadline ${faDeadline(c)})` : ""}</span>
     </span>
   );
 }
-// Last paid season of a contract, as '28-'29
-function contractEnd(c) {
-  const ys = salaried(c);
-  return ys.length ? seasonTick(ys[ys.length - 1]) : null;
+// Free-agency deadline for a contract: the Contract Years row typed UFA/RFA
+// (the empty year after the last paid one). An Airtable Deadline on that
+// row wins; otherwise free agency opens June 30 of that summer.
+function faDeadline(c) {
+  const rows = (c.years || []).filter((y) => /^(UFA|RFA)$/i.test(String(y.type || "")) && startYear(y.season) != null)
+    .sort((a, b) => startYear(a.season) - startYear(b.season));
+  const y = rows[0];
+  if (!y) return null;
+  const dl = eventDeadline({ kind: String(y.type).toUpperCase(), season: y.season, deadline: y.deadline || null });
+  return dl ? dl.label : null;
 }
 const activeOf = (p) => p.contracts.find((c) => c.status === "Active") || p.contracts[0] || null;
 
@@ -1729,7 +1734,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, backLabel })
                           {act ? <ContractLine c={act} /> : "No contract"}
                         </span>
                         {nextEvent(p) && (
-                          <span className="block mt-1"><EventPill ev={nextEvent(p)} withDate /></span>
+                          <span className="block mt-1"><EventPill ev={nextEvent(p)} /></span>
                         )}
                       </span>
                       <span className="text-xs font-extrabold text-slate-700 dark:text-slate-200 shrink-0">
