@@ -76,6 +76,20 @@ const salaried = (c) => c.years.filter((y) => y.salary != null);
 const total = (c) => salaried(c).reduce((a, y) => a + y.salary, 0);
 const terms = (c) => salaried(c).length + " yrs / " + fmtM(total(c));
 const displayLine = (c) => terms(c) + (c.team ? " (" + c.team + ")" : "") + " · " + c.kind;
+// Same line, but the signing team shows as a small logo instead of "(ATL)".
+function ContractLine({ c }) {
+  const abbr = toAbbr(c.team) || String(c.team || "").toUpperCase();
+  const logo = abbr ? TEAM_LOGOS[abbr] : null;
+  return (
+    <span className="inline-flex items-center gap-1 min-w-0">
+      <span className="shrink-0">{terms(c)}</span>
+      {abbr && (logo
+        ? <img src={logo} alt={abbr} title={c.team} className="w-4 h-4 rounded-full object-contain bg-white shrink-0" />
+        : <span className="text-[9px] font-extrabold text-slate-400 shrink-0">{abbr}</span>)}
+      <span className="truncate">· {c.kind}</span>
+    </span>
+  );
+}
 const activeOf = (p) => p.contracts.find((c) => c.status === "Active") || p.contracts[0] || null;
 
 // Years in the league, computed from Draft Year vs the current season.
@@ -180,9 +194,11 @@ function ordinal(n) {
   return n + suffix;
 }
 
-function Tile({ value, label, sub, accent, valueClass }) {
+function Tile({ value, label, sub, accent, valueClass, onClick, active, activeColor }) {
+  const Tag = onClick ? "button" : "div";
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 px-2 py-4 text-center shadow-sm flex flex-col items-center justify-center">
+    <Tag onClick={onClick} className={"bg-white dark:bg-slate-900 rounded-2xl border px-2 py-4 text-center shadow-sm flex flex-col items-center justify-center w-full " + (active ? "border-2" : "border-slate-200 dark:border-slate-800")}
+      style={active ? { borderColor: activeColor || "#2563eb" } : undefined}>
       <div className="text-[10px] font-semibold text-slate-400 tracking-widest uppercase mb-1">{label}</div>
       <div className={"text-2xl font-extrabold tracking-tight " + (valueClass ? valueClass : accent ? ACCENT_TEXT : "text-slate-900 dark:text-slate-100")}>{value}</div>
       {sub && (
@@ -190,7 +206,7 @@ function Tile({ value, label, sub, accent, valueClass }) {
           {typeof sub === "object" ? sub.label : sub}
         </div>
       )}
-    </div>
+    </Tag>
   );
 }
 
@@ -576,6 +592,12 @@ function nextEvent(p) {
   return { ...best, label: best.kind + " " + String(best.season).slice(0, 4) };
 }
 
+// Everyone who could be a free agent next summer: expiring (UFA/RFA) plus
+// player/team options still undecided — declined options become free agents.
+function faEligible(roster) {
+  const cutoff = startYear(CURRENT_SEASON) + 1;
+  return roster.filter((p) => { const e = nextEvent(p); return e && startYear(e.season) != null && startYear(e.season) <= cutoff; });
+}
 const EVENT_WORDS = { PO: "Player Option", TO: "Team Option", UFA: "Free Agent", RFA: "Restricted FA" };
 const EVENT_COLORS = {
   PO: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300",
@@ -654,7 +676,7 @@ function ContractsTab({ players, onSelect, pills }) {
                 <span className="flex-1 min-w-0">
                   <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
                   <span className="block text-[11px] text-slate-400 font-medium truncate">
-                    {act ? displayLine(act) : "No contract"}
+                    {act ? <ContractLine c={act} /> : "No contract"}
                   </span>
                   {nextEvent(p) && (
                     <span className="block mt-1"><EventPill ev={nextEvent(p)} /></span>
@@ -745,9 +767,8 @@ function TeamsTab({ teams, players, onSelect }) {
   const pickConf = (k) => { setConf(k); setDiv(null); };
   return (
     <div>
-      <ListHeader title="Teams" q={q} setQ={setQ} placeholder="Search teams or players…" />
-      <div className="px-4 pb-28">
-        <div className="flex gap-2 mt-4">
+      <div className="px-4 pb-28" style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.75rem)" }}>
+        <div className="flex gap-2 mt-1">
           {[["all", "All"], ["east", "East"], ["west", "West"]].map(([k, lbl]) => (
             <button key={k} onClick={() => pickConf(k)}
               className={"flex-1 py-2 rounded-full text-xs font-bold transition-colors " + (conf === k
@@ -851,10 +872,10 @@ const POS_ALIASES = {
 // the blocks. Same spacing left-to-right and top-to-bottom.
 const COURT_SLOTS = [
   { lbl: "PG", x: 50, y: 20, big: false },
-  { lbl: "SF", x: 18, y: 44, big: false },
-  { lbl: "SG", x: 82, y: 44, big: false },
-  { lbl: "PF", x: 30, y: 70, big: true },
-  { lbl: "C",  x: 70, y: 70, big: true },
+  { lbl: "SF", x: 24, y: 45, big: false },
+  { lbl: "SG", x: 76, y: 45, big: false },
+  { lbl: "PF", x: 24, y: 70, big: true },
+  { lbl: "C",  x: 76, y: 70, big: true },
 ];
 // Guard / Forward / Center bucket for the bench summary
 function posGroup(p) {
@@ -883,11 +904,26 @@ const bySort = (a, b) => (a.sort ?? 9999) - (b.sort ?? 9999) || currentSalary(b)
 // slot first, then any open slot. An OUT/IR starter is skipped and the
 // next healthy body at that position steps up from the bench; he keeps his
 // OUT badge on the bench strip. A game-time decision stays on the court.
-function pickStartingFive(roster) {
+// abbr -> { starters: [{name,pos}], date, opp, result } from /api/lineups
+const LINEUPS = {};
+function espnStartersFor(roster, abbr) {
+  const lu = LINEUPS[String(abbr || "").toUpperCase()];
+  if (!lu) return null;
+  const names = new Set(lu.starters.map((a) => espnNrm(a.name)));
+  const lastKey = (n) => espnNrm(n).split(" ").pop();
+  const lasts = new Set(lu.starters.map((a) => lastKey(a.name)));
+  const hits = roster.filter((p) => names.has(espnNrm(p.name)) || (lasts.has(lastKey(p.name)) && roster.filter((q) => lastKey(q.name) === lastKey(p.name)).length === 1));
+  return hits.length >= 4 ? hits : null; // need most of the five to trust it
+}
+function pickStartingFive(roster, abbr) {
   const used = new Set();
   const assigned = new Array(COURT_SLOTS.length).fill(null);
   const nextUp = new Array(COURT_SLOTS.length).fill(false);
-  const starters = roster.filter((p) => p.role === "Starter").sort(bySort);
+  // Automated lineup first (last game's actual five from ESPN); Airtable's
+  // Role = "Starter" is the fallback when ESPN has nothing yet (preseason,
+  // or a name that didn't match).
+  const espnFive = espnStartersFor(roster, abbr);
+  const starters = (espnFive || roster.filter((p) => p.role === "Starter")).slice().sort(bySort);
   const healthyStarters = starters.filter((p) => healthOf(p) !== "out");
   const take = (i, p, stepped) => { assigned[i] = p; used.add(p.id); nextUp[i] = !!stepped; };
   // pass 1: exact position
@@ -928,15 +964,21 @@ function pickStartingFive(roster) {
     const hit = starters.find((p) => !used.has(p.id)) || roster.filter((p) => !used.has(p.id)).sort(bySort)[0];
     if (hit) take(i, hit);
   });
-  return { assigned, nextUp, used };
+  return { assigned, nextUp, used, automated: !!espnFive };
 }
 
 function CourtView({ roster, abbr, team, onSelectPlayer }) {
-  const { assigned, nextUp, used } = useMemo(() => pickStartingFive(roster), [roster]);
-  const bench = roster.filter((p) => !used.has(p.id)).sort((a, b) => {
-    const ra = ROLE_ORDER.indexOf(a.role), rb = ROLE_ORDER.indexOf(b.role);
-    return (ra === -1 ? 9 : ra) - (rb === -1 ? 9 : rb) || bySort(a, b);
-  });
+  const { assigned, nextUp, used, automated } = useMemo(() => pickStartingFive(roster, abbr), [roster, abbr, LINEUPS[abbr]]);
+  const lineup = LINEUPS[String(abbr || "").toUpperCase()];
+  // Bench order = minutes per game (latest season), most to least. Two-way
+  // players sit in their own row at the bottom. Top five of the rest are
+  // the rotation ("Bench"), everyone after that is "Reserves".
+  const mpg = (p) => latestStats(p)?.min ?? -1;
+  const notFive = roster.filter((p) => !used.has(p.id)).sort((a, b) => mpg(b) - mpg(a) || bySort(a, b));
+  const twoWay = notFive.filter((p) => String(p.role || "").toLowerCase().replace(/[^a-z]/g, "") === "twoway");
+  const rest = notFive.filter((p) => !twoWay.includes(p));
+  const benchGroups = [["Bench", rest.slice(0, 5)], ["Reserves", rest.slice(5)], ["Two-Way", twoWay]].filter(([, l]) => l.length);
+  const bench = notFive;
   const color = teamColor(abbr);
   const ringCls = (p) => {
     if (!p) return "border-white/40";
@@ -1020,6 +1062,12 @@ function CourtView({ roster, abbr, team, onSelectPlayer }) {
           {nick}
         </span>
         {/* availability tag, top-left, same frosted style as the NFL personnel tag */}
+        {/* where the five came from — last game's actual starters, or Airtable */}
+        <span className="absolute right-2 top-2 rounded-md bg-black/35 backdrop-blur-sm px-2 py-1 text-[9px] font-extrabold text-white/90 shadow-sm">
+          {automated && lineup
+            ? "Last game 5 · " + (lineup.home ? "vs " : "@ ") + lineup.opp + " · " + new Date(lineup.date).toLocaleDateString([], { month: "short", day: "numeric" })
+            : "Airtable starters"}
+        </span>
         {(outCount > 0 || gtdCount > 0) && (
           <span className="absolute left-2 top-2 rounded-md bg-black/35 backdrop-blur-sm px-2 py-1 text-[10px] font-extrabold text-white/90 shadow-sm">
             {[outCount > 0 ? `${outCount} out` : "", gtdCount > 0 ? `${gtdCount} GTD` : ""].filter(Boolean).join(" · ")}
@@ -1072,9 +1120,12 @@ function CourtView({ roster, abbr, team, onSelectPlayer }) {
               })()}
             </span>
           </div>
-          <div className="flex gap-3 overflow-x-auto pt-3 pb-1.5 px-1">
-            {bench.map((p) => (
-              <button key={p.id} onClick={() => onSelectPlayer(p)} className="flex flex-col items-center shrink-0 w-[68px]">
+          {benchGroups.map(([grp, list]) => (
+          <div key={grp} className="mt-1.5">
+            <div className="text-[8px] font-semibold tracking-widest uppercase text-slate-400 px-1">{grp}<span className="normal-case tracking-normal font-medium"> · by minutes</span></div>
+            <div className="grid grid-cols-5 gap-x-1 gap-y-2 pt-3 pb-1.5 px-0.5">
+            {list.map((p) => (
+              <button key={p.id} onClick={() => onSelectPlayer(p)} className="flex flex-col items-center min-w-0">
                 <span className="relative">
                   {photoOf(p) ? (
                     <img src={photoOf(p)} alt="" loading="lazy"
@@ -1090,10 +1141,12 @@ function CourtView({ roster, abbr, team, onSelectPlayer }) {
                 <span className="mt-2 text-[9px] font-bold text-slate-600 dark:text-slate-300 max-w-full truncate">
                   {(cleanNo(p.no) ? "#" + cleanNo(p.no) + " " : "") + lastNameOf(p)}
                 </span>
-                <span className="text-[8px] font-semibold text-slate-400 uppercase">{posOf(p) || p.role || ""}</span>
+                <span className="text-[8px] font-semibold text-slate-400 uppercase">{posOf(p) || ""}{mpg(p) >= 0 ? " · " + fmt1(mpg(p)) + " min" : ""}</span>
               </button>
             ))}
+            </div>
           </div>
+          ))}
         </div>
       )}
       {/* Coaching staff — reads the Teams table's "Head Coach" and
@@ -1115,7 +1168,15 @@ function CourtView({ roster, abbr, team, onSelectPlayer }) {
 // ═══════════════ TEAM STATS PANEL (Leaders · Volume · Shooting) ══════
 // Per-game averages from the Airtable Stats table (latest season per player).
 function TeamStatsPanel({ roster, abbr, mode, setMode, onSelectPlayer }) {
-  const rows = roster.map((p) => ({ p, s: latestStats(p) })).filter((x) => x.s && (x.s.gp ?? 0) > 0);
+  // Per-game everything. If a Stats row holds season totals instead of
+  // averages (a value no player could average), divide by games played.
+  const PG_MAX = { min: 48, pts: 60, reb: 30, ast: 30, stl: 10, blk: 10, tov: 15, fga: 45, p3a: 25, fta: 30, p3m: 15 };
+  const perGame = (st) => {
+    const o = { ...st };
+    for (const k of Object.keys(PG_MAX)) if (o[k] != null && o[k] > PG_MAX[k] && st.gp) o[k] = o[k] / st.gp;
+    return o;
+  };
+  const rows = roster.map((p) => ({ p, s: latestStats(p) ? perGame(latestStats(p)) : null })).filter((x) => x.s && (x.s.gp ?? 0) > 0);
   const yr = rows[0] ? String(rows[0].s.season || "") : "";
   const color = teamColor(abbr);
   const Bar = ({ label, sub, pct, val, onClick }) => (
@@ -1183,10 +1244,11 @@ function TeamStatsPanel({ roster, abbr, mode, setMode, onSelectPlayer }) {
       ) : mode === "volume" ? (
         <>
           {block(yr + " Minutes", "min", { n: 10, unit: " min" })}
-          {share(yr + " Field Goal Attempts · team share", "fga")}
-          {share(yr + " Three-Point Attempts · team share", "p3a")}
-          {share(yr + " Free Throw Attempts · team share", "fta")}
-          {block(yr + " Turnovers", "tov")}
+          {block(yr + " Field Goal Attempts", "fga", { n: 10, unit: " FGA" })}
+          {block(yr + " Three-Point Attempts", "p3a", { n: 10, unit: " 3PA" })}
+          {block(yr + " Free Throw Attempts", "fta", { n: 10, unit: " FTA" })}
+          {block(yr + " Turnovers", "tov", { n: 8, unit: " TO" })}
+          <div className="text-[9px] text-slate-400 mt-2 px-1">Per game, latest season in the Stats table.</div>
         </>
       ) : (
         <>
@@ -1206,8 +1268,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, backLabel })
   const [seg, setSeg] = useState("roster");
   const [rosterView, setRosterView] = useState("court"); // court | list
   const [statMode, setStatMode] = useState("leaders");
-  const [chartMode, setChartMode] = useState("cap");
-  const [capSeason, setCapSeason] = useState(null);
+  const [faOnly, setFaOnly] = useState(false); // Free Agents tile pressed
   const roster = players.filter((p) => {
     if (p.teamId && p.teamId === team.id) return true; // exact Airtable link - no naming needed
     const t = teamOfPlayer(p);
@@ -1252,7 +1313,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, backLabel })
         <div className="grid grid-cols-3 gap-2">
           {seg === "contracts" ? (() => {
             // Contracts view tiles: payroll · free agents next offseason · avg age (ranked youngest → oldest)
-            const fa = roster.filter((p) => { const e = nextEvent(p); return e && (e.kind === "UFA" || e.kind === "RFA"); }).length;
+            const fa = faEligible(roster).length;
             const ages = roster.map((p) => Number(p.age)).filter((a) => a > 0);
             const avgAge = ages.length ? ages.reduce((a, b) => a + b, 0) / ages.length : null;
             const teamAvg = (t) => {
@@ -1266,8 +1327,8 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, backLabel })
             const ageCls = ageRank ? (ageRank <= 10 ? "text-green-600 dark:text-green-400" : ageRank <= 20 ? "text-yellow-600 dark:text-yellow-400" : "text-red-500 dark:text-red-400") : null;
             return (
               <>
-                <Tile value={payroll ? fmtM(payroll) : "—"} label="Payroll" sub={roster.length + " players"} valueClass="text-green-600 dark:text-green-400" />
-                <Tile value={fa} label="Free Agents" sub={"summer " + (startYear(CURRENT_SEASON) + 1)} />
+                <Tile value={payroll ? fmtM(payroll) : "—"} label="Payroll" sub={roster.length + " players"} />
+                <Tile value={fa} label="Free Agents" sub={faOnly ? "tap to show all" : "summer " + (startYear(CURRENT_SEASON) + 1) + " · tap"} onClick={() => setFaOnly((v) => !v)} active={faOnly} activeColor={teamColor(abbr)} />
                 <Tile value={avgAge != null ? avgAge.toFixed(1) : "—"} label="Avg Age" sub={ageRank ? { label: ordinal(ageRank) + (ageRank <= 3 ? " youngest" : ageRank >= ageRanked.length - 2 ? " oldest" : ""), cls: ageCls } : null} />
               </>
             );
@@ -1281,9 +1342,9 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, backLabel })
         </div>
 
         <div className="flex gap-2 mt-4">
-          {[["roster", "Roster"], ["contracts", "Contracts"], ["stats", "Stats"], ["charts", "Charts"]].map(([k, lbl]) => (
+          {[["roster", "Roster"], ["contracts", "Contracts"], ["stats", "Stats"]].map(([k, lbl]) => (
             <button key={k} onClick={() => setSeg(k)}
-              className={"flex-1 py-2 rounded-full text-[11px] font-bold transition-colors " + (seg === k
+              className={"flex-1 py-2 rounded-full text-xs font-bold transition-colors " + (seg === k
                 ? "text-white"
                 : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800")}
               style={seg === k ? { backgroundColor: teamColor(abbr) } : undefined}>
@@ -1366,11 +1427,12 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, backLabel })
         {seg === "contracts" && (
           <>
             <div className="flex items-baseline justify-between mt-6 mb-2 px-1">
-              <span className="text-[11px] font-bold tracking-widest text-slate-400 uppercase">Team Contracts</span>
-              <span className="text-[11px] font-bold text-slate-400">{roster.length} players</span>
+              <span className="text-[11px] font-bold tracking-widest text-slate-400 uppercase">{faOnly ? "Free Agent Eligible · " + (startYear(CURRENT_SEASON) + 1) : "Team Contracts"}</span>
+              <span className="text-[11px] font-bold text-slate-400">{(faOnly ? faEligible(roster) : roster).length} players</span>
             </div>
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
-              {roster
+              {faOnly && faEligible(roster).length === 0 && <div className="text-center text-sm text-slate-400 py-10 px-6">Nobody expiring or holding an option next summer.</div>}
+              {(faOnly ? faEligible(roster) : roster)
                 .slice()
                 .sort((a, b) => currentSalary(b) - currentSalary(a) || a.name.localeCompare(b.name))
                 .map((p) => {
@@ -1381,7 +1443,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, backLabel })
                       <span className="flex-1 min-w-0">
                         <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
                         <span className="block text-[11px] text-slate-400 font-medium truncate">
-                          {act ? (act.terms || displayLine(act)) : "No contract"}
+                          {act ? <ContractLine c={act} /> : "No contract"}
                         </span>
                         {nextEvent(p) && (
                           <span className="block mt-1"><EventPill ev={nextEvent(p)} /></span>
@@ -1397,167 +1459,6 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, backLabel })
             </div>
           </>
         )}
-
-        {seg === "charts" && (() => {
-          const seasons = seasonsAhead(5);
-          return (
-            <>
-              <div className="flex gap-2 mt-4">
-                {[["cap", "Cap Outlook"], ["timeline", "Timeline"], ["trends", "Trends"]].map(([k, lbl]) => (
-                  <button key={k} onClick={() => setChartMode(k)}
-                    className={"flex-1 py-1.5 rounded-full text-[11px] font-bold " + (chartMode === k
-                      ? "bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900"
-                      : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800")}>
-                    {lbl}
-                  </button>
-                ))}
-              </div>
-
-              {chartMode === "cap" && (() => {
-                const totals = seasons.map((s) => ({
-                  season: s,
-                  rows: roster
-                    .map((p) => ({ p, y: salaryInSeason(p, s) }))
-                    .filter((x) => x.y)
-                    .sort((a, b) => b.y.salary - a.y.salary),
-                }));
-                const max = Math.max(...totals.map((t) => t.rows.reduce((a, r) => a + r.y.salary, 0)), 1);
-                const selT = totals.find((t) => t.season === capSeason) || null;
-                return (
-                  <>
-                    <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">Committed Payroll by Season</div>
-                    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-4">
-                      <div className="flex items-end gap-2 h-36">
-                        {totals.map((t) => {
-                          const sum = t.rows.reduce((a, r) => a + r.y.salary, 0);
-                          const active = capSeason === t.season;
-                          return (
-                            <button key={t.season} onClick={() => setCapSeason(active ? null : t.season)} className="flex-1 flex flex-col items-center justify-end h-full">
-                              <div className="text-[10px] font-bold text-slate-700 dark:text-slate-200 mb-1 tabular-nums">{sum > 0 ? fmtM(sum) : "—"}</div>
-                              <div className={"w-full rounded-t-md " + (active ? "opacity-100" : "opacity-80")}
-                                style={{ backgroundColor: active ? "#1d4ed8" : "#2563eb", height: Math.max((sum / max) * 100, sum > 0 ? 6 : 2) + "%" }} />
-                              <div className={"text-[10px] font-semibold mt-1 whitespace-nowrap " + (active ? "text-blue-600 dark:text-blue-400" : "text-slate-400")}>{seasonTick({ season: t.season })}</div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                      <div className="text-[10px] text-slate-400 text-center mt-2">Tap a season for the breakdown</div>
-                    </div>
-                    {selT && (
-                      <>
-                        <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-5 mb-2 px-1">{selT.season} · {selT.rows.length} players</div>
-                        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
-                          {selT.rows.map(({ p, y }) => (
-                            <button key={p.id} onClick={() => onSelectPlayer(p)} className="w-full flex items-center gap-3 px-4 py-2.5 text-left active:bg-slate-50 dark:active:bg-slate-800">
-                              <Avatar p={p} />
-                              <span className="flex-1 min-w-0">
-                                <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
-                              </span>
-                              {(y.type === "PO" || y.type === "TO") && !y.decision && (
-                                <span className={"px-1.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase " + (y.type === "PO" ? EVENT_COLORS.PO : EVENT_COLORS.TO)}>
-                                  {y.type === "PO" ? "Player Option" : "Team Option"}
-                                </span>
-                              )}
-                              <span className="text-xs font-extrabold text-slate-700 dark:text-slate-200 shrink-0 tabular-nums">{fmtM(y.salary)}</span>
-                            </button>
-                          ))}
-                          {selT.rows.length === 0 && <div className="text-center text-sm text-slate-400 py-8">No committed salary.</div>}
-                        </div>
-                      </>
-                    )}
-                  </>
-                );
-              })()}
-
-              {chartMode === "timeline" && (() => {
-                const rows = roster
-                  .map((p) => ({ p, cells: seasons.map((s) => salaryInSeason(p, s) || (faStatus(p) && faStatus(p).season === s ? { fa: true } : null)) }))
-                  .filter((r) => r.cells.some(Boolean))
-                  .sort((a, b) => currentSalary(b.p) - currentSalary(a.p));
-                return (
-                  <>
-                    <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">Contract Timeline</div>
-                    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="w-20 shrink-0" />
-                        {seasons.map((s) => (
-                          <span key={s} className="flex-1 text-center text-[9px] font-bold text-slate-400">{"'" + String(s).slice(2, 4)}</span>
-                        ))}
-                      </div>
-                      {rows.map(({ p, cells }) => (
-                        <button key={p.id} onClick={() => onSelectPlayer(p)} className="w-full flex items-center gap-2 py-1.5 text-left">
-                          <span className="w-20 shrink-0 text-[11px] font-bold text-slate-700 dark:text-slate-200 truncate">{p.name}</span>
-                          {cells.map((c, i) => (
-                            <span key={i} className="flex-1 h-3 rounded-sm" style={{
-                              backgroundColor: !c ? "transparent"
-                                : c.fa ? "#94a3b8"
-                                : BAR_COLORS[c.type] || BAR_COLORS.G,
-                              opacity: c && c.fa ? 0.35 : 1,
-                              border: !c ? "1px dashed rgba(148,163,184,0.25)" : "none",
-                            }} />
-                          ))}
-                        </button>
-                      ))}
-                      {rows.length === 0 && <div className="text-center text-sm text-slate-400 py-8">No contract years entered.</div>}
-                      <div className="flex flex-wrap gap-3 mt-3 text-[9px] font-bold text-slate-400 uppercase">
-                        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: BAR_COLORS.G }} /> Guaranteed</span>
-                        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: BAR_COLORS.PO }} /> Player Opt</span>
-                        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: BAR_COLORS.TO }} /> Team Opt</span>
-                        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-slate-400/40" /> Free Agent</span>
-                      </div>
-                    </div>
-                  </>
-                );
-              })()}
-
-              {chartMode === "trends" && (() => {
-                const withTrend = roster
-                  .map((p) => ({ p, pts: (p.stats || []).filter((s) => s.pts != null).sort((a, b) => String(a.season).localeCompare(String(b.season))) }))
-                  .filter((x) => x.pts.length >= 2)
-                  .sort((a, b) => (b.pts[b.pts.length - 1].pts ?? 0) - (a.pts[a.pts.length - 1].pts ?? 0))
-                  .slice(0, 5);
-                if (withTrend.length === 0) {
-                  return <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm mt-6 text-center text-sm text-slate-400 py-10 px-6">Trends need at least two seasons of stats per player. Add more seasons in the Stats table and lines appear here.</div>;
-                }
-                const allSeasons = Array.from(new Set(withTrend.flatMap((x) => x.pts.map((s) => s.season)))).sort();
-                const maxPts = Math.max(...withTrend.flatMap((x) => x.pts.map((s) => s.pts)), 10);
-                const W = 320, H = 150, PAD = 14;
-                const xOf = (season) => PAD + (allSeasons.indexOf(season) / Math.max(allSeasons.length - 1, 1)) * (W - PAD * 2);
-                const yOf = (v) => H - PAD - (v / maxPts) * (H - PAD * 2);
-                return (
-                  <>
-                    <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">PPG Trends</div>
-                    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-4">
-                      <svg viewBox={"0 0 " + W + " " + H} className="w-full">
-                        {withTrend.map((x, i) => (
-                          <g key={x.p.id}>
-                            <polyline
-                              fill="none" stroke={LINE_COLORS[i % LINE_COLORS.length]} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-                              points={x.pts.map((s) => xOf(s.season) + "," + yOf(s.pts)).join(" ")} />
-                            {x.pts.map((s) => (
-                              <circle key={s.season} cx={xOf(s.season)} cy={yOf(s.pts)} r="3" fill={LINE_COLORS[i % LINE_COLORS.length]} />
-                            ))}
-                          </g>
-                        ))}
-                        {allSeasons.map((s) => (
-                          <text key={s} x={xOf(s)} y={H - 2} textAnchor="middle" className="fill-slate-400" fontSize="8" fontWeight="600">{"'" + String(s).slice(2, 4)}</text>
-                        ))}
-                      </svg>
-                      <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2">
-                        {withTrend.map((x, i) => (
-                          <button key={x.p.id} onClick={() => onSelectPlayer(x.p)} className="flex items-center gap-1.5 text-[10px] font-bold text-slate-600 dark:text-slate-300">
-                            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: LINE_COLORS[i % LINE_COLORS.length] }} />
-                            {x.p.name} · {fmt1(x.pts[x.pts.length - 1].pts)}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </>
-                );
-              })()}
-            </>
-          );
-        })()}
 
         {seg === "roster" && roster.length === 0 && (
           <div className="text-center text-sm text-slate-400 mt-16">
@@ -1937,7 +1838,7 @@ function TonightTab({ players, teams, onSelect, onSelectTeam }) {
 
 // ═══════════════ APP SHELL ═══════════════════════════════════════
 const TABS = [
-  { id: "tonight", label: "Tonight", icon: "📅" },
+  { id: "tonight", label: "Matchups", icon: "📅" },
   { id: "teams", label: "Teams", icon: "🏀" },
   { id: "players", label: "Players", icon: "👤" },
   { id: "stats", label: "Stats", icon: "📊" },
@@ -1967,6 +1868,9 @@ export default function App() {
   const [, setEspnTick] = useState(0);
   useEffect(() => {
     // Headshots + positions for anyone Airtable is missing them for.
+    fetch("/api/lineups").then((r) => r.json())
+      .then((d) => { if (d && d.lineups) { Object.assign(LINEUPS, d.lineups); setEspnTick((t) => t + 1); } })
+      .catch(() => {});
     fetch("/api/espn-rosters").then((r) => r.json())
       .then((d) => { if (d && d.players) { Object.assign(ESPN_BY_NAME, d.players); setEspnTick((t) => t + 1); } })
       .catch(() => {});
@@ -1986,7 +1890,7 @@ export default function App() {
       <PlayerDetail
         p={sel}
         onBack={() => setSel(null)}
-        backLabel={selTeam ? selTeam.name : tab === "teams" ? "Teams" : tab === "tonight" ? "Tonight" : "Players"}
+        backLabel={selTeam ? selTeam.name : tab === "teams" ? "Teams" : tab === "tonight" ? "Matchups" : "Players"}
         mode="full"
       />
     );
@@ -2013,7 +1917,7 @@ export default function App() {
           players={players}
           onBack={() => setSelTeam(null)}
           onSelectPlayer={setSel}
-          backLabel={tab === "tonight" ? "Tonight" : "Teams"}
+          backLabel={tab === "tonight" ? "Matchups" : "Teams"}
         />
       )}
       {players && tab === "players" && <PlayersHub players={players} onSelect={setSel} />}
