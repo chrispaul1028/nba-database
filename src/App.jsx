@@ -87,8 +87,14 @@ function ContractLine({ c }) {
         ? <img src={logo} alt={abbr} title={c.team} className="w-4 h-4 rounded-full object-contain bg-white shrink-0" />
         : <span className="text-[9px] font-extrabold text-slate-400 shrink-0">{abbr}</span>)}
       <span className="truncate">· {c.kind}</span>
+      {contractEnd(c) && <span className="shrink-0 text-[10px] font-bold text-slate-500 dark:text-slate-300">· thru {contractEnd(c)}</span>}
     </span>
   );
+}
+// Last paid season of a contract, as '28-'29
+function contractEnd(c) {
+  const ys = salaried(c);
+  return ys.length ? seasonTick(ys[ys.length - 1]) : null;
 }
 const activeOf = (p) => p.contracts.find((c) => c.status === "Active") || p.contracts[0] || null;
 
@@ -590,7 +596,7 @@ function nextEvent(p) {
       if ((t === "PO" || t === "TO") && !y.decision) kind = t;
       else if (t === "UFA" || t === "RFA") kind = t;
       if (!kind) continue;
-      if (!best || String(y.season) < String(best.season)) best = { kind, season: y.season };
+      if (!best || String(y.season) < String(best.season)) best = { kind, season: y.season, deadline: y.deadline || null };
     }
   }
   if (!best) return null;
@@ -611,14 +617,32 @@ const EVENT_COLORS = {
   RFA: "bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300",
 };
 
-function EventPill({ ev }) {
+// When the decision is actually due. An Airtable "Deadline" value on the
+// contract year wins; otherwise the CBA's standard dates for that offseason:
+// options must be exercised by June 29, free agency opens June 30 (6pm ET).
+function eventDeadline(ev) {
+  if (!ev) return null;
+  const yr = startYear(ev.season);             // "2027-2028" → 2027: the summer before that season
+  if (ev.deadline) {
+    const d = new Date(ev.deadline);
+    return isNaN(d) ? { label: ev.deadline, date: null } : { label: d.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }), date: d };
+  }
+  if (!yr) return null;
+  const d = ev.kind === "PO" || ev.kind === "TO" ? new Date(yr, 5, 29) : new Date(yr, 5, 30);
+  return { label: d.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }), date: d, standard: true };
+}
+function EventPill({ ev, withDate }) {
   if (!ev) return null;
   const cls = EVENT_COLORS[ev.kind] || EVENT_COLORS.UFA;
+  const dl = withDate ? eventDeadline(ev) : null;
   return (
-    <span className={"inline-flex shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wide " + cls}>
-      {ev.kind === "UFA"
-        ? <>Free Agent {startYear(ev.season) ?? seasonTick({ season: ev.season })}</>
-        : <>{EVENT_WORDS[ev.kind] || ev.kind} {seasonTick({ season: ev.season })}</>}
+    <span className="inline-flex items-center gap-1.5 min-w-0">
+      <span className={"inline-flex shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wide " + cls}>
+        {ev.kind === "UFA"
+          ? <>Free Agent {startYear(ev.season) ?? seasonTick({ season: ev.season })}</>
+          : <>{EVENT_WORDS[ev.kind] || ev.kind} {seasonTick({ season: ev.season })}</>}
+      </span>
+      {dl && <span className="text-[9px] font-semibold text-slate-400 truncate">{ev.kind === "UFA" || ev.kind === "RFA" ? "opens " : "due "}{dl.label}</span>}
     </span>
   );
 }
@@ -1083,10 +1107,10 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
             real floor has it — we see the bottom half of it on a half court */}
         {team && team.logo && (
           <div className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 w-[20%] aspect-square rounded-full overflow-hidden pointer-events-none select-none"
-            style={{ top: ftY(0) + "%", opacity: 0.85, animation: "hrbGlow 4s ease-in-out infinite" }}>
+            style={{ top: ftY(0) + "%", opacity: 0.85, animation: "hrbGlow 2.2s ease-in-out .3s 1 both" }}>
             <img src={team.logo} alt="" className="w-full h-full object-contain" />
             {/* light sweep — the "sparkle" */}
-            <span className="absolute inset-0" style={{ background: "linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.55) 50%, transparent 65%)", animation: "hrbSweep 5s ease-in-out infinite" }} />
+            <span className="absolute inset-0" style={{ background: "linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.55) 50%, transparent 65%)", animation: "hrbSweep 1.6s ease-in-out .5s 1 both" }} />
           </div>
         )}
         {/* painted-on team name along the baseline, like arena floor lettering */}
@@ -1112,7 +1136,7 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
           </span>
         )}
         <style>{`@keyframes hrbPop { from { opacity: 0; transform: translate(-50%, -50%) scale(.6); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
-@keyframes hrbSweep { 0%, 55% { transform: translateX(-120%); } 75%, 100% { transform: translateX(120%); } }
+@keyframes hrbSweep { 0% { transform: translateX(-120%); } 100% { transform: translateX(120%); } }
 @keyframes hrbGlow { 0%, 100% { filter: drop-shadow(0 0 0px rgba(255,255,255,0)); } 50% { filter: drop-shadow(0 0 6px rgba(255,255,255,0.55)); } }`}</style>
         {COURT_SLOTS.map((s, i) => {
           const p = assigned[i];
@@ -1262,8 +1286,9 @@ function TeamStatsPanel({ roster, abbr, mode, setMode, onSelectPlayer }) {
             <span className="text-[11px] font-bold tracking-widest text-slate-400 uppercase">{yr} per game</span>
             <span className="text-[9px] font-semibold text-slate-400">tap a column to rank</span>
           </div>
+          <style>{`@keyframes hrbRowIn { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: none; } }`}</style>
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-            <table className="w-full border-collapse tabular-nums">
+            <table key={sortKey} className="w-full border-collapse tabular-nums">
               <thead>
                 <tr className="border-b border-slate-100 dark:border-slate-800">
                   <th className="text-left text-[9px] font-semibold tracking-widest uppercase text-slate-400 pl-2 py-2">Player</th>
@@ -1276,9 +1301,10 @@ function TeamStatsPanel({ roster, abbr, mode, setMode, onSelectPlayer }) {
                   ))}
                 </tr>
               </thead>
-              <tbody>
+              <tbody key={sortKey}>
                 {sorted.map(({ p, s }, i) => (
-                  <tr key={p.id} onClick={() => onSelectPlayer(p)} className="border-b border-slate-50 dark:border-slate-800/60 last:border-0 active:bg-slate-50 dark:active:bg-slate-800">
+                  <tr key={p.id} onClick={() => onSelectPlayer(p)} className="border-b border-slate-50 dark:border-slate-800/60 last:border-0 active:bg-slate-50 dark:active:bg-slate-800"
+                    style={{ animation: `hrbRowIn .28s ease-out ${Math.min(i, 12) * 22}ms both` }}>
                     <td className="pl-2 py-1 pr-0.5 min-w-0">
                       <div className="flex items-center gap-1 min-w-0">
                         <span className="w-3.5 text-[8px] font-bold text-slate-300 dark:text-slate-600 text-right shrink-0">{i + 1}</span>
@@ -1291,7 +1317,7 @@ function TeamStatsPanel({ roster, abbr, mode, setMode, onSelectPlayer }) {
                       const lead = leaderOf[k] === p.id;
                       return (
                         <td key={k} className="text-right pr-1 py-1">
-                          <span className={"inline-block min-w-[30px] rounded px-0.5 py-0.5 text-[10px] text-right " + (lead ? "font-extrabold text-slate-900 dark:text-white ring-1 ring-inset" : "font-semibold text-slate-700 dark:text-slate-200")}
+                          <span className={"inline-block min-w-[30px] rounded px-0.5 py-0.5 text-[10px] text-right transition-colors duration-300 " + (lead ? "font-extrabold text-slate-900 dark:text-white ring-1 ring-inset" : "font-semibold text-slate-700 dark:text-slate-200")}
                             style={{ backgroundColor: tint(k, v), ...(lead ? { "--tw-ring-color": color } : {}) }}>
                             {fmt(k, v)}
                           </span>
@@ -1703,7 +1729,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, backLabel })
                           {act ? <ContractLine c={act} /> : "No contract"}
                         </span>
                         {nextEvent(p) && (
-                          <span className="block mt-1"><EventPill ev={nextEvent(p)} /></span>
+                          <span className="block mt-1"><EventPill ev={nextEvent(p)} withDate /></span>
                         )}
                       </span>
                       <span className="text-xs font-extrabold text-slate-700 dark:text-slate-200 shrink-0">
@@ -2007,7 +2033,8 @@ function TonightTab({ players, teams, onSelect, onSelectTeam }) {
       </div>
 
       <div className="px-4 pt-3 pb-28">
-        <style>{`@keyframes hrbRise { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }`}</style>
+        <style>{`@keyframes hrbRise { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes hrbPing { 75%, 100% { transform: scale(2.2); opacity: 0; } }`}</style>
         {!sb && <div className="p-6 text-center text-xs text-slate-400">Loading games…</div>}
         {sb && sb.error && (
           <div className="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 text-center">
@@ -2063,7 +2090,13 @@ function TonightTab({ players, teams, onSelect, onSelectTeam }) {
                 <div className="w-20 shrink-0 text-center border-l border-slate-100 dark:border-slate-800 pl-2">
                   {isLive ? (
                     <>
-                      <div className="text-xs font-extrabold text-rose-500 uppercase">{g.detail}</div>
+                      <div className="text-xs font-extrabold text-rose-500 uppercase flex items-center justify-center gap-1">
+                        <span className="relative flex w-2 h-2">
+                          <span className="absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" style={{ animation: "hrbPing 1.4s cubic-bezier(0,0,.2,1) infinite" }} />
+                          <span className="relative inline-flex rounded-full w-2 h-2 bg-rose-500" />
+                        </span>
+                        {g.detail}
+                      </div>
                       {g.lastPlay && <div className="text-[9px] text-slate-400 mt-0.5 line-clamp-2 leading-tight">{g.lastPlay}</div>}
                     </>
                   ) : isFinal ? (
@@ -2103,13 +2136,33 @@ const TABS = [
 
 // Branded loading state: a ball bouncing on a hardwood strip.
 function LoadingScreen() {
+  const Bone = ({ w = "w-full", h = "h-3", cls = "" }) => <div className={"rounded-md bg-slate-200 dark:bg-slate-800 " + w + " " + h + " " + cls} style={{ animation: "hrbShimmer 1.4s ease-in-out infinite" }} />;
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center text-center px-8">
-      <style>{`@keyframes hrbBounce { 0%,100% { transform: translateY(0) scale(1,1); } 45% { transform: translateY(-34px) scale(0.98,1.02); } 55% { transform: translateY(-34px); } 100% { transform: translateY(0) scale(1.06,0.94); } }`}</style>
-      <div className="text-4xl" style={{ animation: "hrbBounce .9s cubic-bezier(.3,0,.5,1) infinite" }}>🏀</div>
-      <div className="mt-3 h-1 w-24 rounded-full" style={{ background: "repeating-linear-gradient(90deg,#d9a566 0 8px,#cf9a5c 8px 16px)" }} />
-      <div className="mt-5 text-sm font-bold text-slate-700 dark:text-slate-200">Loading rosters</div>
-      <div className="text-[11px] text-slate-400 mt-1">Players, contracts and tonight's slate from Airtable + ESPN.</div>
+    <div className="min-h-screen bg-slate-100 dark:bg-slate-950">
+      <style>{`@keyframes hrbShimmer { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }`}</style>
+      <div className="bg-blue-600 px-4 pb-3" style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.75rem)" }}>
+        <div className="h-6 w-40 rounded-md bg-blue-500/70" />
+        <div className="flex gap-1.5 mt-3">{[72, 64, 72, 48, 48].map((w, i) => <div key={i} className="h-8 rounded-full bg-blue-500/60" style={{ width: w }} />)}</div>
+      </div>
+      <div className="px-4 pt-3 space-y-1.5">
+        <Bone w="w-20" h="h-2.5" cls="mb-2" />
+        {[0, 1, 2, 3, 4].map((i) => (
+          <div key={i} className="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm px-3 py-2 flex items-center gap-2" style={{ animationDelay: i * 80 + "ms" }}>
+            <div className="flex-1 space-y-2">
+              {[0, 1].map((r) => (
+                <div key={r} className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-800" style={{ animation: "hrbShimmer 1.4s ease-in-out infinite", animationDelay: (i * 80 + r * 40) + "ms" }} />
+                  <div className="flex-1 space-y-1.5"><Bone w="w-24" /><Bone w="w-32" h="h-2" /></div>
+                </div>
+              ))}
+            </div>
+            <div className="w-20 border-l border-slate-100 dark:border-slate-800 pl-2 space-y-1.5"><Bone w="w-12" cls="mx-auto" /><Bone w="w-8" h="h-2" cls="mx-auto" /></div>
+          </div>
+        ))}
+      </div>
+      <div className="fixed bottom-0 inset-x-0 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex justify-around py-3" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.75rem)" }}>
+        {["Matchups", "Teams", "Players", "Stats"].map((l) => <div key={l} className="flex flex-col items-center gap-1.5"><Bone w="w-6" h="h-6" cls="rounded-lg" /><Bone w="w-12" h="h-2" /></div>)}
+      </div>
     </div>
   );
 }
