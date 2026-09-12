@@ -112,11 +112,42 @@ function matchesQuery(p, q) {
 }
 
 
+// ═══════════════ ESPN ROSTER FEED (photos + positions) ═══════════
+// Filled once from /api/espn-rosters. Airtable still wins when it has a
+// value; ESPN fills the blanks — a missing headshot, or a Position that
+// only says "G" / "F".
+const ESPN_BY_NAME = {};
+const espnNrm = (s) => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[.'’]/g, "").replace(/\s+(jr|sr|ii|iii|iv|v)$/i, "").replace(/\s+/g, " ").trim().toLowerCase();
+function espnOf(p) {
+  if (!p) return null;
+  const hit = ESPN_BY_NAME[espnNrm(p.name)];
+  if (hit) return hit;
+  const team = teamOfPlayer(p);
+  return team ? ESPN_BY_NAME[String(team).toUpperCase() + "|" + espnNrm(p.name).split(" ").pop()] || null : null;
+}
+const photoOf = (p) => p.photo || espnOf(p)?.headshot || null;
+const GENERIC_POS = new Set(["", "G", "F", "G-F", "F-G", "F-C", "C-F", "G/F", "F/C", "GUARD", "FORWARD", "WING", "BIG"]);
+// Court position: Airtable's exact label (PG/SG/SF/PF/C) if it has one,
+// otherwise ESPN's, otherwise whatever Airtable said.
+function courtPos(p) {
+  const a = String(p.pos || "").toUpperCase().replace(/\s+/g, "");
+  if (!GENERIC_POS.has(a)) return a;
+  const e = espnOf(p)?.pos;
+  return e && !GENERIC_POS.has(e) ? e : a;
+}
+// Height in inches from "6-7", "6'7", "6 ft 7 in", "6'7\"" — used only as a
+// tie-break when two forwards both qualify for the same slot.
+function heightIn(p) {
+  const m = String(p.height || espnOf(p)?.height || "").match(/(\d)\D+(\d{1,2})/);
+  return m ? Number(m[1]) * 12 + Number(m[2]) : null;
+}
+
 // ═══════════════ SHARED PIECES ═══════════════════════════════════
 function Avatar({ p, size }) {
   const px = size === "lg" ? "w-20 h-20 text-2xl" : "w-11 h-11 text-sm";
-  if (p.photo) {
-    return <img src={p.photo} alt={p.name} className={px + " rounded-full object-cover object-top bg-slate-200 shrink-0"} />;
+  const url = photoOf(p);
+  if (url) {
+    return <img src={url} alt={p.name} loading="lazy" className={px + " rounded-full object-cover object-top bg-slate-200 shrink-0"} onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />;
   }
   const no = cleanNo(p.no);
   const label = no ? "#" + no : p.name.split(" ").map((w) => w[0]).slice(0, 2).join("");
@@ -816,13 +847,23 @@ const POS_ALIASES = {
   PG: ["PG", "G", "G-F", "F-G"], SG: ["SG", "G", "G-F", "F-G"],
   SF: ["SF", "F", "G-F", "F-G", "F-C"], PF: ["PF", "F", "F-C", "C-F"], C: ["C", "F-C", "C-F"],
 };
+// Symmetric: point at the top of the key, wings mirrored, bigs mirrored on
+// the blocks. Same spacing left-to-right and top-to-bottom.
 const COURT_SLOTS = [
-  { lbl: "PG", x: 50, y: 21 },
-  { lbl: "SG", x: 83, y: 43 },
-  { lbl: "SF", x: 17, y: 43 },
-  { lbl: "PF", x: 27, y: 66 },
-  { lbl: "C",  x: 63, y: 72 },
+  { lbl: "PG", x: 50, y: 20, big: false },
+  { lbl: "SF", x: 18, y: 44, big: false },
+  { lbl: "SG", x: 82, y: 44, big: false },
+  { lbl: "PF", x: 30, y: 70, big: true },
+  { lbl: "C",  x: 70, y: 70, big: true },
 ];
+// Guard / Forward / Center bucket for the bench summary
+function posGroup(p) {
+  const x = courtPos(p);
+  if (/^(PG|SG|G)/.test(x)) return "G";
+  if (/^C/.test(x)) return "C";
+  if (/^(SF|PF|F)/.test(x)) return "F";
+  return null;
+}
 // "out" | "q" | "ok"  — from the Airtable Status field
 function healthOf(p) {
   const s = String(p?.status || "").toLowerCase().trim();
@@ -831,7 +872,7 @@ function healthOf(p) {
   if (s.includes("active") || s.includes("available")) return p?.injuryNotes ? "q" : "ok";
   return "q"; // Game Time Decision, questionable, day-to-day…
 }
-const posOf = (p) => String(p.pos || "").toUpperCase().replace(/\s+/g, "");
+const posOf = courtPos;
 const lastNameOf = (p) => {
   const parts = String(p.name).split(" ");
   return /^(jr\.?|sr\.?|ii|iii|iv|v)$/i.test(parts[parts.length - 1] || "") ? parts.slice(-2).join(" ") : parts.slice(-1)[0];
@@ -854,10 +895,16 @@ function pickStartingFive(roster) {
     const hit = healthyStarters.find((p) => !used.has(p.id) && posOf(p) === s.lbl);
     if (hit) take(i, hit);
   });
-  // pass 2: compatible position (G fills PG/SG, F fills SF/PF…)
+  // pass 2: compatible position (G fills PG/SG, F fills SF/PF…). When two
+  // forwards both qualify, the taller one takes PF/C and the shorter one
+  // takes the wing — so "F" + "F" lands the way a coach would slot them.
+  const byFit = (s) => (a, b) => {
+    const ha = heightIn(a) ?? 78, hb = heightIn(b) ?? 78;
+    return s.big ? hb - ha : ha - hb;
+  };
   COURT_SLOTS.forEach((s, i) => {
     if (assigned[i]) return;
-    const hit = healthyStarters.find((p) => !used.has(p.id) && POS_ALIASES[s.lbl].includes(posOf(p)));
+    const hit = healthyStarters.filter((p) => !used.has(p.id) && POS_ALIASES[s.lbl].includes(posOf(p))).sort(byFit(s))[0];
     if (hit) take(i, hit);
   });
   // pass 3: any healthy starter left over
@@ -960,9 +1007,12 @@ function CourtView({ roster, abbr, team, onSelectPlayer }) {
           {/* baseline + sidelines */}
           <rect x="0.15" y="0" width="49.7" height="46.85" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="0.3" />
         </svg>
-        {/* faint logo at center court */}
+        {/* center-court logo, sitting inside the center circle the way a
+            real floor has it — we see the bottom half of it on a half court */}
         {team && team.logo && (
-          <img src={team.logo} alt="" className="absolute left-1/2 top-[4%] -translate-x-1/2 w-[22%] opacity-[0.10] pointer-events-none select-none" />
+          <div className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 w-[23%] aspect-square rounded-full overflow-hidden pointer-events-none select-none" style={{ opacity: 0.55 }}>
+            <img src={team.logo} alt="" className="w-full h-full object-contain" />
+          </div>
         )}
         {/* painted-on team name along the baseline, like arena floor lettering */}
         <span className="absolute inset-x-0 bottom-[2.5%] text-center font-black text-[15px] tracking-[0.35em] pl-[0.35em] uppercase text-white/85 select-none pointer-events-none"
@@ -983,8 +1033,8 @@ function CourtView({ roster, abbr, team, onSelectPlayer }) {
               className="absolute flex flex-col items-center"
               style={{ left: s.x + "%", top: s.y + "%", transform: "translate(-50%, -50%)", animation: `hrbPop .35s ease-out ${i * 45}ms both` }}>
               <span className="relative">
-                {p && p.photo ? (
-                  <img src={p.photo} alt="" loading="lazy" className={"w-14 h-14 rounded-full object-cover object-top bg-white border-[3px] shadow-md " + ringCls(p)} />
+                {p && photoOf(p) ? (
+                  <img src={photoOf(p)} alt="" loading="lazy" className={"w-14 h-14 rounded-full object-cover object-top bg-white border-[3px] shadow-md " + ringCls(p)} />
                 ) : (
                   <span className={"w-14 h-14 rounded-full flex items-center justify-center text-[11px] font-extrabold shadow-md border-[3px] " + ringCls(p) + (p ? " bg-white/90 text-slate-700" : " bg-white/20 text-white/70 border-dashed")}>
                     {p ? lastNameOf(p).slice(0, 3).toUpperCase() : s.lbl}
@@ -1016,9 +1066,9 @@ function CourtView({ roster, abbr, team, onSelectPlayer }) {
             <span className="text-[9px] font-semibold tracking-widest uppercase text-slate-400">Bench</span>
             <span className="text-[9px] font-bold text-slate-400 tabular-nums truncate ml-3">
               {(() => {
-                const counts = {};
-                for (const b of bench) { const k = ROLE_ORDER.includes(b.role) ? b.role : "Roster"; counts[k] = (counts[k] || 0) + 1; }
-                return Object.entries(counts).map(([k, n]) => `${k} (${n})`).join(" · ");
+                const counts = { G: 0, F: 0, C: 0 };
+                for (const b of bench) { const k = posGroup(b); if (k) counts[k]++; }
+                return [["G", "Guards"], ["F", "Forwards"], ["C", "Centers"]].filter(([k]) => counts[k]).map(([k, lbl]) => `${lbl} (${counts[k]})`).join(" · ");
               })()}
             </span>
           </div>
@@ -1026,8 +1076,8 @@ function CourtView({ roster, abbr, team, onSelectPlayer }) {
             {bench.map((p) => (
               <button key={p.id} onClick={() => onSelectPlayer(p)} className="flex flex-col items-center shrink-0 w-[68px]">
                 <span className="relative">
-                  {p.photo ? (
-                    <img src={p.photo} alt="" loading="lazy"
+                  {photoOf(p) ? (
+                    <img src={photoOf(p)} alt="" loading="lazy"
                       className={"w-12 h-12 rounded-full object-cover object-top bg-white border-[3px] " + ringCls(p).replace("border-white", "border-slate-200 dark:border-slate-700") + (healthOf(p) === "out" ? " opacity-60" : "")} />
                   ) : (
                     <span className={"w-12 h-12 rounded-full flex items-center justify-center text-[9px] font-extrabold bg-slate-100 dark:bg-slate-800 text-slate-500 border-[3px] " + ringCls(p).replace("border-white", "border-slate-200 dark:border-slate-700")}>
@@ -1046,7 +1096,107 @@ function CourtView({ roster, abbr, team, onSelectPlayer }) {
           </div>
         </div>
       )}
+      {/* Coaching staff — reads the Teams table's "Head Coach" and
+          "Assistant Coach" columns; hidden until at least one is filled */}
+      {team && (team.headCoach || team.asstCoach) && (
+        <div className="mt-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm px-3 py-2.5 grid grid-cols-2 gap-2">
+          {[["Head Coach", team.headCoach], ["Assistant Coach", team.asstCoach]].map(([k, v]) => (
+            <div key={k} className="min-w-0">
+              <div className="text-[8px] font-semibold tracking-widest uppercase text-slate-400">{k}</div>
+              <div className="text-[11px] font-bold text-slate-800 dark:text-slate-100 truncate">{v || "—"}</div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
+  );
+}
+
+// ═══════════════ TEAM STATS PANEL (Leaders · Volume · Shooting) ══════
+// Per-game averages from the Airtable Stats table (latest season per player).
+function TeamStatsPanel({ roster, abbr, mode, setMode, onSelectPlayer }) {
+  const rows = roster.map((p) => ({ p, s: latestStats(p) })).filter((x) => x.s && (x.s.gp ?? 0) > 0);
+  const yr = rows[0] ? String(rows[0].s.season || "") : "";
+  const color = teamColor(abbr);
+  const Bar = ({ label, sub, pct, val, onClick }) => (
+    <button onClick={onClick} className="w-full text-left py-1.5">
+      <div className="flex items-baseline justify-between text-[11px]">
+        <span className="font-bold text-slate-800 dark:text-slate-100 truncate">{label}<span className="text-slate-400 font-medium"> {sub}</span></span>
+        <span className="font-extrabold tabular-nums text-slate-700 dark:text-slate-200 ml-2 shrink-0">{val}</span>
+      </div>
+      <div className="mt-1 h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+        <div className="h-full rounded-full" style={{ width: Math.max(2, Math.min(100, pct)) + "%", backgroundColor: color }} />
+      </div>
+    </button>
+  );
+  const Section = ({ title, children }) => (
+    <div className="mt-4">
+      <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mb-1.5 px-1">{title}</div>
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm px-4 py-2 divide-y divide-slate-100 dark:divide-slate-800">{children}</div>
+    </div>
+  );
+  // Top-n by a per-game key; `min` gates rate stats so a 1-for-1 night
+  // doesn't lead the team in FG%.
+  const block = (title, k, opts = {}) => {
+    const { n = 5, unit = "", min, fmt = fmt1 } = opts;
+    const list = rows.filter((x) => x.s[k] != null && x.s[k] > 0 && (!min || (x.s[min.key] ?? 0) >= min.val)).sort((a, b) => b.s[k] - a.s[k]).slice(0, n);
+    if (!list.length) return null;
+    const max = list[0].s[k];
+    return (
+      <Section key={title} title={title}>
+        {list.map(({ p, s }) => <Bar key={p.id} label={p.name} sub={courtPos(p)} pct={(s[k] / max) * 100} val={fmt(s[k]) + unit} onClick={() => onSelectPlayer(p)} />)}
+      </Section>
+    );
+  };
+  // Team share: what slice of the team's attempts each player takes.
+  const share = (title, k, n = 8) => {
+    const tot = rows.reduce((a, x) => a + (x.s[k] || 0), 0);
+    const list = rows.filter((x) => (x.s[k] || 0) > 0).sort((a, b) => b.s[k] - a.s[k]).slice(0, n);
+    if (!list.length || !tot) return null;
+    return (
+      <Section key={title} title={title}>
+        {list.map(({ p, s }) => <Bar key={p.id} label={p.name} sub={courtPos(p)} pct={(s[k] / tot) * 100} val={Math.round((s[k] / tot) * 100) + "% · " + fmt1(s[k])} onClick={() => onSelectPlayer(p)} />)}
+      </Section>
+    );
+  };
+  return (
+    <>
+      <div className="flex gap-2 mt-4">
+        {[["leaders", "Leaders"], ["volume", "Volume"], ["shooting", "Shooting"]].map(([k, lbl]) => (
+          <button key={k} onClick={() => setMode(k)}
+            className={"flex-1 py-1.5 rounded-full text-[11px] font-bold " + (mode === k ? "text-white" : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800")}
+            style={mode === k ? { backgroundColor: color } : undefined}>{lbl}</button>
+        ))}
+      </div>
+      {!rows.length ? (
+        <div className="text-center text-xs text-slate-400 py-10">No season stats for this roster yet — add rows to the Stats table.</div>
+      ) : mode === "leaders" ? (
+        <>
+          {block(yr + " Points", "pts")}
+          {block(yr + " Rebounds", "reb")}
+          {block(yr + " Assists", "ast")}
+          {block(yr + " Steals", "stl")}
+          {block(yr + " Blocks", "blk")}
+          {block(yr + " Threes Made", "p3m")}
+          <div className="text-[9px] text-slate-400 mt-2 px-1">Per-game averages, latest season in the Stats table.</div>
+        </>
+      ) : mode === "volume" ? (
+        <>
+          {block(yr + " Minutes", "min", { n: 10, unit: " min" })}
+          {share(yr + " Field Goal Attempts · team share", "fga")}
+          {share(yr + " Three-Point Attempts · team share", "p3a")}
+          {share(yr + " Free Throw Attempts · team share", "fta")}
+          {block(yr + " Turnovers", "tov")}
+        </>
+      ) : (
+        <>
+          {block(yr + " FG%", "fg", { unit: "%", min: { key: "fga", val: 5 } })}
+          {block(yr + " 3P%", "p3", { unit: "%", min: { key: "p3a", val: 2 } })}
+          {block(yr + " FT%", "ft", { unit: "%", min: { key: "fta", val: 2 } })}
+          <div className="text-[9px] text-slate-400 mt-2 px-1">Minimums: 5 FGA, 2 3PA, 2 FTA per game.</div>
+        </>
+      )}
+    </>
   );
 }
 
@@ -1055,6 +1205,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, backLabel })
   const abbr = team.abbr || toAbbr(team.name);
   const [seg, setSeg] = useState("roster");
   const [rosterView, setRosterView] = useState("court"); // court | list
+  const [statMode, setStatMode] = useState("leaders");
   const [chartMode, setChartMode] = useState("cap");
   const [capSeason, setCapSeason] = useState(null);
   const roster = players.filter((p) => {
@@ -1099,23 +1250,40 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, backLabel })
 
       <div className="px-4 -mt-3">
         <div className="grid grid-cols-3 gap-2">
-          <Tile value={(team.wins ?? 0) + "-" + (team.losses ?? 0)} label="Record" />
-          <Tile
-            value={team.ppg != null ? team.ppg.toFixed(1) : "—"}
-            label="PPG"
-            sub={rankOf(teams, team, "ppg", "desc")}
-          />
-          <Tile
-            value={team.oppPpg != null ? team.oppPpg.toFixed(1) : "—"}
-            label="Opp PPG"
-            sub={rankOf(teams, team, "oppPpg", "asc")}
-          />
+          {seg === "contracts" ? (() => {
+            // Contracts view tiles: payroll · free agents next offseason · avg age (ranked youngest → oldest)
+            const fa = roster.filter((p) => { const e = nextEvent(p); return e && (e.kind === "UFA" || e.kind === "RFA"); }).length;
+            const ages = roster.map((p) => Number(p.age)).filter((a) => a > 0);
+            const avgAge = ages.length ? ages.reduce((a, b) => a + b, 0) / ages.length : null;
+            const teamAvg = (t) => {
+              const ab = t.abbr || toAbbr(t.name);
+              const rs = players.filter((q) => (q.teamId && q.teamId === t.id) || teamOfPlayer(q) === ab || String(q.teamName || "").toLowerCase() === String(t.name || "").toLowerCase());
+              const as = rs.map((q) => Number(q.age)).filter((a) => a > 0);
+              return as.length >= 5 ? as.reduce((a, b) => a + b, 0) / as.length : null;
+            };
+            const ageRanked = (teams || []).map((t) => [t.id, teamAvg(t)]).filter(([, v]) => v != null).sort((a, b) => a[1] - b[1]);
+            const ageRank = ageRanked.findIndex(([id]) => id === team.id) + 1;
+            const ageCls = ageRank ? (ageRank <= 10 ? "text-green-600 dark:text-green-400" : ageRank <= 20 ? "text-yellow-600 dark:text-yellow-400" : "text-red-500 dark:text-red-400") : null;
+            return (
+              <>
+                <Tile value={payroll ? fmtM(payroll) : "—"} label="Payroll" sub={roster.length + " players"} valueClass="text-green-600 dark:text-green-400" />
+                <Tile value={fa} label="Free Agents" sub={"summer " + (startYear(CURRENT_SEASON) + 1)} />
+                <Tile value={avgAge != null ? avgAge.toFixed(1) : "—"} label="Avg Age" sub={ageRank ? { label: ordinal(ageRank) + (ageRank <= 3 ? " youngest" : ageRank >= ageRanked.length - 2 ? " oldest" : ""), cls: ageCls } : null} />
+              </>
+            );
+          })() : (
+            <>
+              <Tile value={(team.wins ?? 0) + "-" + (team.losses ?? 0)} label="Record" />
+              <Tile value={team.ppg != null ? team.ppg.toFixed(1) : "—"} label="PPG" sub={rankOf(teams, team, "ppg", "desc")} />
+              <Tile value={team.oppPpg != null ? team.oppPpg.toFixed(1) : "—"} label="Opp PPG" sub={rankOf(teams, team, "oppPpg", "asc")} />
+            </>
+          )}
         </div>
 
         <div className="flex gap-2 mt-4">
-          {[["roster", "Depth Chart"], ["contracts", "Contracts"], ["charts", "Charts"]].map(([k, lbl]) => (
+          {[["roster", "Roster"], ["contracts", "Contracts"], ["stats", "Stats"], ["charts", "Charts"]].map(([k, lbl]) => (
             <button key={k} onClick={() => setSeg(k)}
-              className={"flex-1 py-2 rounded-full text-xs font-bold transition-colors " + (seg === k
+              className={"flex-1 py-2 rounded-full text-[11px] font-bold transition-colors " + (seg === k
                 ? "text-white"
                 : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800")}
               style={seg === k ? { backgroundColor: teamColor(abbr) } : undefined}>
@@ -1139,6 +1307,9 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, backLabel })
         )}
         {seg === "roster" && rosterView === "court" && (
           <CourtView roster={roster} abbr={abbr} team={team} onSelectPlayer={onSelectPlayer} />
+        )}
+        {seg === "stats" && (
+          <TeamStatsPanel roster={roster} abbr={abbr} mode={statMode} setMode={setStatMode} onSelectPlayer={onSelectPlayer} />
         )}
         {seg === "roster" && rosterView === "list" && orderedRoles.map((role) => (
           <div key={role}>
@@ -1196,7 +1367,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, backLabel })
           <>
             <div className="flex items-baseline justify-between mt-6 mb-2 px-1">
               <span className="text-[11px] font-bold tracking-widest text-slate-400 uppercase">Team Contracts</span>
-              <span className="text-[11px] font-bold text-green-600 dark:text-green-400">{fmtM(payroll)} payroll</span>
+              <span className="text-[11px] font-bold text-slate-400">{roster.length} players</span>
             </div>
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
               {roster
@@ -1793,6 +1964,13 @@ export default function App() {
   const [selTeam, setSelTeam] = useState(null);
   const [error, setError] = useState(null);
 
+  const [, setEspnTick] = useState(0);
+  useEffect(() => {
+    // Headshots + positions for anyone Airtable is missing them for.
+    fetch("/api/espn-rosters").then((r) => r.json())
+      .then((d) => { if (d && d.players) { Object.assign(ESPN_BY_NAME, d.players); setEspnTick((t) => t + 1); } })
+      .catch(() => {});
+  }, []);
   useEffect(() => {
     fetch("/api/contracts")
       .then((r) => r.json())
