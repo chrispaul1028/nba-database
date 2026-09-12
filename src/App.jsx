@@ -879,12 +879,16 @@ const POS_ALIASES = {
 };
 // Symmetric: point at the top of the key, wings mirrored, bigs mirrored on
 // the blocks. Same spacing left-to-right and top-to-bottom.
+// Court box shows 6 ft beyond half court (full center circle + logo), then
+// the 47 ft half court. Slot y values are % of that 53 ft box.
+const COURT_TOP_FT = 6, COURT_FT = 47 + COURT_TOP_FT;
+const ftY = (ft) => ((ft + COURT_TOP_FT) / COURT_FT) * 100;
 const COURT_SLOTS = [
-  { lbl: "PG", x: 50, y: 20, big: false },
-  { lbl: "SF", x: 24, y: 45, big: false },
-  { lbl: "SG", x: 76, y: 45, big: false },
-  { lbl: "PF", x: 24, y: 70, big: true },
-  { lbl: "C",  x: 76, y: 70, big: true },
+  { lbl: "PG", x: 50, y: ftY(13), big: false },   // top of the key, above the arc
+  { lbl: "SF", x: 24, y: ftY(26), big: false },
+  { lbl: "SG", x: 76, y: ftY(26), big: false },
+  { lbl: "PF", x: 24, y: ftY(37), big: true },
+  { lbl: "C",  x: 76, y: ftY(37), big: true },
 ];
 // Guard / Forward / Center bucket for the bench summary
 function posGroup(p) {
@@ -937,18 +941,19 @@ function pickStartingFive(roster, abbr) {
   const starters = (espnFive || (roleFive.length >= 5 ? roleFive : minFive)).slice().sort(bySort);
   const healthyStarters = starters.filter((p) => healthOf(p) !== "out");
   const take = (i, p, stepped) => { assigned[i] = p; used.add(p.id); nextUp[i] = !!stepped; };
-  // pass 1: exact position
-  COURT_SLOTS.forEach((s, i) => {
-    const hit = healthyStarters.find((p) => !used.has(p.id) && posOf(p) === s.lbl);
-    if (hit) take(i, hit);
-  });
-  // pass 2: compatible position (G fills PG/SG, F fills SF/PF…). When two
-  // forwards both qualify, the taller one takes PF/C and the shorter one
-  // takes the wing — so "F" + "F" lands the way a coach would slot them.
   const byFit = (s) => (a, b) => {
     const ha = heightIn(a) ?? 78, hb = heightIn(b) ?? 78;
     return s.big ? hb - ha : ha - hb;
   };
+  // pass 1: exact position. If two starters are both tagged "SF", the
+  // shorter one keeps the wing and the taller one moves to PF — height
+  // breaks every tie, so OG (6-7) lands at PF over Bridges (6-6).
+  COURT_SLOTS.forEach((s, i) => {
+    const hit = healthyStarters.filter((p) => !used.has(p.id) && posOf(p) === s.lbl).sort(byFit(s))[0];
+    if (hit) take(i, hit);
+  });
+  // pass 2: compatible position (G fills PG/SG, F fills SF/PF…), same
+  // height tie-break.
   COURT_SLOTS.forEach((s, i) => {
     if (assigned[i]) return;
     const hit = healthyStarters.filter((p) => !used.has(p.id) && POS_ALIASES[s.lbl].includes(posOf(p))).sort(byFit(s))[0];
@@ -978,20 +983,33 @@ function pickStartingFive(roster, abbr) {
   return { assigned, nextUp, used, automated: !!espnFive };
 }
 
-function CourtView({ roster, abbr, team, onSelectPlayer }) {
-  const { assigned, nextUp, used, automated } = useMemo(() => pickStartingFive(roster, abbr), [roster, abbr, LINEUPS[abbr]]);
-  const lineup = LINEUPS[String(abbr || "").toUpperCase()];
-  // Bench order = minutes per game (latest season), most to least. Two-way
-  // players sit in their own row at the bottom. Top five of the rest are
-  // the rotation ("Bench"), everyone after that is "Reserves".
-  const mpg = (p) => latestStats(p)?.min ?? -1;
-  const notFive = roster.filter((p) => !used.has(p.id)).sort((a, b) => mpg(b) - mpg(a) || bySort(a, b));
-  const isTwoWay = (p) => /two\s*-?\s*way/i.test(String(p.role || "")) || /two\s*-?\s*way/i.test(String(activeOf(p)?.kind || ""));
+// Everything the court and the list view share: the five (in slot order),
+// then the bench by minutes per game, split Bench (top 5) / Reserves /
+// Two-Way.
+const mpgOf = (p) => latestStats(p)?.min ?? -1;
+const isTwoWay = (p) => /two\s*-?\s*way/i.test(String(p.role || "")) || /two\s*-?\s*way/i.test(String(activeOf(p)?.kind || ""));
+function lineupOf(roster, abbr) {
+  const r = pickStartingFive(roster, abbr);
+  const notFive = roster.filter((p) => !r.used.has(p.id)).sort((a, b) => mpgOf(b) - mpgOf(a) || bySort(a, b));
   const twoWay = notFive.filter(isTwoWay);
   const rest = notFive.filter((p) => !twoWay.includes(p));
   const benchGroups = [["Bench", rest.slice(0, 5)], ["Reserves", rest.slice(5)], ["Two-Way", twoWay]].filter(([, l]) => l.length);
-  const bench = notFive;
+  return { ...r, benchGroups, bench: notFive, starters: COURT_SLOTS.map((s, i) => ({ slot: s.lbl, p: r.assigned[i] })).filter((x) => x.p) };
+}
+
+function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
+  const { assigned, nextUp, used, automated, benchGroups, bench } = useMemo(() => lineupOf(roster, abbr), [roster, abbr, LINEUPS[abbr]]);
+  const lineup = LINEUPS[String(abbr || "").toUpperCase()];
+  const mpg = (p) => latestStats(p)?.min ?? -1;
   const color = teamColor(abbr);
+  // Net rating (PPG − opp PPG) ranked against the league — the NBA version
+  // of the NFL app's offense/defense rank tags.
+  const netRating = useMemo(() => {
+    if (!team || team.ppg == null || team.oppPpg == null) return null;
+    const all = (teams || []).filter((t) => t.ppg != null && t.oppPpg != null && !isFaTeam(t)).map((t) => [t.id, t.ppg - t.oppPpg]).sort((a, b) => b[1] - a[1]);
+    const rank = all.findIndex(([id]) => id === team.id) + 1;
+    return { value: team.ppg - team.oppPpg, rank: rank || null };
+  }, [team, teams]);
   const ringCls = (p) => {
     if (!p) return "border-white/40";
     const h = healthOf(p);
@@ -1025,11 +1043,11 @@ function CourtView({ roster, abbr, team, onSelectPlayer }) {
       {/* Half court, hoop at the bottom. Aspect = 50ft × 47ft. Lines are an
           SVG in real feet so the arcs stay true circles at any width. */}
       <div className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-sm"
-        style={{ paddingBottom: "94%", background: "repeating-linear-gradient(90deg,#d9a566 0 6.5%,#cf9a5c 6.5% 13%)" }}>
+        style={{ paddingBottom: (COURT_FT / 50 * 100).toFixed(1) + "%", background: "repeating-linear-gradient(90deg,#d9a566 0 6.5%,#cf9a5c 6.5% 13%)" }}>
         {/* plank seams + top-down light so it reads as hardwood, not a flat panel */}
         <div className="absolute inset-0" style={{ background: "repeating-linear-gradient(0deg, rgba(0,0,0,0.045) 0 1px, transparent 1px 22px)" }} />
         <div className="absolute inset-0" style={{ background: "linear-gradient(180deg,rgba(255,255,255,0.14) 0%,rgba(0,0,0,0) 35%,rgba(0,0,0,0.16) 100%)" }} />
-        <svg viewBox="0 0 50 47" preserveAspectRatio="none" className="absolute inset-0 w-full h-full" style={{ pointerEvents: "none" }}>
+        <svg viewBox={`0 ${-COURT_TOP_FT} 50 ${COURT_FT}`} preserveAspectRatio="none" className="absolute inset-0 w-full h-full" style={{ pointerEvents: "none" }}>
           {/* painted key in the team color, with the paint texture the NFL end zone uses */}
           <defs>
             <pattern id="paintTex" width="1.2" height="1.2" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
@@ -1038,9 +1056,9 @@ function CourtView({ roster, abbr, team, onSelectPlayer }) {
           </defs>
           <rect x="17" y="28" width="16" height="19" fill={color} opacity="0.88" />
           <rect x="17" y="28" width="16" height="19" fill="url(#paintTex)" />
-          {/* center circle (half) */}
-          <path d="M 19 0 A 6 6 0 0 0 31 0" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="0.25" />
-          <path d="M 23 0 A 2 2 0 0 0 27 0" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="0.2" />
+          {/* half-court line + full center circle */}
+          <line x1="0" y1="0" x2="50" y2="0" stroke="rgba(255,255,255,0.8)" strokeWidth="0.3" />
+          <circle cx="25" cy="0" r="6" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth="0.3" />
           {/* three-point line: corners + arc (23.75ft from the rim) */}
           <path d="M 3 47 L 3 33.3 A 23.75 23.75 0 0 1 47 33.3 L 47 47" fill="none" stroke="rgba(255,255,255,0.9)" strokeWidth="0.3" />
           {/* key outline + free-throw circle */}
@@ -1059,13 +1077,16 @@ function CourtView({ roster, abbr, team, onSelectPlayer }) {
           <line x1="22" y1="43" x2="28" y2="43" stroke="rgba(255,255,255,0.95)" strokeWidth="0.45" />
           <circle cx="25" cy="41.75" r="0.75" fill="none" stroke="#f97316" strokeWidth="0.35" />
           {/* baseline + sidelines */}
-          <rect x="0.15" y="0" width="49.7" height="46.85" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="0.3" />
+          <rect x="0.15" y={-COURT_TOP_FT} width="49.7" height={COURT_FT - 0.15} fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="0.3" />
         </svg>
         {/* center-court logo, sitting inside the center circle the way a
             real floor has it — we see the bottom half of it on a half court */}
         {team && team.logo && (
-          <div className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 w-[23%] aspect-square rounded-full overflow-hidden pointer-events-none select-none" style={{ opacity: 0.55 }}>
+          <div className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 w-[20%] aspect-square rounded-full overflow-hidden pointer-events-none select-none"
+            style={{ top: ftY(0) + "%", opacity: 0.85, animation: "hrbGlow 4s ease-in-out infinite" }}>
             <img src={team.logo} alt="" className="w-full h-full object-contain" />
+            {/* light sweep — the "sparkle" */}
+            <span className="absolute inset-0" style={{ background: "linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.55) 50%, transparent 65%)", animation: "hrbSweep 5s ease-in-out infinite" }} />
           </div>
         )}
         {/* painted-on team name along the baseline, like arena floor lettering */}
@@ -1077,15 +1098,22 @@ function CourtView({ roster, abbr, team, onSelectPlayer }) {
         {/* where the five came from — last game's actual starters, or Airtable */}
         <span className="absolute right-2 top-2 rounded-md bg-black/35 backdrop-blur-sm px-2 py-1 text-[9px] font-extrabold text-white/90 shadow-sm">
           {automated && lineup
-            ? "Last game 5 · " + (lineup.home ? "vs " : "@ ") + lineup.opp + " · " + new Date(lineup.date).toLocaleDateString([], { month: "short", day: "numeric" })
+            ? "Last 5 · " + (lineup.home ? "vs " : "@ ") + lineup.opp + " · " + new Date(lineup.date).toLocaleDateString([], { month: "numeric", day: "numeric" })
             : "Airtable starters"}
         </span>
+        {netRating && (
+          <span className="absolute right-2 top-8 rounded-md bg-black/35 backdrop-blur-sm px-2 py-1 text-[9px] font-extrabold text-white/90 shadow-sm">
+            Net {netRating.value > 0 ? "+" : ""}{netRating.value.toFixed(1)}{netRating.rank ? " · " + ordinal(netRating.rank) : ""}
+          </span>
+        )}
         {(outCount > 0 || gtdCount > 0) && (
           <span className="absolute left-2 top-2 rounded-md bg-black/35 backdrop-blur-sm px-2 py-1 text-[10px] font-extrabold text-white/90 shadow-sm">
             {[outCount > 0 ? `${outCount} out` : "", gtdCount > 0 ? `${gtdCount} GTD` : ""].filter(Boolean).join(" · ")}
           </span>
         )}
-        <style>{`@keyframes hrbPop { from { opacity: 0; transform: translate(-50%, -50%) scale(.6); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }`}</style>
+        <style>{`@keyframes hrbPop { from { opacity: 0; transform: translate(-50%, -50%) scale(.6); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+@keyframes hrbSweep { 0%, 55% { transform: translateX(-120%); } 75%, 100% { transform: translateX(120%); } }
+@keyframes hrbGlow { 0%, 100% { filter: drop-shadow(0 0 0px rgba(255,255,255,0)); } 50% { filter: drop-shadow(0 0 6px rgba(255,255,255,0.55)); } }`}</style>
         {COURT_SLOTS.map((s, i) => {
           const p = assigned[i];
           return (
@@ -1123,7 +1151,7 @@ function CourtView({ roster, abbr, team, onSelectPlayer }) {
       {bench.length > 0 && (
         <div className="mt-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm px-2 pt-2 pb-1">
           <div className="flex items-baseline justify-between px-1 mb-1.5">
-            <span className="text-[9px] font-semibold tracking-widest uppercase text-slate-400">Bench</span>
+            <span className="text-[9px] font-semibold tracking-widest uppercase text-slate-400">{benchGroups[0] ? benchGroups[0][0] : "Bench"}</span>
             <span className="text-[9px] font-bold text-slate-400 tabular-nums truncate ml-3">
               {(() => {
                 const counts = { G: 0, F: 0, C: 0 };
@@ -1132,16 +1160,16 @@ function CourtView({ roster, abbr, team, onSelectPlayer }) {
               })()}
             </span>
           </div>
-          {benchGroups.map(([grp, list]) => (
-          <div key={grp} className="mt-1.5">
-            <div className="text-[8px] font-semibold tracking-widest uppercase text-slate-400 px-1">{grp}</div>
+          {benchGroups.map(([grp, list], gi) => (
+          <div key={grp} className={gi ? "mt-1.5" : "-mt-3"}>
+            {gi > 0 && <div className="text-[9px] font-semibold tracking-widest uppercase text-slate-400 px-1">{grp}</div>}
             <div className="grid grid-cols-5 gap-x-1 gap-y-2 pt-3 pb-1.5 px-0.5">
             {list.map((p) => (
               <button key={p.id} onClick={() => onSelectPlayer(p)} className="flex flex-col items-center min-w-0">
                 <span className="relative">
                   {photoOf(p) ? (
                     <img src={photoOf(p)} alt="" loading="lazy"
-                      className={"w-12 h-12 rounded-full object-cover object-top bg-white border-[3px] " + ringCls(p).replace("border-white", "border-slate-200 dark:border-slate-700") + (healthOf(p) === "out" ? " opacity-60" : "")} />
+                      className={"w-12 h-12 rounded-full object-cover object-top bg-white border-[3px] " + ringCls(p).replace("border-white", "border-slate-200 dark:border-slate-700")} />
                   ) : (
                     <span className={"w-12 h-12 rounded-full flex items-center justify-center text-[9px] font-extrabold bg-slate-100 dark:bg-slate-800 text-slate-500 border-[3px] " + ringCls(p).replace("border-white", "border-slate-200 dark:border-slate-700")}>
                       {lastNameOf(p).slice(0, 3).toUpperCase()}
@@ -1180,98 +1208,105 @@ function CourtView({ roster, abbr, team, onSelectPlayer }) {
   );
 }
 
-// ═══════════════ TEAM STATS PANEL (Leaders · Volume · Shooting) ══════
-// Per-game averages from the Airtable Stats table (latest season per player).
+// ═══════════════ TEAM STATS PANEL (grid: every player × every stat) ══
+// One table per pill. Tap a column header to rank the whole roster by it;
+// cells are tinted by where that value sits between the team's low and
+// high, so a row's strengths jump out without reading numbers.
+const STAT_SETS = {
+  leaders:  { label: "Leaders",  cols: [["pts", "PTS"], ["reb", "REB"], ["ast", "AST"], ["stl", "STL"], ["blk", "BLK"], ["p3m", "3PM"]] },
+  volume:   { label: "Volume",   cols: [["min", "MIN"], ["fga", "FGA"], ["p3a", "3PA"], ["fta", "FTA"], ["tov", "TOV"]] },
+  shooting: { label: "Shooting", cols: [["fg", "FG%"], ["p3", "3P%"], ["ft", "FT%"], ["fga", "FGA"], ["p3a", "3PA"], ["fta", "FTA"]], pct: ["fg", "p3", "ft"], gate: { fg: ["fga", 3], p3: ["p3a", 1.5], ft: ["fta", 1.5] } },
+};
 function TeamStatsPanel({ roster, abbr, mode, setMode, onSelectPlayer }) {
-  // Per-game everything. If a Stats row holds season totals instead of
-  // averages (a value no player could average), divide by games played.
-  const PG_MAX = { min: 48, pts: 60, reb: 30, ast: 30, stl: 10, blk: 10, tov: 15, fga: 45, p3a: 25, fta: 30, p3m: 15 };
-  const perGame = (st) => {
-    const o = { ...st };
-    for (const k of Object.keys(PG_MAX)) if (o[k] != null && o[k] > PG_MAX[k] && st.gp) o[k] = o[k] / st.gp;
-    return o;
-  };
-  const rows = roster.map((p) => ({ p, s: latestStats(p) ? perGame(latestStats(p)) : null })).filter((x) => x.s && (x.s.gp ?? 0) > 0);
+  const set = STAT_SETS[mode] || STAT_SETS.leaders;
+  const [sortKey, setSortKey] = useState(set.cols[0][0]);
+  useEffect(() => { setSortKey(set.cols[0][0]); }, [mode]);
+  const rows = roster.map((p) => ({ p, s: latestStats(p) })).filter((x) => x.s && (x.s.gp ?? 0) > 0);
   const yr = rows[0] ? String(rows[0].s.season || "") : "";
   const color = teamColor(abbr);
-  const Bar = ({ label, sub, pct, val, onClick }) => (
-    <button onClick={onClick} className="w-full text-left py-1.5">
-      <div className="flex items-baseline justify-between text-[11px]">
-        <span className="font-bold text-slate-800 dark:text-slate-100 truncate">{label}<span className="text-slate-400 font-medium"> {sub}</span></span>
-        <span className="font-extrabold tabular-nums text-slate-700 dark:text-slate-200 ml-2 shrink-0">{val}</span>
-      </div>
-      <div className="mt-1 h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-        <div className="h-full rounded-full" style={{ width: Math.max(2, Math.min(100, pct)) + "%", backgroundColor: color }} />
-      </div>
-    </button>
-  );
-  const Section = ({ title, children }) => (
-    <div className="mt-4">
-      <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mb-1.5 px-1">{title}</div>
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm px-4 py-2 divide-y divide-slate-100 dark:divide-slate-800">{children}</div>
-    </div>
-  );
-  // Top-n by a per-game key; `min` gates rate stats so a 1-for-1 night
-  // doesn't lead the team in FG%.
-  const block = (title, k, opts = {}) => {
-    const { n = 5, unit = "", min, fmt = fmt1 } = opts;
-    const list = rows.filter((x) => x.s[k] != null && x.s[k] > 0 && (!min || (x.s[min.key] ?? 0) >= min.val)).sort((a, b) => b.s[k] - a.s[k]).slice(0, n);
-    if (!list.length) return null;
-    const max = list[0].s[k];
-    return (
-      <Section key={title} title={title}>
-        {list.map(({ p, s }) => <Bar key={p.id} label={p.name} sub={courtPos(p)} pct={(s[k] / max) * 100} val={fmt(s[k]) + unit} onClick={() => onSelectPlayer(p)} />)}
-      </Section>
-    );
+  // value shown for a cell; rate stats below the attempt minimum read as "—"
+  const val = (s, k) => {
+    const g = set.gate && set.gate[k];
+    if (g && (s[g[0]] ?? 0) < g[1]) return null;
+    return s[k] == null ? null : s[k];
   };
-  // Team share: what slice of the team's attempts each player takes.
-  const share = (title, k, n = 8) => {
-    const tot = rows.reduce((a, x) => a + (x.s[k] || 0), 0);
-    const list = rows.filter((x) => (x.s[k] || 0) > 0).sort((a, b) => b.s[k] - a.s[k]).slice(0, n);
-    if (!list.length || !tot) return null;
-    return (
-      <Section key={title} title={title}>
-        {list.map(({ p, s }) => <Bar key={p.id} label={p.name} sub={courtPos(p)} pct={(s[k] / tot) * 100} val={Math.round((s[k] / tot) * 100) + "% · " + fmt1(s[k])} onClick={() => onSelectPlayer(p)} />)}
-      </Section>
-    );
+  const ranges = {};
+  for (const [k] of set.cols) {
+    const vs = rows.map((r) => val(r.s, k)).filter((v) => v != null && v > 0);
+    ranges[k] = vs.length ? [Math.min(...vs), Math.max(...vs)] : [0, 0];
+  }
+  const sorted = rows.slice().sort((a, b) => (val(b.s, sortKey) ?? -1) - (val(a.s, sortKey) ?? -1) || a.p.name.localeCompare(b.p.name));
+  const tint = (k, v) => {
+    if (v == null) return "transparent";
+    const [lo, hi] = ranges[k];
+    const t = hi > lo ? (v - lo) / (hi - lo) : 0.5;
+    return color + Math.round(8 + t * 96).toString(16).padStart(2, "0"); // #rrggbbaa
   };
+  const fmt = (k, v) => v == null ? "—" : (set.pct && set.pct.includes(k) ? Number(v).toFixed(1) : Number(v).toFixed(1));
+  const leaderOf = {};
+  for (const [k] of set.cols) { const top = rows.slice().sort((a, b) => (val(b.s, k) ?? -1) - (val(a.s, k) ?? -1))[0]; if (top && val(top.s, k) != null) leaderOf[k] = top.p.id; }
   return (
     <>
       <div className="flex gap-2 mt-4">
-        {[["leaders", "Leaders"], ["volume", "Volume"], ["shooting", "Shooting"]].map(([k, lbl]) => (
+        {Object.entries(STAT_SETS).map(([k, v]) => (
           <button key={k} onClick={() => setMode(k)}
             className={"flex-1 py-1.5 rounded-full text-[11px] font-bold " + (mode === k ? "text-white" : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800")}
-            style={mode === k ? { backgroundColor: color } : undefined}>{lbl}</button>
+            style={mode === k ? { backgroundColor: color } : undefined}>{v.label}</button>
         ))}
       </div>
       {!rows.length ? (
         <div className="text-center text-xs text-slate-400 py-10">No season stats for this roster yet — add rows to the Stats table.</div>
-      ) : mode === "leaders" ? (
-        <>
-          {block(yr + " Points", "pts")}
-          {block(yr + " Rebounds", "reb")}
-          {block(yr + " Assists", "ast")}
-          {block(yr + " Steals", "stl")}
-          {block(yr + " Blocks", "blk")}
-          {block(yr + " Threes Made", "p3m")}
-          <div className="text-[9px] text-slate-400 mt-2 px-1">Per-game averages, latest season in the Stats table.</div>
-        </>
-      ) : mode === "volume" ? (
-        <>
-          {block(yr + " Minutes", "min", { n: 10, unit: " min" })}
-          {block(yr + " Field Goal Attempts", "fga", { n: 10, unit: " FGA" })}
-          {block(yr + " Three-Point Attempts", "p3a", { n: 10, unit: " 3PA" })}
-          {block(yr + " Free Throw Attempts", "fta", { n: 10, unit: " FTA" })}
-          {block(yr + " Turnovers", "tov", { n: 8, unit: " TO" })}
-          <div className="text-[9px] text-slate-400 mt-2 px-1">Per game, latest season in the Stats table.</div>
-        </>
       ) : (
-        <>
-          {block(yr + " FG%", "fg", { unit: "%", min: { key: "fga", val: 5 } })}
-          {block(yr + " 3P%", "p3", { unit: "%", min: { key: "p3a", val: 2 } })}
-          {block(yr + " FT%", "ft", { unit: "%", min: { key: "fta", val: 2 } })}
-          <div className="text-[9px] text-slate-400 mt-2 px-1">Minimums: 5 FGA, 2 3PA, 2 FTA per game.</div>
-        </>
+        <div className="mt-4">
+          <div className="flex items-baseline justify-between px-1 mb-1.5">
+            <span className="text-[11px] font-bold tracking-widest text-slate-400 uppercase">{yr} per game</span>
+            <span className="text-[9px] font-semibold text-slate-400">tap a column to rank</span>
+          </div>
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+            <table className="w-full border-collapse tabular-nums">
+              <thead>
+                <tr className="border-b border-slate-100 dark:border-slate-800">
+                  <th className="text-left text-[9px] font-semibold tracking-widest uppercase text-slate-400 pl-2 py-2">Player</th>
+                  {set.cols.map(([k, lbl]) => (
+                    <th key={k} onClick={() => setSortKey(k)}
+                      className={"text-right text-[8px] font-extrabold tracking-wide uppercase py-2 pr-1 cursor-pointer select-none whitespace-nowrap " + (sortKey === k ? "" : "text-slate-400")}
+                      style={sortKey === k ? { color } : undefined}>
+                      {lbl}{sortKey === k ? " ▾" : ""}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map(({ p, s }, i) => (
+                  <tr key={p.id} onClick={() => onSelectPlayer(p)} className="border-b border-slate-50 dark:border-slate-800/60 last:border-0 active:bg-slate-50 dark:active:bg-slate-800">
+                    <td className="pl-2 py-1 pr-0.5 min-w-0">
+                      <div className="flex items-center gap-1 min-w-0">
+                        <span className="w-3.5 text-[8px] font-bold text-slate-300 dark:text-slate-600 text-right shrink-0">{i + 1}</span>
+                        <span className="text-[10px] font-bold text-slate-800 dark:text-slate-100 truncate max-w-[64px]">{lastNameOf(p)}</span>
+                        <span className="text-[7px] font-semibold text-slate-400 shrink-0">{courtPos(p)}</span>
+                      </div>
+                    </td>
+                    {set.cols.map(([k]) => {
+                      const v = val(s, k);
+                      const lead = leaderOf[k] === p.id;
+                      return (
+                        <td key={k} className="text-right pr-1 py-1">
+                          <span className={"inline-block min-w-[30px] rounded px-0.5 py-0.5 text-[10px] text-right " + (lead ? "font-extrabold text-slate-900 dark:text-white ring-1 ring-inset" : "font-semibold text-slate-700 dark:text-slate-200")}
+                            style={{ backgroundColor: tint(k, v), ...(lead ? { "--tw-ring-color": color } : {}) }}>
+                            {fmt(k, v)}
+                          </span>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="text-[9px] text-slate-400 mt-2 px-1">
+            Darker cell = higher on this team. Outlined = team leader.{mode === "shooting" ? " Percentages hidden under 3 FGA / 1.5 3PA / 1.5 FTA per game." : ""}
+          </div>
+        </div>
       )}
     </>
   );
@@ -1501,7 +1536,13 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, backLabel })
     const role = ROLE_ORDER.includes(p.role) ? p.role : "Roster";
     (groups[role] ??= []).push(p);
   }
-  const orderedRoles = [...ROLE_ORDER.filter((r) => groups[r]), ...(groups["Roster"] ? ["Roster"] : [])];
+  const roleGroups = [...ROLE_ORDER.filter((r) => groups[r]), ...(groups["Roster"] ? ["Roster"] : [])].map((r) => [r, groups[r]]);
+  // List view mirrors the court: Starters PG→C, then Bench/Reserves/Two-Way by minutes.
+  const listGroups = useMemo(() => {
+    if (isFaTeam(team)) return roleGroups;
+    const lu = lineupOf(roster, abbr);
+    return [["Starters", lu.starters.map((x) => Object.assign(Object.create(x.p), { _slot: x.slot }))], ...lu.benchGroups];
+  }, [roster, abbr, team, LINEUPS[abbr]]);
 
   return (
     <div className="min-h-screen bg-slate-100 dark:bg-slate-950 pb-24">
@@ -1587,25 +1628,19 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, backLabel })
           </div>
         )}
         {seg === "roster" && rosterView === "court" && !faTeam && (
-          <CourtView roster={roster} abbr={abbr} team={team} onSelectPlayer={onSelectPlayer} />
+          <CourtView roster={roster} abbr={abbr} team={team} teams={teams} onSelectPlayer={onSelectPlayer} />
         )}
         {seg === "stats" && (
           <TeamStatsPanel roster={roster} abbr={abbr} mode={statMode} setMode={setStatMode} onSelectPlayer={onSelectPlayer} />
         )}
-        {seg === "roster" && (rosterView === "list" || faTeam) && orderedRoles.map((role) => (
+        {seg === "roster" && (rosterView === "list" || faTeam) && listGroups.map(([role, members]) => (
           <div key={role}>
             <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">{role}</div>
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
-              {groups[role]
-                .sort((a, b) => {
-                  if (a.sort != null && b.sort != null) return a.sort - b.sort;
-                  if (a.sort != null) return -1;
-                  if (b.sort != null) return 1;
-                  return currentSalary(b) - currentSalary(a);
-                })
+              {(faTeam ? members.slice().sort((a, b) => currentSalary(b) - currentSalary(a)) : members)
                 .map((p) => (
                   <button key={p.id} onClick={() => onSelectPlayer(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
-                    <span className="w-7 text-center text-[11px] font-extrabold text-slate-400 uppercase shrink-0">{p.pos || "—"}</span>
+                    <span className="w-7 text-center text-[11px] font-extrabold text-slate-400 uppercase shrink-0">{p._slot || courtPos(p) || "—"}</span>
                     <Avatar p={p} />
                     <span className="flex-1 min-w-0">
                       <span className="flex items-center gap-2">
