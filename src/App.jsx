@@ -7,7 +7,7 @@ import React, { useState, useMemo, useEffect } from "react";
 const HEADER_COLOR = "team";
 
 // Season used for team payroll totals (must match your Season select format)
-const CURRENT_SEASON = "2025-2026";
+const CURRENT_SEASON = "2026-2027"; // league year — bump every July
 
 // Salary bar colors by year type - change any hex you like.
 const BAR_COLORS = {
@@ -197,8 +197,13 @@ function ordinal(n) {
 function Tile({ value, label, sub, accent, valueClass, onClick, active, activeColor }) {
   const Tag = onClick ? "button" : "div";
   return (
-    <Tag onClick={onClick} className={"bg-white dark:bg-slate-900 rounded-2xl border px-2 py-4 text-center shadow-sm flex flex-col items-center justify-center w-full " + (active ? "border-2" : "border-slate-200 dark:border-slate-800")}
+    <Tag onClick={onClick} className={"relative bg-white dark:bg-slate-900 rounded-2xl border px-2 py-4 text-center shadow-sm flex flex-col items-center justify-center w-full " + (active ? "border-2" : "border-slate-200 dark:border-slate-800")}
       style={active ? { borderColor: activeColor || "#2563eb" } : undefined}>
+      {onClick && (
+        <svg viewBox="0 0 12 12" className={"absolute top-2 right-2 w-3 h-3 transition-transform " + (active ? "rotate-180" : "")} style={{ color: active ? (activeColor || "#2563eb") : "#cbd5e1" }} aria-hidden="true">
+          <path d="M2.5 4.5 L6 8 L9.5 4.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )}
       <div className="text-[10px] font-semibold text-slate-400 tracking-widest uppercase mb-1">{label}</div>
       <div className={"text-2xl font-extrabold tracking-tight " + (valueClass ? valueClass : accent ? ACCENT_TEXT : "text-slate-900 dark:text-slate-100")}>{value}</div>
       {sub && (
@@ -720,6 +725,9 @@ function winPct(t) {
   return w + l > 0 ? w / (w + l) : -1;
 }
 
+// The "Free Agents" row in the Teams table isn't a team: no court, no tiles.
+const isFaTeam = (t) => !!t && (/free\s*agent/i.test(String(t.name || "")) || String(t.abbr || "").toUpperCase() === "FA");
+
 function TeamsTab({ teams, players, onSelect }) {
   const [q, setQ] = useState("");
   const [conf, setConf] = useState("all"); // all | east | west
@@ -760,9 +768,10 @@ function TeamsTab({ teams, players, onSelect }) {
     return playerTeamAbbrs.has(abbr);
   });
   list = [...list].sort((a, b) =>
-    conf === "all"
+    (isFaTeam(a) ? 1 : 0) - (isFaTeam(b) ? 1 : 0) ||   // Free Agents always last
+    (conf === "all"
       ? String(a.name).localeCompare(String(b.name))
-      : winPct(b) - winPct(a) || (b.wins ?? 0) - (a.wins ?? 0)
+      : winPct(b) - winPct(a) || (b.wins ?? 0) - (a.wins ?? 0))
   );
   const pickConf = (k) => { setConf(k); setDiv(null); };
   return (
@@ -923,7 +932,9 @@ function pickStartingFive(roster, abbr) {
   // Role = "Starter" is the fallback when ESPN has nothing yet (preseason,
   // or a name that didn't match).
   const espnFive = espnStartersFor(roster, abbr);
-  const starters = (espnFive || roster.filter((p) => p.role === "Starter")).slice().sort(bySort);
+  const roleFive = roster.filter((p) => /^starter/i.test(String(p.role || "")));
+  const minFive = roster.slice().sort((a, b) => (latestStats(b)?.min ?? -1) - (latestStats(a)?.min ?? -1)).slice(0, 5);
+  const starters = (espnFive || (roleFive.length >= 5 ? roleFive : minFive)).slice().sort(bySort);
   const healthyStarters = starters.filter((p) => healthOf(p) !== "out");
   const take = (i, p, stepped) => { assigned[i] = p; used.add(p.id); nextUp[i] = !!stepped; };
   // pass 1: exact position
@@ -975,7 +986,8 @@ function CourtView({ roster, abbr, team, onSelectPlayer }) {
   // the rotation ("Bench"), everyone after that is "Reserves".
   const mpg = (p) => latestStats(p)?.min ?? -1;
   const notFive = roster.filter((p) => !used.has(p.id)).sort((a, b) => mpg(b) - mpg(a) || bySort(a, b));
-  const twoWay = notFive.filter((p) => String(p.role || "").toLowerCase().replace(/[^a-z]/g, "") === "twoway");
+  const isTwoWay = (p) => /two\s*-?\s*way/i.test(String(p.role || "")) || /two\s*-?\s*way/i.test(String(activeOf(p)?.kind || ""));
+  const twoWay = notFive.filter(isTwoWay);
   const rest = notFive.filter((p) => !twoWay.includes(p));
   const benchGroups = [["Bench", rest.slice(0, 5)], ["Reserves", rest.slice(5)], ["Two-Way", twoWay]].filter(([, l]) => l.length);
   const bench = notFive;
@@ -1122,7 +1134,7 @@ function CourtView({ roster, abbr, team, onSelectPlayer }) {
           </div>
           {benchGroups.map(([grp, list]) => (
           <div key={grp} className="mt-1.5">
-            <div className="text-[8px] font-semibold tracking-widest uppercase text-slate-400 px-1">{grp}<span className="normal-case tracking-normal font-medium"> · by minutes</span></div>
+            <div className="text-[8px] font-semibold tracking-widest uppercase text-slate-400 px-1">{grp}</div>
             <div className="grid grid-cols-5 gap-x-1 gap-y-2 pt-3 pb-1.5 px-0.5">
             {list.map((p) => (
               <button key={p.id} onClick={() => onSelectPlayer(p)} className="flex flex-col items-center min-w-0">
@@ -1132,16 +1144,19 @@ function CourtView({ roster, abbr, team, onSelectPlayer }) {
                       className={"w-12 h-12 rounded-full object-cover object-top bg-white border-[3px] " + ringCls(p).replace("border-white", "border-slate-200 dark:border-slate-700") + (healthOf(p) === "out" ? " opacity-60" : "")} />
                   ) : (
                     <span className={"w-12 h-12 rounded-full flex items-center justify-center text-[9px] font-extrabold bg-slate-100 dark:bg-slate-800 text-slate-500 border-[3px] " + ringCls(p).replace("border-white", "border-slate-200 dark:border-slate-700")}>
-                      {posOf(p) || "—"}
+                      {lastNameOf(p).slice(0, 3).toUpperCase()}
                     </span>
                   )}
+                  <span className="absolute top-1/2 -translate-y-1/2 -left-2 px-1 rounded text-[7px] font-extrabold bg-white/95 dark:bg-slate-700 text-slate-700 dark:text-slate-100 shadow border border-slate-200 dark:border-slate-600">
+                    {posOf(p) || "—"}
+                  </span>
                   <HealthBadge p={p} small />
                   <RatingPill r={p.rating2k} small />
                 </span>
                 <span className="mt-2 text-[9px] font-bold text-slate-600 dark:text-slate-300 max-w-full truncate">
                   {(cleanNo(p.no) ? "#" + cleanNo(p.no) + " " : "") + lastNameOf(p)}
                 </span>
-                <span className="text-[8px] font-semibold text-slate-400 uppercase">{posOf(p) || ""}{mpg(p) >= 0 ? " · " + fmt1(mpg(p)) + " min" : ""}</span>
+                <span className="text-[8px] font-semibold text-slate-400">{mpg(p) >= 0 ? fmt1(mpg(p)) + " min" : "—"}</span>
               </button>
             ))}
             </div>
@@ -1262,13 +1277,218 @@ function TeamStatsPanel({ roster, abbr, mode, setMode, onSelectPlayer }) {
   );
 }
 
+// ═══════════════ CAP OUTLOOK (Payroll tile) ══════════════════════
+// League thresholds in $M. 2025-26 and 2026-27 are the NBA's official
+// numbers; later seasons are projected at the league's stated +5.5%.
+const CAP_TABLE = {
+  2025: { cap: 154.647, tax: 187.895, apron1: 195.945, apron2: 207.824 },
+  2026: { cap: 164.961, tax: 200.428, apron1: 209.015, apron2: 221.686 },
+};
+function capFor(year) {
+  if (CAP_TABLE[year]) return { ...CAP_TABLE[year], projected: false };
+  const known = Math.max(...Object.keys(CAP_TABLE).map(Number));
+  const base = CAP_TABLE[known], g = Math.pow(1.055, year - known);
+  return { cap: base.cap * g, tax: base.tax * g, apron1: base.apron1 * g, apron2: base.apron2 * g, projected: true };
+}
+const seasonLabel = (y) => "'" + String(y).slice(2) + "-'" + String(y + 1).slice(2);
+// Bucket a contract year by how firm the money is
+function bucketOf(y) {
+  const t = String(y.type || "").toUpperCase();
+  if (t === "UFA" || t === "RFA") return null;                 // cap hold, not salary
+  if (t === "PO") return y.decision ? "committed" : "playerOpt";
+  if (t === "TO") return y.decision ? "committed" : "teamOpt";
+  if (t === "NG" || t === "PG") return "nonGtd";
+  return "committed";
+}
+const BUCKETS = [
+  ["committed", "Guaranteed", "#0f172a"],
+  ["nonGtd", "Non-guaranteed", "#94a3b8"],
+  ["playerOpt", "Player option", "#f59e0b"],
+  ["teamOpt", "Team option", "#38bdf8"],
+];
+
+function CapOutlook({ roster, color, onSelectPlayer }) {
+  const y0 = startYear(CURRENT_SEASON);
+  const years = [y0, y0 + 1, y0 + 2, y0 + 3];
+  const [sel, setSel] = useState(y0);
+  // per season: { total, byBucket, rows: [{p, salary, bucket, type}] }
+  const data = useMemo(() => years.map((yr) => {
+    const rows = [];
+    for (const p of roster) {
+      const act = activeOf(p); if (!act) continue;
+      const y = (act.years || []).find((yy) => startYear(yy.season) === yr && yy.salary != null);
+      if (!y) continue;
+      const b = bucketOf(y); if (!b) continue;
+      rows.push({ p, salary: y.salary, bucket: b, type: String(y.type || "G").toUpperCase() });
+    }
+    rows.sort((a, b) => b.salary - a.salary);
+    const byBucket = {}; for (const r of rows) byBucket[r.bucket] = (byBucket[r.bucket] || 0) + r.salary;
+    return { yr, rows, byBucket, total: rows.reduce((a, r) => a + r.salary, 0), lines: capFor(yr) };
+  }), [roster, y0]);
+
+  const W = 340, H = 250, padL = 8, padR = 82, padT = 12, padB = 26;
+  const maxY = Math.max(...data.map((d) => Math.max(d.total, d.lines.apron2))) * 1.06;
+  const yOf = (v) => padT + (H - padT - padB) * (1 - v / maxY);
+  const slot = (W - padL - padR) / years.length, bw = slot * 0.52;
+  const cur = data.find((d) => d.yr === sel);
+  const room = cur ? cur.lines.cap - cur.total : 0;
+  const vsTax = cur ? cur.total - cur.lines.tax : 0;
+  const status = !cur ? "" : cur.total > cur.lines.apron2 ? "Over 2nd apron" : cur.total > cur.lines.apron1 ? "Over 1st apron" : cur.total > cur.lines.tax ? "Taxpayer" : cur.total > cur.lines.cap ? "Over the cap" : "Under the cap";
+  const statusCls = !cur ? "" : cur.total > cur.lines.apron1 ? "text-red-500" : cur.total > cur.lines.tax ? "text-amber-500" : cur.total > cur.lines.cap ? "text-slate-600 dark:text-slate-300" : "text-emerald-600";
+
+  return (
+    <div className="mt-4">
+      <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mb-1.5 px-1">Salary cap outlook</div>
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm px-3 pt-3 pb-2">
+        <style>{`@keyframes capRise { from { transform: scaleY(0); } to { transform: scaleY(1); } }`}</style>
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: "auto" }}>
+          {/* threshold lines */}
+          {[["cap", "Cap", "#64748b"], ["tax", "Tax", "#f59e0b"], ["apron1", "1st apron", "#f97316"], ["apron2", "2nd apron", "#ef4444"]].map(([k, lbl, c]) => {
+            const v = cur ? cur.lines[k] : capFor(y0)[k];
+            return (
+              <g key={k}>
+                <line x1={padL} x2={W - padR + 4} y1={yOf(v)} y2={yOf(v)} stroke={c} strokeWidth="1" strokeDasharray="3 3" opacity="0.8" />
+                <text x={W - padR + 7} y={yOf(v) + 2.5} fontSize="7" fontWeight="700" fill={c}>{lbl} ${Math.round(v)}M</text>
+              </g>
+            );
+          })}
+          {data.map((d, i) => {
+            const x = padL + slot * i + (slot - bw) / 2;
+            let acc = 0;
+            const on = d.yr === sel;
+            return (
+              <g key={d.yr} onClick={() => setSel(d.yr)} style={{ cursor: "pointer" }}>
+                <rect x={padL + slot * i} y={padT} width={slot} height={H - padT - padB} fill={on ? color : "transparent"} opacity={on ? 0.06 : 0} rx="8" />
+                {BUCKETS.map(([b, , c]) => {
+                  const v = d.byBucket[b] || 0; if (!v) return null;
+                  const y1 = yOf(acc + v), h = yOf(acc) - yOf(acc + v); acc += v;
+                  return <rect key={b} x={x} y={y1} width={bw} height={h} fill={b === "committed" ? color : c} rx={1.5}
+                    opacity={on ? 1 : 0.55} style={{ transformOrigin: `${x}px ${H - padB}px`, animation: `capRise .5s ease-out ${i * 80}ms both` }} />;
+                })}
+                <text x={x + bw / 2} y={yOf(d.total) - 4} textAnchor="middle" fontSize="9" fontWeight="800" fill="currentColor" className="text-slate-800 dark:text-slate-100">{d.total ? "$" + Math.round(d.total) + "M" : ""}</text>
+                <text x={x + bw / 2} y={H - 8} textAnchor="middle" fontSize="10" fontWeight={on ? 800 : 600} fill={on ? color : "#94a3b8"}>{seasonLabel(d.yr)}</text>
+                {d.lines.projected && <text x={x + bw / 2} y={H + 0} textAnchor="middle" fontSize="6" fill="#94a3b8">proj. lines</text>}
+              </g>
+            );
+          })}
+        </svg>
+        <div className="flex flex-wrap gap-x-3 gap-y-1 px-1 mt-1">
+          {BUCKETS.map(([b, lbl, c]) => (
+            <span key={b} className="flex items-center gap-1 text-[9px] font-semibold text-slate-500 dark:text-slate-400">
+              <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: b === "committed" ? color : c }} />{lbl}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {cur && (
+        <>
+          <div className="grid grid-cols-3 gap-2 mt-3">
+            <Tile value={cur.total ? fmtM(cur.total) : "—"} label={seasonLabel(cur.yr) + " Payroll"} sub={cur.rows.length + " under contract"} />
+            <Tile value={(room >= 0 ? "+" : "−") + fmtM(Math.abs(room)).slice(1)} label="vs Cap" valueClass={room >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-slate-900 dark:text-slate-100"} sub={room >= 0 ? "cap space" : "over the cap"} />
+            <Tile value={(vsTax >= 0 ? "+" : "−") + fmtM(Math.abs(vsTax)).slice(1)} label="vs Tax" valueClass={vsTax > 0 ? "text-red-500" : "text-emerald-600 dark:text-emerald-400"} sub={{ label: status, cls: statusCls }} />
+          </div>
+          <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-5 mb-1.5 px-1">{seasonLabel(cur.yr)} on the books</div>
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
+            {cur.rows.length === 0 && <div className="text-center text-sm text-slate-400 py-8 px-6">No salary on the books for {seasonLabel(cur.yr)} yet.</div>}
+            {cur.rows.map(({ p, salary, bucket, type }) => (
+              <button key={p.id} onClick={() => onSelectPlayer(p)} className="w-full flex items-center gap-3 px-4 py-2.5 text-left active:bg-slate-50 dark:active:bg-slate-800">
+                <Avatar p={p} />
+                <span className="flex-1 min-w-0">
+                  <span className="flex items-baseline justify-between">
+                    <span className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
+                    <span className="text-xs font-extrabold tabular-nums text-slate-700 dark:text-slate-200 ml-2 shrink-0">{fmtM(salary)}</span>
+                  </span>
+                  <span className="flex items-center gap-2 mt-1">
+                    <span className="flex-1 h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                      <span className="block h-full rounded-full" style={{ width: Math.max(2, (salary / cur.rows[0].salary) * 100) + "%", backgroundColor: bucket === "committed" ? color : BUCKETS.find(([b]) => b === bucket)[2] }} />
+                    </span>
+                    <span className="text-[9px] font-bold text-slate-400 w-14 text-right shrink-0">{TYPE_LABEL[type] || type}</span>
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+          <div className="text-[9px] text-slate-400 mt-2 px-1">Tap a season bar to switch. Cap holds for free agents aren't counted. {cur.lines.projected ? "Threshold lines for this season are projected at +5.5%/yr." : ""}</div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════ BIO PANEL (Avg Age tile) ════════════════════════
+function BioPanel({ roster, color, onSelectPlayer }) {
+  const ages = roster.map((p) => Number(p.age)).filter((a) => a > 0);
+  const buckets = [["≤ 23", (a) => a <= 23], ["24–27", (a) => a >= 24 && a <= 27], ["28–31", (a) => a >= 28 && a <= 31], ["32+", (a) => a >= 32]]
+    .map(([lbl, f]) => [lbl, ages.filter(f).length]);
+  const maxB = Math.max(1, ...buckets.map(([, n]) => n));
+  const exp = (p) => { const e = experienceOf(p); return e ? Number(String(e).replace(/\D/g, "")) : null; };
+  const exps = roster.map(exp).filter((e) => e != null);
+  const avgExp = exps.length ? exps.reduce((a, b) => a + b, 0) / exps.length : null;
+  const rookies = roster.filter((p) => exp(p) === 1).length;
+  const drafted = roster.filter((p) => p.draftYear || p.draftPick).length;
+  const list = roster.slice().sort((a, b) => (Number(b.age) || 0) - (Number(a.age) || 0) || a.name.localeCompare(b.name));
+  const draftLine = (p) => {
+    if (isUndrafted(p)) return "Undrafted";
+    const parts = [];
+    if (p.draftYear) parts.push(String(p.draftYear));
+    if (p.draftRound || p.draftPick) parts.push([p.draftRound ? "R" + p.draftRound : "", p.draftPick ? "#" + p.draftPick : ""].filter(Boolean).join(" "));
+    else if (p.draft) parts.push(p.draft);
+    return parts.length ? parts.join(" · ") : "";
+  };
+  return (
+    <div className="mt-4">
+      <div className="grid grid-cols-3 gap-2">
+        <Tile value={avgExp != null ? avgExp.toFixed(1) : "—"} label="Avg Exp" sub="seasons" />
+        <Tile value={rookies} label="Rookies" sub={rookies === 1 ? "first season" : "first season"} />
+        <Tile value={roster.length ? Math.round((drafted / roster.length) * 100) + "%" : "—"} label="Drafted" sub={drafted + " of " + roster.length} />
+      </div>
+      <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-5 mb-1.5 px-1">Age profile</div>
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm px-4 py-3">
+        <div className="grid grid-cols-4 gap-2 items-end h-20">
+          {buckets.map(([lbl, n]) => (
+            <div key={lbl} className="flex flex-col items-center justify-end h-full">
+              <span className="text-[10px] font-extrabold text-slate-700 dark:text-slate-200 mb-1">{n}</span>
+              <div className="w-full rounded-t-md" style={{ height: Math.max(4, (n / maxB) * 52) + "px", backgroundColor: color, opacity: n ? 1 : 0.15 }} />
+              <span className="text-[9px] font-semibold text-slate-400 mt-1.5">{lbl}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-5 mb-1.5 px-1">Roster bios · oldest first</div>
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
+        {list.map((p) => (
+          <button key={p.id} onClick={() => onSelectPlayer(p)} className="w-full flex items-center gap-3 px-4 py-2.5 text-left active:bg-slate-50 dark:active:bg-slate-800">
+            <Avatar p={p} />
+            <span className="flex-1 min-w-0">
+              <span className="flex items-baseline justify-between gap-2">
+                <span className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
+                <span className="text-xs font-extrabold tabular-nums text-slate-700 dark:text-slate-200 shrink-0">{p.age ? p.age + " yrs" : "—"}</span>
+              </span>
+              <span className="block text-[11px] text-slate-400 font-medium truncate">
+                {[courtPos(p), p.height, p.weight ? String(p.weight).replace(/\s*lbs?$/i, "") + " lbs" : "", experienceOf(p) ? experienceOf(p) : ""].filter(Boolean).join(" · ")}
+              </span>
+              <span className="block text-[10px] text-slate-400 truncate">
+                {[draftLine(p), p.college, p.birthplace].filter(Boolean).join(" · ") || "No bio fields yet"}
+              </span>
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function TeamDetail({ team, teams, players, onBack, onSelectPlayer, backLabel }) {
   useEffect(() => { window.scrollTo(0, 0); }, []);
   const abbr = team.abbr || toAbbr(team.name);
   const [seg, setSeg] = useState("roster");
   const [rosterView, setRosterView] = useState("court"); // court | list
   const [statMode, setStatMode] = useState("leaders");
-  const [faOnly, setFaOnly] = useState(false); // Free Agents tile pressed
+  const [cView, setCView] = useState("list"); // list | cap | fa | bio  (which tile is pressed)
+  const faOnly = cView === "fa";
+  const toggleC = (k) => setCView((v) => (v === k ? "list" : k));
+  const faTeam = isFaTeam(team);
   const roster = players.filter((p) => {
     if (p.teamId && p.teamId === team.id) return true; // exact Airtable link - no naming needed
     const t = teamOfPlayer(p);
@@ -1310,7 +1530,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, backLabel })
       </div>
 
       <div className="px-4 -mt-3">
-        <div className="grid grid-cols-3 gap-2">
+        <div className={"grid grid-cols-3 gap-2" + (faTeam && seg !== "contracts" ? " hidden" : "")}>
           {seg === "contracts" ? (() => {
             // Contracts view tiles: payroll · free agents next offseason · avg age (ranked youngest → oldest)
             const fa = faEligible(roster).length;
@@ -1327,9 +1547,9 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, backLabel })
             const ageCls = ageRank ? (ageRank <= 10 ? "text-green-600 dark:text-green-400" : ageRank <= 20 ? "text-yellow-600 dark:text-yellow-400" : "text-red-500 dark:text-red-400") : null;
             return (
               <>
-                <Tile value={payroll ? fmtM(payroll) : "—"} label="Payroll" sub={roster.length + " players"} />
-                <Tile value={fa} label="Free Agents" sub={faOnly ? "tap to show all" : "summer " + (startYear(CURRENT_SEASON) + 1) + " · tap"} onClick={() => setFaOnly((v) => !v)} active={faOnly} activeColor={teamColor(abbr)} />
-                <Tile value={avgAge != null ? avgAge.toFixed(1) : "—"} label="Avg Age" sub={ageRank ? { label: ordinal(ageRank) + (ageRank <= 3 ? " youngest" : ageRank >= ageRanked.length - 2 ? " oldest" : ""), cls: ageCls } : null} />
+                <Tile value={payroll ? fmtM(payroll) : "—"} label="Payroll" sub={roster.length + " players"} onClick={() => toggleC("cap")} active={cView === "cap"} activeColor={teamColor(abbr)} />
+                <Tile value={fa} label="Free Agents" sub={"summer " + (startYear(CURRENT_SEASON) + 1)} onClick={() => toggleC("fa")} active={faOnly} activeColor={teamColor(abbr)} />
+                <Tile value={avgAge != null ? avgAge.toFixed(1) : "—"} label="Avg Age" sub={ageRank ? { label: ordinal(ageRank) + (ageRank <= 3 ? " youngest" : ageRank >= ageRanked.length - 2 ? " oldest" : ""), cls: ageCls } : null} onClick={() => toggleC("bio")} active={cView === "bio"} activeColor={teamColor(abbr)} />
               </>
             );
           })() : (
@@ -1353,7 +1573,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, backLabel })
           ))}
         </div>
 
-        {seg === "roster" && (
+        {seg === "roster" && !faTeam && (
           <div className="flex gap-2 mt-4">
             {[["court", "Court"], ["list", "List"]].map(([k, lbl]) => (
               <button key={k} onClick={() => setRosterView(k)}
@@ -1366,13 +1586,13 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, backLabel })
             ))}
           </div>
         )}
-        {seg === "roster" && rosterView === "court" && (
+        {seg === "roster" && rosterView === "court" && !faTeam && (
           <CourtView roster={roster} abbr={abbr} team={team} onSelectPlayer={onSelectPlayer} />
         )}
         {seg === "stats" && (
           <TeamStatsPanel roster={roster} abbr={abbr} mode={statMode} setMode={setStatMode} onSelectPlayer={onSelectPlayer} />
         )}
-        {seg === "roster" && rosterView === "list" && orderedRoles.map((role) => (
+        {seg === "roster" && (rosterView === "list" || faTeam) && orderedRoles.map((role) => (
           <div key={role}>
             <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">{role}</div>
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
@@ -1424,7 +1644,9 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, backLabel })
             </div>
           </div>
         ))}
-        {seg === "contracts" && (
+        {seg === "contracts" && cView === "cap" && <CapOutlook roster={roster} color={teamColor(abbr)} onSelectPlayer={onSelectPlayer} />}
+        {seg === "contracts" && cView === "bio" && <BioPanel roster={roster} color={teamColor(abbr)} onSelectPlayer={onSelectPlayer} />}
+        {seg === "contracts" && (cView === "list" || cView === "fa") && (
           <>
             <div className="flex items-baseline justify-between mt-6 mb-2 px-1">
               <span className="text-[11px] font-bold tracking-widest text-slate-400 uppercase">{faOnly ? "Free Agent Eligible · " + (startYear(CURRENT_SEASON) + 1) : "Team Contracts"}</span>
