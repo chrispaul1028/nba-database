@@ -285,7 +285,7 @@ export default async function handler(req, res) {
         // per-game whenever we know games played (GP > 1).
         // Example: 1927 PTS / 65 GP = 29.6 PPG.
         if (st.gp != null && st.gp > 1) {
-          for (const k of ["min", "pts", "reb", "ast", "stl", "blk", "tov"]) {
+          for (const k of ["min", "pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "p3m", "p3a", "ftm", "fta"]) {
             if (st[k] != null) st[k] = Math.round((st[k] / st.gp) * 10) / 10;
           }
         }
@@ -381,7 +381,7 @@ export default async function handler(req, res) {
       .sort((a, b) => a.name.localeCompare(b.name));
 
     res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
-    return res.status(200).json({ apiVersion: "v24.0", players: out, teams: teamsOut });
+    return res.status(200).json({ apiVersion: "v25.0", players: out, teams: teamsOut });
   } catch (e) {
     return res.status(500).json({ error: String(e.message || e) });
   }
