@@ -465,7 +465,7 @@ function TeamPill({ team }) {
   if (!abbr) return null;
   const logo = TEAM_LOGOS[abbr];
   if (logo) {
-    return <img src={logo} alt={abbr} className="w-8 h-8 rounded-full object-contain bg-slate-100 dark:bg-slate-800 shrink-0" />;
+    return <img src={logo} alt={abbr} className="w-8 h-8 rounded-full object-contain bg-white p-0.5 shrink-0" />;
   }
   return (
     <span className="text-[10px] font-bold text-white px-2 py-1 rounded-full shrink-0" style={{ backgroundColor: teamColor(abbr) }}>
@@ -619,7 +619,7 @@ const EVENT_COLORS = {
   PO: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300",
   TO: "bg-red-100 text-red-600 dark:bg-red-900/50 dark:text-red-300",
   UFA: "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300",
-  RFA: "bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300",
+  RFA: "bg-red-50 text-red-600 dark:bg-red-900/40 dark:text-red-300",
 };
 
 // When the decision is actually due. An Airtable "Deadline" value on the
@@ -639,7 +639,7 @@ function eventDeadline(ev) {
 function EventPill({ ev, withDate }) {
   if (!ev) return null;
   const cls = EVENT_COLORS[ev.kind] || EVENT_COLORS.UFA;
-  const dl = withDate ? eventDeadline(ev) : null;
+  const dl = withDate && (ev.kind === "PO" || ev.kind === "TO") ? eventDeadline(ev) : null; // deadlines are for options only
   return (
     <span className="inline-flex items-center gap-1.5 min-w-0">
       <span className={"inline-flex shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wide " + cls}>
@@ -834,7 +834,7 @@ function TeamsTab({ teams, players, onSelect }) {
             return (
               <button key={t.id} onClick={() => onSelect(t)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
                 {t.logo ? (
-                  <img src={t.logo} alt="" className="w-11 h-11 rounded-full object-contain bg-slate-100 dark:bg-slate-800 shrink-0" />
+                  <img src={t.logo} alt="" className="w-11 h-11 rounded-full object-contain bg-white p-1 shrink-0" />
                 ) : (
                   <span className="w-11 h-11 rounded-full shrink-0" style={{ backgroundColor: teamColor(abbr) }} />
                 )}
@@ -1006,12 +1006,15 @@ function pickStartingFive(roster, abbr) {
       if (j >= 0) { assigned[j] = occ; assigned[i] = p; used.add(p.id); placed = true; }
     }
   }
-  // pass 4: next man up from the bench, by position then depth
-  const bench = roster.filter((p) => p.role !== "Starter" && healthOf(p) !== "out").sort(bySort);
+  // pass 4: next man up from the bench. Anyone who can play the spot
+  // (a SF covers PF, a PG covers SG…) ranked by minutes per game — the
+  // rotation's most-used player at that spot, not just the exact label.
+  const bench = roster.filter((p) => !used.has(p.id) && healthOf(p) !== "out")
+    .sort((a, b) => (latestStats(b)?.min ?? -1) - (latestStats(a)?.min ?? -1) || bySort(a, b));
   COURT_SLOTS.forEach((s, i) => {
     if (assigned[i]) return;
-    const hit = bench.find((p) => !used.has(p.id) && posOf(p) === s.lbl)
-      || bench.find((p) => !used.has(p.id) && POS_ALIASES[s.lbl].includes(posOf(p)))
+    const hit = bench.find((p) => !used.has(p.id) && fits(p, s.lbl, false))
+      || bench.find((p) => !used.has(p.id) && fits(p, s.lbl, true))
       || bench.find((p) => !used.has(p.id));
     if (hit) take(i, hit, true);
   });
@@ -1125,7 +1128,7 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
         {team && team.logo && (
           <div className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 w-[20%] aspect-square rounded-full overflow-hidden pointer-events-none select-none"
             style={{ top: ftY(0) + "%", opacity: 0.85, animation: "hrbGlow 2.2s ease-in-out .3s 1 both" }}>
-            <img src={team.logo} alt="" className="w-full h-full object-contain" />
+            <img src={team.logo} alt="" className="w-full h-full object-contain rounded-full bg-white/90 p-[6%]" />
             {/* light sweep — the "sparkle" */}
             <span className="absolute inset-0" style={{ background: "linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.55) 50%, transparent 65%)", animation: "hrbSweep 1.6s ease-in-out .5s 1 both" }} />
           </div>
@@ -1590,7 +1593,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, backLabel })
         <button onClick={onBack} className="text-sm font-semibold opacity-80 mb-4">‹ {backLabel || "Teams"}</button>
         <div className="flex items-center gap-4">
           {team.logo ? (
-            <img src={team.logo} alt="" className="w-16 h-16 rounded-full object-contain bg-white/20 shrink-0" />
+            <img src={team.logo} alt="" className="w-16 h-16 rounded-full object-contain bg-white p-1.5 shrink-0" />
           ) : (
             <span className="text-3xl">🏀</span>
           )}
