@@ -1145,10 +1145,9 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
             real floor has it — we see the bottom half of it on a half court */}
         {team && team.logo && (
           <div className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 w-[20%] aspect-square rounded-full overflow-hidden pointer-events-none select-none"
-                        style={{ top: ftY(0) + "%", animation: "hrbGlow 4s ease-in-out 1", backgroundColor: color, padding: "7%" }}>
-            <span className="block w-full h-full rounded-full bg-white overflow-hidden">
-              <img src={team.logo} alt="" className="w-full h-full object-contain p-[8%]" />
-            </span>
+                        style={{ top: ftY(0) + "%", aspectRatio: "1 / 1", animation: "hrbGlow 4s ease-in-out 1", backgroundColor: color }}>
+            <span className="absolute inset-[8%] rounded-full bg-white" />
+            <img src={team.logo} alt="" className="absolute inset-[16%] w-[68%] h-[68%] object-contain" />
             {/* light sweep — the "sparkle" */}
             <span className="absolute inset-0" style={{ background: "linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.55) 50%, transparent 65%)", animation: "hrbSweep 1.6s ease-in-out .5s 1 both" }} />
           </div>
@@ -1731,8 +1730,12 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
                     <span className="w-7 text-center text-[11px] font-extrabold text-slate-400 uppercase shrink-0">{p._slot || courtPos(p) || "—"}</span>
                     <Avatar p={p} />
                     <span className="flex-1 min-w-0">
-                      <span className="flex items-center gap-2">
-                        <span className="flex-1 min-w-0 text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
+                      <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
+                      <span className="flex items-center gap-1.5 mt-0.5 min-w-0">
+                        {cleanNo(p.no) && <span className="text-[11px] text-slate-400 font-medium shrink-0">#{cleanNo(p.no)}</span>}
+                        <StatusBadge status={p.status} />
+                        {p.injuryNotes && <span className="text-[11px] font-semibold text-red-500 truncate min-w-0">{p.injuryNotes}</span>}
+                        <span className="flex-1" />
                         {(() => {
                           const st = latestStats(p), pv = prevStats(p);
                           if (!st || (st.pts == null && st.reb == null && st.ast == null)) return null;
@@ -1740,26 +1743,21 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
                             if (!pv || st[k] == null || pv[k] == null) return null;
                             const d = st[k] - pv[k];
                             if (Math.abs(d) < 0.05) return null;
-                            return <span className={"text-[8px] " + (d > 0 ? "text-emerald-500" : "text-red-500")}>{d > 0 ? "▲" : "▼"}</span>;
+                            return <span className={"text-[7px] leading-none " + (d > 0 ? "text-emerald-500" : "text-red-500")}>{d > 0 ? "▲" : "▼"}</span>;
                           };
                           return (
                             <span className="flex gap-1 shrink-0">
                               {[["G", "gp"], ["PTS", "pts"], ["REB", "reb"], ["AST", "ast"]].map(([lbl, k]) => (
-                                <span key={lbl} className="w-[30px] text-center">
+                                <span key={lbl} className="w-[34px] text-center">
                                   <span className="block text-[8px] font-bold text-slate-400 uppercase">{lbl}</span>
-                                  <span className="block text-[11px] font-extrabold text-slate-800 dark:text-slate-100 tabular-nums">
-                                    {k === "gp" ? (st.gp != null ? Math.round(st.gp) : "—") : (fmt1(st[k]) ?? "—")}{k !== "gp" && <Arrow k={k} />}
+                                  <span className="flex items-center justify-center gap-[2px] text-[11px] font-extrabold text-slate-800 dark:text-slate-100 tabular-nums">
+                                    <span>{k === "gp" ? (st.gp != null ? Math.round(st.gp) : "—") : (fmt1(st[k]) ?? "—")}</span>{k !== "gp" && <Arrow k={k} />}
                                   </span>
                                 </span>
                               ))}
                             </span>
                           );
                         })()}
-                      </span>
-                      <span className="flex items-center gap-1.5 mt-0.5 min-w-0">
-                        {cleanNo(p.no) && <span className="text-[11px] text-slate-400 font-medium">#{cleanNo(p.no)}</span>}
-                        <StatusBadge status={p.status} />
-                        {p.injuryNotes && <span className="text-[11px] font-semibold text-red-500 truncate">{p.injuryNotes}</span>}
                       </span>
                     </span>
                   </button>
