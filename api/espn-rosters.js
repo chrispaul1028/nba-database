@@ -38,6 +38,9 @@ export default async function handler(req, res) {
           headshot: a.headshot?.href || null,
           age: a.age ?? null,
           injury: (a.injuries || [])[0]?.status || null,
+          // ESPN's injury write-up + estimated return, when it has one
+          injuryDetail: (() => { const inj = (a.injuries || [])[0]; if (!inj) return null; const d = inj.details || {}; return [d.type, d.detail, d.side].filter(Boolean).join(" ") || inj.longComment || inj.shortComment || null; })(),
+          injuryReturn: (a.injuries || [])[0]?.details?.returnDate || null,
           espnId: a.id,
         };
         players[nrm(name)] = rec;
