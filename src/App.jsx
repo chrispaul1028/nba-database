@@ -961,6 +961,7 @@ function pickStartingFive(roster, abbr) {
   const used = new Set();
   const assigned = new Array(COURT_SLOTS.length).fill(null);
   const nextUp = new Array(COURT_SLOTS.length).fill(false);
+  const take = (i, p, stepped) => { assigned[i] = p; used.add(p.id); nextUp[i] = !!stepped; };
   // Automated lineup first (last game's actual five from ESPN); Airtable's
   // Role = "Starter" is the fallback when ESPN has nothing yet (preseason,
   // or a name that didn't match).
@@ -982,7 +983,6 @@ function pickStartingFive(roster, abbr) {
   const minFive = roster.slice().sort((a, b) => (latestStats(b)?.min ?? -1) - (latestStats(a)?.min ?? -1)).slice(0, 5);
   const starters = (espnFive || (sortFive.length === 5 ? sortFive : roleFive.length >= 5 ? roleFive : minFive)).slice().sort(bySort);
   const healthyStarters = starters.filter((p) => healthOf(p) !== "out");
-  const take = (i, p, stepped) => { assigned[i] = p; used.add(p.id); nextUp[i] = !!stepped; };
   const byFit = (s) => (a, b) => {
     const ha = heightIn(a) ?? 78, hb = heightIn(b) ?? 78;
     return s.big ? hb - ha : ha - hb;
@@ -1570,7 +1570,30 @@ function BioPanel({ roster, color, onSelectPlayer }) {
   );
 }
 
-function TeamDetail({ team, teams, players, onBack, onSelectPlayer, backLabel }) {
+// Horizontal swipe detector. Fires only on a clear sideways flick so
+// vertical scrolling never triggers it.
+function useSwipe(onLeft, onRight) {
+  const start = React.useRef(null);
+  return {
+    onTouchStart: (e) => { const t = e.touches[0]; start.current = { x: t.clientX, y: t.clientY, t: Date.now() }; },
+    onTouchEnd: (e) => {
+      const s0 = start.current; start.current = null;
+      if (!s0) return;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - s0.x, dy = t.clientY - s0.y;
+      if (Date.now() - s0.t > 600) return;
+      if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 2) return;
+      if (dx > 0) onRight && onRight(); else onLeft && onLeft();
+    },
+  };
+}
+
+function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam, backLabel }) {
+  // swipe right = back; swipe left = next team alphabetically
+  const ordered = useMemo(() => (teams || []).filter((t) => !isFaTeam(t)).slice().sort((a, b) => String(a.name).localeCompare(String(b.name))), [teams]);
+  const idx = ordered.findIndex((t) => t.id === team.id);
+  const nextTeam = idx >= 0 && idx < ordered.length - 1 ? ordered[idx + 1] : null;
+  const swipe = useSwipe(() => { if (nextTeam && onSelectTeam) { onSelectTeam(nextTeam); window.scrollTo(0, 0); } }, onBack);
   useEffect(() => { window.scrollTo(0, 0); }, []);
   const abbr = team.abbr || toAbbr(team.name);
   const [seg, setSeg] = useState("roster");
@@ -1601,7 +1624,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, backLabel })
   }, [roster, abbr, team, LINEUPS[abbr]]);
 
   return (
-    <div className="min-h-screen bg-slate-100 dark:bg-slate-950 pb-24">
+    <div className="min-h-screen bg-slate-100 dark:bg-slate-950 pb-24" {...swipe}>
       <div className="px-5 pb-6 text-white" style={{ backgroundColor: teamColor(abbr), paddingTop: "calc(env(safe-area-inset-top) + 1.25rem)" }}>
         <button onClick={onBack} className="text-sm font-semibold opacity-80 mb-4">‹ {backLabel || "Teams"}</button>
         <div className="flex items-center gap-4">
@@ -2237,6 +2260,7 @@ export default function App() {
           players={players}
           onBack={() => setSelTeam(null)}
           onSelectPlayer={setSel}
+          onSelectTeam={setSelTeam}
           backLabel={tab === "tonight" ? "Matchups" : "Teams"}
         />
       )}
