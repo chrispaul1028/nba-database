@@ -52,6 +52,16 @@ const teamColor2 = (abbr) => TEAM_COLORS2[String(abbr || "").toUpperCase()] || "
 // secondary color for them so the logo doesn't disappear into it.
 const FLIP_CENTER = new Set(["HOU", "CHI", "MIA", "TOR", "ATL", "POR", "WSH", "IND", "NOP", "NO", "DAL", "ORL", "MEM", "CLE", "LAC", "DET", "MIN", "UTAH", "UTA", "BKN", "SAS", "SA"]);
 const centerColor = (abbr) => (FLIP_CENTER.has(String(abbr || "").toUpperCase()) ? teamColor2(abbr) : teamColor(abbr));
+// Per-team floor overrides for courts that don't follow the default scheme.
+// Any key left out falls back to the default.
+//   lines: 3-pt, key, hash marks, restricted area · ft: free-throw circle
+//   half: half-court line · side: sideline/baseline · center: center-circle fill
+//   centerStroke: center-circle outline · floorText: lettering along the sideline
+const COURT_THEMES = {
+  CHI: { lines: "#111111", ft: "#111111", half: "#111111", side: "#111111", center: "none", centerStroke: "#111111",
+         floorText: { lines: ["UNITED", "CENTER"], color: "#111111" } },
+};
+const courtTheme = (abbr) => COURT_THEMES[String(abbr || "").toUpperCase()] || {};
 
 // Full team names -> abbreviations, so a player's current team
 // (which may be stored as "New York Knicks") maps to its color.
@@ -1088,6 +1098,7 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
   const lineup = LINEUPS[String(abbr || "").toUpperCase()];
   const mpg = (p) => latestStats(p)?.min ?? -1;
   const color = teamColor(abbr);
+  const th = courtTheme(abbr);
   // Net rating (PPG − opp PPG) ranked against the league — the NBA version
   // of the NFL app's offense/defense rank tags.
   const netRating = useMemo(() => {
@@ -1143,27 +1154,32 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
           <rect x="17" y="28" width="16" height="19" fill={color} opacity="0.88" />
           <rect x="17" y="28" width="16" height="19" fill="url(#paintTex)" />
           {/* half-court line + full center circle */}
-          <line x1="0" y1="0" x2="50" y2="0" stroke="rgba(255,255,255,0.8)" strokeWidth="0.3" />
-          <circle cx="25" cy="0" r="6" fill={centerColor(abbr)} stroke="rgba(255,255,255,0.9)" strokeWidth="0.3" />
+          <line x1="0" y1="0" x2="50" y2="0" stroke={th.half || "rgba(255,255,255,0.8)"} strokeWidth="0.3" />
+          <circle cx="25" cy="0" r="6" fill={th.center ?? centerColor(abbr)} stroke={th.centerStroke || "rgba(255,255,255,0.9)"} strokeWidth="0.3" />
           {/* three-point line: corners + arc (23.75ft from the rim) */}
-          <path d="M 3 47 L 3 33.3 A 23.75 23.75 0 0 1 47 33.3 L 47 47" fill="none" stroke={color} strokeWidth="0.35" />
+          <path d="M 3 47 L 3 33.3 A 23.75 23.75 0 0 1 47 33.3 L 47 47" fill="none" stroke={th.lines || color} strokeWidth="0.35" />
           {/* key outline in the team color, free-throw circle in the secondary color */}
-          <rect x="17" y="28" width="16" height="19" fill="none" stroke={color} strokeWidth="0.35" />
-          <path d="M 19 28 A 6 6 0 0 1 31 28" fill="none" stroke={teamColor2(abbr)} strokeWidth="0.35" />
-          <path d="M 19 28 A 6 6 0 0 0 31 28" fill="none" stroke={teamColor2(abbr)} strokeWidth="0.35" strokeDasharray="1.2 0.9" opacity="0.8" />
+          <rect x="17" y="28" width="16" height="19" fill="none" stroke={th.lines || color} strokeWidth="0.35" />
+          <path d="M 19 28 A 6 6 0 0 1 31 28" fill="none" stroke={th.ft || teamColor2(abbr)} strokeWidth="0.35" />
+          <path d="M 19 28 A 6 6 0 0 0 31 28" fill="none" stroke={th.ft || teamColor2(abbr)} strokeWidth="0.35" strokeDasharray="1.2 0.9" opacity="0.8" />
           {/* lane hash marks */}
           {[36, 39, 42, 44.5].map((y) => (
             <React.Fragment key={y}>
-              <line x1="16.2" y1={y} x2="17" y2={y} stroke="rgba(255,255,255,0.8)" strokeWidth="0.3" />
-              <line x1="33" y1={y} x2="33.8" y2={y} stroke="rgba(255,255,255,0.8)" strokeWidth="0.3" />
+              <line x1="16.2" y1={y} x2="17" y2={y} stroke={th.lines || "rgba(255,255,255,0.8)"} strokeWidth="0.3" />
+              <line x1="33" y1={y} x2="33.8" y2={y} stroke={th.lines || "rgba(255,255,255,0.8)"} strokeWidth="0.3" />
             </React.Fragment>
           ))}
           {/* restricted area, backboard, rim */}
-          <path d="M 21 45.75 A 4 4 0 0 1 29 45.75" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="0.25" />
+          <path d="M 21 45.75 A 4 4 0 0 1 29 45.75" fill="none" stroke={th.lines || "rgba(255,255,255,0.8)"} strokeWidth="0.25" />
           <line x1="22" y1="43" x2="28" y2="43" stroke="rgba(255,255,255,0.95)" strokeWidth="0.45" />
           <circle cx="25" cy="41.75" r="0.75" fill="none" stroke="#f97316" strokeWidth="0.35" />
           {/* baseline + sidelines */}
-          <rect x="0.15" y={-COURT_TOP_FT} width="49.7" height={COURT_FT - 0.15} fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="0.3" />
+          <rect x="0.15" y={-COURT_TOP_FT} width="49.7" height={COURT_FT - 0.15} fill="none" stroke={th.side || "rgba(255,255,255,0.7)"} strokeWidth="0.3" />
+          {/* floor lettering along the left sideline, just below half court (reads bottom → top) */}
+          {th.floorText && th.floorText.lines.map((t, i) => (
+            <text key={t} x={2.2 + i * 1.6} y={13} fontSize="1.5" fontWeight="800" fontFamily="system-ui, sans-serif" letterSpacing="0.25"
+              fill={th.floorText.color} textAnchor="middle" transform={`rotate(-90 ${2.2 + i * 1.6} 13)`}>{t}</text>
+          ))}
         </svg>
         {/* center-court logo, sitting inside the center circle the way a
             real floor has it — we see the bottom half of it on a half court */}
