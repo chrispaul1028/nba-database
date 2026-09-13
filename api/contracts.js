@@ -43,6 +43,7 @@ const FIELDS = {
   playerAwards: ["Awards", "Accolades", "Honors"],
   teamConference: ["Conference", "Conf"],
   teamHeadCoach: ["Head Coach", "Coach", "HC"],
+  teamArena: ["Arena", "Home Arena", "Venue", "Stadium"],
   teamAsstCoach: ["Assistant Coach", "Assistant", "Asst Coach", "Associate Head Coach", "Lead Assistant"],
   teamDivision: ["Division", "Div"],
   teamWins: ["W", "Wins"],
@@ -235,6 +236,7 @@ export default async function handler(req, res) {
           losses: coerceNum(getField(t.fields, FIELDS.teamLosses)),
           logo: findAnyPhoto(t.fields),
           headCoach: asText(getField(t.fields, FIELDS.teamHeadCoach)),
+          arena: asText(getField(t.fields, FIELDS.teamArena)),
           asstCoach: asText(getField(t.fields, FIELDS.teamAsstCoach)),
         });
       }
@@ -385,7 +387,7 @@ export default async function handler(req, res) {
       .sort((a, b) => a.name.localeCompare(b.name));
 
     res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
-    return res.status(200).json({ apiVersion: "v26.0", players: out, teams: teamsOut });
+    return res.status(200).json({ apiVersion: "v27.0", players: out, teams: teamsOut });
   } catch (e) {
     return res.status(500).json({ error: String(e.message || e) });
   }
