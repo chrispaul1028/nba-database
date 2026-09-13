@@ -107,6 +107,10 @@ const activeOf = (p) => p.contracts.find((c) => c.status === "Active") || p.cont
 function latestStats(p) {
   return p.stats && p.stats.length > 0 ? p.stats[0] : null;
 }
+// The season before the latest one (for trend arrows)
+function prevStats(p) {
+  return p.stats && p.stats.length > 1 ? p.stats[1] : null;
+}
 const fmt1 = (v) => (v == null ? null : Number(v).toFixed(1));
 
 // Inclusive season count: drafted 2014 -> 2025-26 is season #12.
@@ -625,16 +629,17 @@ const EVENT_COLORS = {
 // When the decision is actually due. An Airtable "Deadline" value on the
 // contract year wins; otherwise the CBA's standard dates for that offseason:
 // options must be exercised by June 29, free agency opens June 30 (6pm ET).
+const mdy = (d) => String(d.getMonth() + 1).padStart(2, "0") + "/" + String(d.getDate()).padStart(2, "0") + "/" + d.getFullYear();
 function eventDeadline(ev) {
   if (!ev) return null;
   const yr = startYear(ev.season);             // "2027-2028" → 2027: the summer before that season
   if (ev.deadline) {
     const d = new Date(ev.deadline);
-    return isNaN(d) ? { label: ev.deadline, date: null } : { label: d.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }), date: d };
+    return isNaN(d) ? { label: ev.deadline, date: null } : { label: mdy(d), date: d };
   }
   if (!yr) return null;
   const d = ev.kind === "PO" || ev.kind === "TO" ? new Date(yr, 5, 29) : new Date(yr, 5, 30);
-  return { label: d.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }), date: d, standard: true };
+  return { label: mdy(d), date: d, standard: true };
 }
 function EventPill({ ev, withDate }) {
   if (!ev) return null;
@@ -647,7 +652,7 @@ function EventPill({ ev, withDate }) {
           ? <>Free Agent {startYear(ev.season) ?? seasonTick({ season: ev.season })}</>
           : <>{EVENT_WORDS[ev.kind] || ev.kind} {seasonTick({ season: ev.season })}</>}
       </span>
-      {dl && <span className="text-[9px] font-semibold text-slate-400 truncate">deadline {dl.label}</span>}
+      {dl && <span className="text-[9px] font-semibold text-slate-400 truncate">(deadline {dl.label})</span>}
     </span>
   );
 }
@@ -1140,8 +1145,10 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
             real floor has it — we see the bottom half of it on a half court */}
         {team && team.logo && (
           <div className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 w-[20%] aspect-square rounded-full overflow-hidden pointer-events-none select-none"
-                        style={{ top: ftY(0) + "%", animation: "hrbGlow 4s ease-in-out 1", backgroundColor: color, boxShadow: "inset 0 0 0 2px rgba(255,255,255,0.35)" }}>
-            <img src={team.logo} alt="" className="w-full h-full object-contain p-[9%]" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.35))" }} />
+                        style={{ top: ftY(0) + "%", animation: "hrbGlow 4s ease-in-out 1", backgroundColor: color, padding: "7%" }}>
+            <span className="block w-full h-full rounded-full bg-white overflow-hidden">
+              <img src={team.logo} alt="" className="w-full h-full object-contain p-[8%]" />
+            </span>
             {/* light sweep — the "sparkle" */}
             <span className="absolute inset-0" style={{ background: "linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.55) 50%, transparent 65%)", animation: "hrbSweep 1.6s ease-in-out .5s 1 both" }} />
           </div>
@@ -1153,16 +1160,11 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
         </span>
         {/* availability tag, top-left, same frosted style as the NFL personnel tag */}
         {/* where the five came from — last game's actual starters, or Airtable */}
-        <span className="absolute right-2 top-2 rounded-md bg-black/35 backdrop-blur-sm px-2 py-1 text-[9px] font-extrabold text-white/90 shadow-sm">
+        <span className={"absolute right-2 top-2 rounded-md bg-black/40 backdrop-blur-sm px-2 py-1 text-[9px] font-extrabold shadow-sm " + (automated ? "text-emerald-300" : "text-amber-300")}>
           {automated && lineup
-            ? "Last 5 · " + (lineup.home ? "vs " : "@ ") + lineup.opp + " · " + new Date(lineup.date).toLocaleDateString([], { month: "numeric", day: "numeric" })
-            : source === "sort" ? "Airtable lineup" : "Projected lineup"}
+            ? "Confirmed lineup · " + (lineup.home ? "vs " : "@ ") + lineup.opp + " · " + new Date(lineup.date).toLocaleDateString([], { month: "numeric", day: "numeric" })
+            : "Projected lineup"}
         </span>
-        {netRating && (
-          <span className="absolute right-2 top-8 rounded-md bg-black/35 backdrop-blur-sm px-2 py-1 text-[9px] font-extrabold text-white/90 shadow-sm">
-            Net {netRating.value > 0 ? "+" : ""}{netRating.value.toFixed(1)}{netRating.rank ? " · " + ordinal(netRating.rank) : ""}
-          </span>
-        )}
         {(outCount > 0 || gtdCount > 0) && (
           <span className="absolute left-2 top-2 rounded-md bg-black/35 backdrop-blur-sm px-2 py-1 text-[10px] font-extrabold text-white/90 shadow-sm">
             {[outCount > 0 ? `${outCount} out` : "", gtdCount > 0 ? `${gtdCount} GTD` : ""].filter(Boolean).join(" · ")}
@@ -1517,7 +1519,7 @@ function BioPanel({ roster, color, onSelectPlayer }) {
   const exps = roster.map(exp).filter((e) => e != null);
   const avgExp = exps.length ? exps.reduce((a, b) => a + b, 0) / exps.length : null;
   const rookies = roster.filter((p) => exp(p) === 1).length;
-  const drafted = roster.filter((p) => p.draftYear || p.draftPick).length;
+  const drafted = roster.filter((p) => !isUndrafted(p) && (p.draftYear || p.draftPick || p.draft)).length;
   const list = roster.slice().sort((a, b) => (Number(b.age) || 0) - (Number(a.age) || 0) || a.name.localeCompare(b.name));
   const draftLine = (p) => {
     if (isUndrafted(p)) return "Undrafted";
@@ -1557,7 +1559,7 @@ function BioPanel({ roster, color, onSelectPlayer }) {
                 <span className="text-xs font-extrabold tabular-nums text-slate-700 dark:text-slate-200 shrink-0">{p.age ? p.age + " yrs" : "—"}</span>
               </span>
               <span className="block text-[11px] text-slate-400 font-medium truncate">
-                {[courtPos(p), p.height, p.weight ? String(p.weight).replace(/\s*lbs?$/i, "") + " lbs" : "", experienceOf(p) ? experienceOf(p) : ""].filter(Boolean).join(" · ")}
+                {[p.height, p.weight ? String(p.weight).replace(/\s*lbs?$/i, "") + " lbs" : "", experienceOf(p) ? experienceOf(p) : ""].filter(Boolean).join(" · ")}
               </span>
               <span className="block text-[10px] text-slate-400 truncate">
                 {[draftLine(p), p.college, p.birthplace].filter(Boolean).join(" · ") || "No bio fields yet"}
@@ -1572,6 +1574,7 @@ function BioPanel({ roster, color, onSelectPlayer }) {
 
 // Horizontal swipe detector. Fires only on a clear sideways flick so
 // vertical scrolling never triggers it.
+const SWIPE_DEPTH = { n: 0 }; // how many teams deep the swipe trail goes
 function useSwipe(onLeft, onRight) {
   const start = React.useRef(null);
   return {
@@ -1593,7 +1596,13 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
   const ordered = useMemo(() => (teams || []).filter((t) => !isFaTeam(t)).slice().sort((a, b) => String(a.name).localeCompare(String(b.name))), [teams]);
   const idx = ordered.findIndex((t) => t.id === team.id);
   const nextTeam = idx >= 0 && idx < ordered.length - 1 ? ordered[idx + 1] : null;
-  const swipe = useSwipe(() => { if (nextTeam && onSelectTeam) { onSelectTeam(nextTeam); window.scrollTo(0, 0); } }, onBack);
+  const prevTeam = idx > 0 ? ordered[idx - 1] : null;
+  // Swipe left: next team. Swipe right: previous team if you've been
+  // flipping through teams, otherwise back to the list.
+  const swipe = useSwipe(
+    () => { if (nextTeam && onSelectTeam) { SWIPE_DEPTH.n++; onSelectTeam(nextTeam); window.scrollTo(0, 0); } },
+    () => { if (SWIPE_DEPTH.n > 0 && prevTeam && onSelectTeam) { SWIPE_DEPTH.n--; onSelectTeam(prevTeam); window.scrollTo(0, 0); } else { SWIPE_DEPTH.n = 0; onBack(); } }
+  );
   useEffect(() => { window.scrollTo(0, 0); }, []);
   const abbr = team.abbr || toAbbr(team.name);
   const [seg, setSeg] = useState("roster");
@@ -1724,34 +1733,34 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
                     <span className="flex-1 min-w-0">
                       <span className="flex items-center gap-2">
                         <span className="flex-1 min-w-0 text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
-                        {p.rating2k != null && <Rating2kBadge r={p.rating2k} />}
-                      </span>
-                      <span className="flex items-center gap-1.5 mt-0.5">
-                        {cleanNo(p.no) && <span className="text-[11px] text-slate-400 font-medium">#{cleanNo(p.no)}</span>}
-                        <StatusBadge status={p.status} />
-                        <span className="flex-1" />
                         {(() => {
-                          const st = latestStats(p);
-                          if (st && (st.pts != null || st.reb != null || st.ast != null)) {
-                            return (
-                              <span className="flex gap-2 shrink-0">
-                                {[["G", st.gp != null ? String(Math.round(st.gp)) : null], ["PTS", fmt1(st.pts)], ["REB", fmt1(st.reb)], ["AST", fmt1(st.ast)]].map(([lbl, v]) => (
-                                  <span key={lbl} className="w-7 text-center">
-                                    <span className="block text-[8px] font-bold text-slate-400 uppercase">{lbl}</span>
-                                    <span className="block text-[11px] font-extrabold text-slate-800 dark:text-slate-100 tabular-nums">{v ?? "—"}</span>
+                          const st = latestStats(p), pv = prevStats(p);
+                          if (!st || (st.pts == null && st.reb == null && st.ast == null)) return null;
+                          const Arrow = ({ k }) => {
+                            if (!pv || st[k] == null || pv[k] == null) return null;
+                            const d = st[k] - pv[k];
+                            if (Math.abs(d) < 0.05) return null;
+                            return <span className={"text-[8px] " + (d > 0 ? "text-emerald-500" : "text-red-500")}>{d > 0 ? "▲" : "▼"}</span>;
+                          };
+                          return (
+                            <span className="flex gap-1 shrink-0">
+                              {[["G", "gp"], ["PTS", "pts"], ["REB", "reb"], ["AST", "ast"]].map(([lbl, k]) => (
+                                <span key={lbl} className="w-[30px] text-center">
+                                  <span className="block text-[8px] font-bold text-slate-400 uppercase">{lbl}</span>
+                                  <span className="block text-[11px] font-extrabold text-slate-800 dark:text-slate-100 tabular-nums">
+                                    {k === "gp" ? (st.gp != null ? Math.round(st.gp) : "—") : (fmt1(st[k]) ?? "—")}{k !== "gp" && <Arrow k={k} />}
                                   </span>
-                                ))}
-                              </span>
-                            );
-                          }
-                          return currentSalary(p) > 0 ? (
-                            <span className="text-xs font-extrabold text-slate-600 dark:text-slate-300 shrink-0">{fmtM(currentSalary(p))}</span>
-                          ) : null;
+                                </span>
+                              ))}
+                            </span>
+                          );
                         })()}
                       </span>
-                      {p.injuryNotes && (
-                        <span className="block text-[11px] font-semibold text-red-500 truncate mt-0.5">{p.injuryNotes}</span>
-                      )}
+                      <span className="flex items-center gap-1.5 mt-0.5 min-w-0">
+                        {cleanNo(p.no) && <span className="text-[11px] text-slate-400 font-medium">#{cleanNo(p.no)}</span>}
+                        <StatusBadge status={p.status} />
+                        {p.injuryNotes && <span className="text-[11px] font-semibold text-red-500 truncate">{p.injuryNotes}</span>}
+                      </span>
                     </span>
                   </button>
                 ))}
@@ -2252,7 +2261,7 @@ export default function App() {
         <TonightTab players={players} teams={teams} onSelect={setSel} onSelectTeam={setSelTeam} />
       )}
       {players && tab === "teams" && !selTeam && (
-        <TeamsTab teams={teams} players={players} onSelect={setSelTeam} />
+        <TeamsTab teams={teams} players={players} onSelect={(t) => { SWIPE_DEPTH.n = 0; setSelTeam(t); }} />
       )}
       {players && (tab === "teams" || tab === "tonight") && selTeam && (
         <TeamDetail
