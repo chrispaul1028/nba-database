@@ -173,6 +173,16 @@ function espnOf(p) {
   return team ? ESPN_BY_NAME[String(team).toUpperCase() + "|" + espnNrm(p.name).split(" ").pop()] || null : null;
 }
 const photoOf = (p) => p.photo || espnOf(p)?.headshot || null;
+// Injury write-up for a player: the Airtable Injury Notes field, else ESPN's
+// description; plus ESPN's estimated return date when it publishes one.
+function injuryLine(p) {
+  const e = espnOf(p);
+  const note = p.injuryNotes || e?.injuryDetail || "";
+  const ret = e?.injuryReturn ? new Date(e.injuryReturn) : null;
+  const retTxt = ret && !isNaN(ret) ? "est. return " + ret.toLocaleDateString([], { month: "short", day: "numeric" }) : "";
+  return [note, retTxt].filter(Boolean).join(" · ");
+}
+const isActiveStatus = (p) => { const st = String(p.status || "").toLowerCase(); return !st || st.includes("active") || st.includes("available"); };
 const GENERIC_POS = new Set(["", "G", "F", "G-F", "F-G", "F-C", "C-F", "G/F", "F/C", "GUARD", "FORWARD", "WING", "BIG"]);
 // Court position: Airtable's exact label (PG/SG/SF/PF/C) if it has one,
 // otherwise ESPN's, otherwise whatever Airtable said.
@@ -187,6 +197,23 @@ function courtPos(p) {
 function heightIn(p) {
   const m = String(p.height || espnOf(p)?.height || "").match(/(\d)\D+(\d{1,2})/);
   return m ? Number(m[1]) * 12 + Number(m[2]) : null;
+}
+
+const SWIPE_DEPTH = { n: 0 }; // how many teams deep the swipe trail goes
+function useSwipe(onLeft, onRight) {
+  const start = React.useRef(null);
+  return {
+    onTouchStart: (e) => { const t = e.touches[0]; start.current = { x: t.clientX, y: t.clientY, t: Date.now() }; },
+    onTouchEnd: (e) => {
+      const s0 = start.current; start.current = null;
+      if (!s0) return;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - s0.x, dy = t.clientY - s0.y;
+      if (Date.now() - s0.t > 600) return;
+      if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 2) return;
+      if (dx > 0) onRight && onRight(); else onLeft && onLeft();
+    },
+  };
 }
 
 // ═══════════════ SHARED PIECES ═══════════════════════════════════
@@ -330,11 +357,12 @@ function BioRow({ k, v }) {
 // ═══════════════ PLAYER DETAIL ═══════════════════════════════════
 function PlayerDetail({ p, onBack, backLabel, mode = "full" }) {
   useEffect(() => { window.scrollTo(0, 0); }, []);
+  const swipe = useSwipe(null, onBack);
   const act = activeOf(p);
   const past = p.contracts.filter((c) => c !== act);
   const no = cleanNo(p.no);
   return (
-    <div className="min-h-screen bg-slate-100 dark:bg-slate-950 pb-24">
+    <div className="min-h-screen bg-slate-100 dark:bg-slate-950 pb-24" {...swipe}>
       <div className="px-5 pb-6 text-white" style={{ backgroundColor: playerHeaderColor(p), paddingTop: "calc(env(safe-area-inset-top) + 1.25rem)" }}>
         <button onClick={onBack} className="text-sm font-semibold opacity-80 mb-4">‹ {backLabel}</button>
         <div className="flex items-center gap-4">
@@ -1586,23 +1614,6 @@ function BioPanel({ roster, color, onSelectPlayer }) {
 
 // Horizontal swipe detector. Fires only on a clear sideways flick so
 // vertical scrolling never triggers it.
-const SWIPE_DEPTH = { n: 0 }; // how many teams deep the swipe trail goes
-function useSwipe(onLeft, onRight) {
-  const start = React.useRef(null);
-  return {
-    onTouchStart: (e) => { const t = e.touches[0]; start.current = { x: t.clientX, y: t.clientY, t: Date.now() }; },
-    onTouchEnd: (e) => {
-      const s0 = start.current; start.current = null;
-      if (!s0) return;
-      const t = e.changedTouches[0];
-      const dx = t.clientX - s0.x, dy = t.clientY - s0.y;
-      if (Date.now() - s0.t > 600) return;
-      if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 2) return;
-      if (dx > 0) onRight && onRight(); else onLeft && onLeft();
-    },
-  };
-}
-
 function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam, backLabel }) {
   // swipe right = back; swipe left = next team alphabetically
   const ordered = useMemo(() => (teams || []).filter((t) => !isFaTeam(t)).slice().sort((a, b) => String(a.name).localeCompare(String(b.name))), [teams]);
@@ -1744,11 +1755,11 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
                     <span className="w-7 text-center text-[11px] font-extrabold text-slate-400 uppercase shrink-0">{p._slot || courtPos(p) || "—"}</span>
                     <Avatar p={p} />
                     <span className="flex-1 min-w-0">
-                      <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
+                      <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
+                        {cleanNo(p.no) && <span className="text-slate-400 font-semibold mr-1.5">#{cleanNo(p.no)}</span>}{p.name}
+                      </span>
                       <span className="flex items-center gap-1.5 mt-0.5 min-w-0">
-                        {cleanNo(p.no) && <span className="text-[11px] text-slate-400 font-medium shrink-0">#{cleanNo(p.no)}</span>}
-                        <StatusBadge status={p.status} />
-                        {p.injuryNotes && <span className="text-[11px] font-semibold text-red-500 truncate min-w-0">{p.injuryNotes}</span>}
+                        {!isActiveStatus(p) && <StatusBadge status={p.status} />}
                         <span className="flex-1" />
                         {(() => {
                           const st = latestStats(p), pv = prevStats(p);
@@ -1773,6 +1784,9 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
                           );
                         })()}
                       </span>
+                      {!isActiveStatus(p) && injuryLine(p) && (
+                        <span className="block text-[11px] font-semibold text-red-500 mt-1 leading-snug">{injuryLine(p)}</span>
+                      )}
                     </span>
                   </button>
                 ))}
