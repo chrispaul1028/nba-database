@@ -965,9 +965,22 @@ function pickStartingFive(roster, abbr) {
   // Role = "Starter" is the fallback when ESPN has nothing yet (preseason,
   // or a name that didn't match).
   const espnFive = espnStartersFor(roster, abbr);
+  // Airtable Sort Priority 1–5 is the hand-set lineup: 1 PG · 2 SG · 3 SF ·
+  // 4 PF · 5 C. When all five exist it wins outright (an OUT starter still
+  // drops and the bench covers his spot). ESPN's real five overrides it in
+  // season.
+  const SORT_SLOT = { 1: "PG", 2: "SG", 3: "SF", 4: "PF", 5: "C" };
+  const sortFive = [1, 2, 3, 4, 5].map((n) => roster.find((p) => Number(p.sort) === n)).filter(Boolean);
+  if (!espnFive && sortFive.length === 5) {
+    for (const p of sortFive) {
+      if (healthOf(p) === "out") continue;
+      const i = COURT_SLOTS.findIndex((s) => s.lbl === SORT_SLOT[Number(p.sort)]);
+      if (i >= 0 && !assigned[i]) take(i, p);
+    }
+  }
   const roleFive = roster.filter((p) => /^starter/i.test(String(p.role || "")));
   const minFive = roster.slice().sort((a, b) => (latestStats(b)?.min ?? -1) - (latestStats(a)?.min ?? -1)).slice(0, 5);
-  const starters = (espnFive || (roleFive.length >= 5 ? roleFive : minFive)).slice().sort(bySort);
+  const starters = (espnFive || (sortFive.length === 5 ? sortFive : roleFive.length >= 5 ? roleFive : minFive)).slice().sort(bySort);
   const healthyStarters = starters.filter((p) => healthOf(p) !== "out");
   const take = (i, p, stepped) => { assigned[i] = p; used.add(p.id); nextUp[i] = !!stepped; };
   const byFit = (s) => (a, b) => {
@@ -1024,7 +1037,7 @@ function pickStartingFive(roster, abbr) {
     const hit = starters.find((p) => !used.has(p.id)) || roster.filter((p) => !used.has(p.id)).sort(bySort)[0];
     if (hit) take(i, hit);
   });
-  return { assigned, nextUp, used, automated: !!espnFive };
+  return { assigned, nextUp, used, automated: !!espnFive, source: espnFive ? "espn" : sortFive.length === 5 ? "sort" : "auto" };
 }
 
 // Everything the court and the list view share: the five (in slot order),
@@ -1042,7 +1055,7 @@ function lineupOf(roster, abbr) {
 }
 
 function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
-  const { assigned, nextUp, used, automated, benchGroups, bench } = useMemo(() => lineupOf(roster, abbr), [roster, abbr, LINEUPS[abbr]]);
+  const { assigned, nextUp, used, automated, source, benchGroups, bench } = useMemo(() => lineupOf(roster, abbr), [roster, abbr, LINEUPS[abbr]]);
   const lineup = LINEUPS[String(abbr || "").toUpperCase()];
   const mpg = (p) => latestStats(p)?.min ?? -1;
   const color = teamColor(abbr);
@@ -1127,8 +1140,8 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
             real floor has it — we see the bottom half of it on a half court */}
         {team && team.logo && (
           <div className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 w-[20%] aspect-square rounded-full overflow-hidden pointer-events-none select-none"
-            style={{ top: ftY(0) + "%", opacity: 0.85, animation: "hrbGlow 2.2s ease-in-out .3s 1 both" }}>
-            <img src={team.logo} alt="" className="w-full h-full object-contain rounded-full bg-white/90 p-[6%]" />
+                        style={{ top: ftY(0) + "%", animation: "hrbGlow 4s ease-in-out 1", backgroundColor: color, boxShadow: "inset 0 0 0 2px rgba(255,255,255,0.35)" }}>
+            <img src={team.logo} alt="" className="w-full h-full object-contain p-[9%]" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.35))" }} />
             {/* light sweep — the "sparkle" */}
             <span className="absolute inset-0" style={{ background: "linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.55) 50%, transparent 65%)", animation: "hrbSweep 1.6s ease-in-out .5s 1 both" }} />
           </div>
@@ -1143,7 +1156,7 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
         <span className="absolute right-2 top-2 rounded-md bg-black/35 backdrop-blur-sm px-2 py-1 text-[9px] font-extrabold text-white/90 shadow-sm">
           {automated && lineup
             ? "Last 5 · " + (lineup.home ? "vs " : "@ ") + lineup.opp + " · " + new Date(lineup.date).toLocaleDateString([], { month: "numeric", day: "numeric" })
-            : "Airtable starters"}
+            : source === "sort" ? "Airtable lineup" : "Projected lineup"}
         </span>
         {netRating && (
           <span className="absolute right-2 top-8 rounded-md bg-black/35 backdrop-blur-sm px-2 py-1 text-[9px] font-extrabold text-white/90 shadow-sm">
