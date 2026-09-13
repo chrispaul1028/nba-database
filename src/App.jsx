@@ -34,6 +34,24 @@ const TEAM_COLORS = {
   POR: "#E03A3E", UTA: "#002B5C", UTAH: "#002B5C", LAC: "#C8102E",
   SA: "#000000", NO: "#0C2340", // ESPN spellings
 };
+// Secondary color per team (free-throw circle, and the center circle for
+// teams whose logo is the same color as their primary).
+const TEAM_COLORS2 = {
+  NY: "#F58426", DAL: "#B8C4CA", ATL: "#FDB927", OKC: "#EF6024",
+  MIN: "#236192", DEN: "#FEC524", IND: "#002D62", BOS: "#BA9653",
+  PHI: "#ED174C", LAL: "#FDB927", GSW: "#1D428A", GS: "#1D428A",
+  MIA: "#F9A01B", MIL: "#EEE1C6", CHI: "#000000", CLE: "#FDBB30",
+  TOR: "#000000", BKN: "#FFFFFF", WSH: "#002B5C", ORL: "#C4CED4",
+  CHA: "#00788C", DET: "#C8102E", HOU: "#000000", SAS: "#C4CED4",
+  MEM: "#12173F", NOP: "#C8102E", PHX: "#1D1160", SAC: "#63727A",
+  POR: "#000000", UTA: "#F9A01B", UTAH: "#F9A01B", LAC: "#1D428A",
+  SA: "#C4CED4", NO: "#C8102E",
+};
+const teamColor2 = (abbr) => TEAM_COLORS2[String(abbr || "").toUpperCase()] || "#F59E0B";
+// Teams whose logo is mostly the primary color — the center circle uses the
+// secondary color for them so the logo doesn't disappear into it.
+const FLIP_CENTER = new Set(["HOU", "CHI", "MIA", "TOR", "ATL", "POR", "WSH", "IND", "NOP", "NO", "DAL", "ORL", "MEM", "CLE", "LAC", "DET", "MIN", "UTAH", "UTA", "BKN", "SAS", "SA"]);
+const centerColor = (abbr) => (FLIP_CENTER.has(String(abbr || "").toUpperCase()) ? teamColor2(abbr) : teamColor(abbr));
 
 // Full team names -> abbreviations, so a player's current team
 // (which may be stored as "New York Knicks") maps to its color.
@@ -1120,13 +1138,13 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
           <rect x="17" y="28" width="16" height="19" fill="url(#paintTex)" />
           {/* half-court line + full center circle */}
           <line x1="0" y1="0" x2="50" y2="0" stroke="rgba(255,255,255,0.8)" strokeWidth="0.3" />
-          <circle cx="25" cy="0" r="6" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth="0.3" />
+          <circle cx="25" cy="0" r="6" fill={centerColor(abbr)} stroke="rgba(255,255,255,0.9)" strokeWidth="0.3" />
           {/* three-point line: corners + arc (23.75ft from the rim) */}
-          <path d="M 3 47 L 3 33.3 A 23.75 23.75 0 0 1 47 33.3 L 47 47" fill="none" stroke="rgba(255,255,255,0.9)" strokeWidth="0.3" />
-          {/* key outline + free-throw circle */}
-          <rect x="17" y="28" width="16" height="19" fill="none" stroke="rgba(255,255,255,0.9)" strokeWidth="0.3" />
-          <path d="M 19 28 A 6 6 0 0 1 31 28" fill="none" stroke="rgba(255,255,255,0.9)" strokeWidth="0.3" />
-          <path d="M 19 28 A 6 6 0 0 0 31 28" fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth="0.3" strokeDasharray="1.2 0.9" />
+          <path d="M 3 47 L 3 33.3 A 23.75 23.75 0 0 1 47 33.3 L 47 47" fill="none" stroke={color} strokeWidth="0.35" />
+          {/* key outline in the team color, free-throw circle in the secondary color */}
+          <rect x="17" y="28" width="16" height="19" fill="none" stroke={color} strokeWidth="0.35" />
+          <path d="M 19 28 A 6 6 0 0 1 31 28" fill="none" stroke={teamColor2(abbr)} strokeWidth="0.35" />
+          <path d="M 19 28 A 6 6 0 0 0 31 28" fill="none" stroke={teamColor2(abbr)} strokeWidth="0.35" strokeDasharray="1.2 0.9" opacity="0.8" />
           {/* lane hash marks */}
           {[36, 39, 42, 44.5].map((y) => (
             <React.Fragment key={y}>
@@ -1144,19 +1162,14 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
         {/* center-court logo, sitting inside the center circle the way a
             real floor has it — we see the bottom half of it on a half court */}
         {team && team.logo && (
-          <div className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 w-[20%] aspect-square rounded-full overflow-hidden pointer-events-none select-none"
-                        style={{ top: ftY(0) + "%", aspectRatio: "1 / 1", animation: "hrbGlow 4s ease-in-out 1", backgroundColor: color }}>
-            <span className="absolute inset-[8%] rounded-full bg-white" />
-            <img src={team.logo} alt="" className="absolute inset-[16%] w-[68%] h-[68%] object-contain" />
+          <div className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 w-[24%] rounded-full overflow-hidden pointer-events-none select-none"
+            style={{ top: ftY(0) + "%", aspectRatio: "1 / 1", animation: "hrbGlow 4s ease-in-out 1" }}>
+            <img src={team.logo} alt="" className="absolute inset-[18%] w-[64%] h-[64%] object-contain" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.3))" }} />
             {/* light sweep — the "sparkle" */}
             <span className="absolute inset-0" style={{ background: "linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.55) 50%, transparent 65%)", animation: "hrbSweep 1.6s ease-in-out .5s 1 both" }} />
           </div>
         )}
-        {/* painted-on team name along the baseline, like arena floor lettering */}
-        <span className="absolute inset-x-0 bottom-[2.5%] text-center font-black text-[15px] tracking-[0.35em] pl-[0.35em] uppercase text-white/85 select-none pointer-events-none"
-          style={{ WebkitTextStroke: "0.5px rgba(0,0,0,0.3)", textShadow: "0 1px 0 rgba(0,0,0,0.25)" }}>
-          {nick}
-        </span>
+
         {/* availability tag, top-left, same frosted style as the NFL personnel tag */}
         {/* where the five came from — last game's actual starters, or Airtable */}
         <span className={"absolute right-2 top-2 rounded-md bg-black/40 backdrop-blur-sm px-2 py-1 text-[9px] font-extrabold shadow-sm " + (automated ? "text-emerald-300" : "text-amber-300")}>
@@ -1653,6 +1666,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
                 return ord ? `${ord} in ${team.division} Division` : `${team.division} Division`;
               })()}
             </div>
+            {team.arena && <div className="text-[11px] opacity-70 font-semibold mt-0.5 truncate">🏟 {team.arena}</div>}
           </div>
         </div>
       </div>
