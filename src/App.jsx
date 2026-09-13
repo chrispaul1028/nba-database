@@ -1008,100 +1008,78 @@ function espnStartersFor(roster, abbr) {
   const hits = roster.filter((p) => names.has(espnNrm(p.name)) || (lasts.has(lastKey(p.name)) && roster.filter((q) => lastKey(q.name) === lastKey(p.name)).length === 1));
   return hits.length >= 4 ? hits : null; // need most of the five to trust it
 }
+// Airtable is the single source of truth until ESPN confirms a lineup:
+//   Role           → Starter / Bench / Reserve / Two-Way
+//   Sort Priority  → position number for EVERY player: 1 PG · 2 SG · 3 SF · 4 PF · 5 C
+// The five with Role = Starter go on the court in their Sort Priority slot.
+// A starter who is OUT/IR drops to the bench and the healthy Bench/Reserve
+// player with the same position number (most minutes first) takes his spot.
+const SLOT_OF_SORT = { 1: "PG", 2: "SG", 3: "SF", 4: "PF", 5: "C" };
+const roleOf = (p) => { const r = String(p.role || "").toLowerCase(); return r.includes("start") ? "Starter" : r.includes("bench") ? "Bench" : r.includes("reserve") ? "Reserves" : /two\s*-?\s*way/.test(r) ? "Two-Way" : "Reserves"; };
+const mpgOf = (p) => latestStats(p)?.min ?? -1;
+const isTwoWay = (p) => roleOf(p) === "Two-Way" || /two\s*-?\s*way/i.test(String(activeOf(p)?.kind || ""));
+const slotOfPlayer = (p) => SLOT_OF_SORT[Number(p.sort)] || (POS_ALIASES.PG.includes(courtPos(p)) && courtPos(p) === "PG" ? "PG" : courtPos(p));
+const byMinutes = (a, b) => mpgOf(b) - mpgOf(a) || (Number(a.sort) || 99) - (Number(b.sort) || 99);
+
 function pickStartingFive(roster, abbr) {
   const used = new Set();
   const assigned = new Array(COURT_SLOTS.length).fill(null);
   const nextUp = new Array(COURT_SLOTS.length).fill(false);
   const take = (i, p, stepped) => { assigned[i] = p; used.add(p.id); nextUp[i] = !!stepped; };
-  // Automated lineup first (last game's actual five from ESPN); Airtable's
-  // Role = "Starter" is the fallback when ESPN has nothing yet (preseason,
-  // or a name that didn't match).
+  const slotIdx = (lbl) => COURT_SLOTS.findIndex((s) => s.lbl === lbl);
   const espnFive = espnStartersFor(roster, abbr);
-  // Airtable Sort Priority 1–5 is the hand-set lineup: 1 PG · 2 SG · 3 SF ·
-  // 4 PF · 5 C. When all five exist it wins outright (an OUT starter still
-  // drops and the bench covers his spot). ESPN's real five overrides it in
-  // season.
-  const SORT_SLOT = { 1: "PG", 2: "SG", 3: "SF", 4: "PF", 5: "C" };
-  const sortFive = [1, 2, 3, 4, 5].map((n) => roster.find((p) => Number(p.sort) === n)).filter(Boolean);
-  if (!espnFive && sortFive.length === 5) {
-    for (const p of sortFive) {
+
+  if (espnFive) {
+    // Confirmed lineup from ESPN's last box score: slot by position number,
+    // then by position label, then wherever is open.
+    const pool = espnFive.slice().sort(byMinutes);
+    for (const p of pool) { const i = slotIdx(slotOfPlayer(p)); if (i >= 0 && !assigned[i]) take(i, p); }
+    for (const p of pool) { if (used.has(p.id)) continue; const i = COURT_SLOTS.findIndex((s, k) => !assigned[k] && POS_ALIASES[s.lbl].includes(courtPos(p))); if (i >= 0) take(i, p); }
+    for (const p of pool) { if (used.has(p.id)) continue; const i = assigned.findIndex((x) => !x); if (i >= 0) take(i, p); }
+  } else {
+    // Airtable: Role = Starter, slot = Sort Priority
+    const starters = roster.filter((p) => roleOf(p) === "Starter").sort(byMinutes);
+    for (const p of starters) {
       if (healthOf(p) === "out") continue;
-      const i = COURT_SLOTS.findIndex((s) => s.lbl === SORT_SLOT[Number(p.sort)]);
+      const i = slotIdx(slotOfPlayer(p));
       if (i >= 0 && !assigned[i]) take(i, p);
     }
-  }
-  const roleFive = roster.filter((p) => /^starter/i.test(String(p.role || "")));
-  const minFive = roster.slice().sort((a, b) => (latestStats(b)?.min ?? -1) - (latestStats(a)?.min ?? -1)).slice(0, 5);
-  const starters = (espnFive || (sortFive.length === 5 ? sortFive : roleFive.length >= 5 ? roleFive : minFive)).slice().sort(bySort);
-  const healthyStarters = starters.filter((p) => healthOf(p) !== "out");
-  const byFit = (s) => (a, b) => {
-    const ha = heightIn(a) ?? 78, hb = heightIn(b) ?? 78;
-    return s.big ? hb - ha : ha - hb;
-  };
-  // pass 1: exact position. If two starters are both tagged "SF", the
-  // shorter one keeps the wing and the taller one moves to PF — height
-  // breaks every tie, so OG (6-7) lands at PF over Bridges (6-6).
-  COURT_SLOTS.forEach((s, i) => {
-    const hit = healthyStarters.filter((p) => !used.has(p.id) && posOf(p) === s.lbl).sort(byFit(s))[0];
-    if (hit) take(i, hit);
-  });
-  // pass 2: compatible position (G fills PG/SG, F fills SF/PF…), same
-  // height tie-break.
-  COURT_SLOTS.forEach((s, i) => {
-    if (assigned[i]) return;
-    const hit = healthyStarters.filter((p) => !used.has(p.id) && POS_ALIASES[s.lbl].includes(posOf(p))).sort(byFit(s))[0];
-    if (hit) take(i, hit);
-  });
-  // pass 3: a starter whose natural spots are full. Slide a neighbor one
-  // step (PF → C, SG → PG, …) to open a compatible slot for him. A forward
-  // never lands at PG this way — if nothing opens, he sits and the bench
-  // fills the hole with the right position instead.
-  const STRETCH = { PG: ["SG"], SG: ["PG", "SF"], SF: ["SG", "PF"], PF: ["SF", "C"], C: ["PF"] };
-  const fits = (p, lbl, loose) => POS_ALIASES[lbl].includes(posOf(p)) || (loose && STRETCH[lbl].some((n) => POS_ALIASES[n].includes(posOf(p))));
-  for (const p of healthyStarters.filter((p) => !used.has(p.id))) {
-    let placed = false;
-    for (let i = 0; i < COURT_SLOTS.length && !placed; i++) {
-      const s = COURT_SLOTS[i];
-      if (!fits(p, s.lbl, false)) continue;
-      if (!assigned[i]) { take(i, p); placed = true; break; }
-      // occupied: can the occupant step to an empty neighboring slot?
-      const occ = assigned[i];
-      const j = COURT_SLOTS.findIndex((t, k) => !assigned[k] && STRETCH[s.lbl].includes(t.lbl) && fits(occ, t.lbl, true));
-      if (j >= 0) { assigned[j] = occ; assigned[i] = p; used.add(p.id); placed = true; }
+    // a healthy starter whose slot was taken (two 3s, or no number) → first open compatible slot
+    for (const p of starters) {
+      if (used.has(p.id) || healthOf(p) === "out") continue;
+      const i = COURT_SLOTS.findIndex((s, k) => !assigned[k] && POS_ALIASES[s.lbl].includes(courtPos(p)));
+      if (i >= 0) take(i, p);
     }
   }
-  // pass 4: next man up from the bench. Anyone who can play the spot
-  // (a SF covers PF, a PG covers SG…) ranked by minutes per game — the
-  // rotation's most-used player at that spot, not just the exact label.
-  const bench = roster.filter((p) => !used.has(p.id) && healthOf(p) !== "out")
-    .sort((a, b) => (latestStats(b)?.min ?? -1) - (latestStats(a)?.min ?? -1) || bySort(a, b));
+  // Holes (OUT starter, or fewer than five tagged): next man up — same
+  // position number first, then a compatible position, most minutes first.
+  const bench = roster.filter((p) => !used.has(p.id) && healthOf(p) !== "out" && !isTwoWay(p)).sort(byMinutes);
+  const benchAny = roster.filter((p) => !used.has(p.id) && healthOf(p) !== "out").sort(byMinutes);
   COURT_SLOTS.forEach((s, i) => {
     if (assigned[i]) return;
-    const hit = bench.find((p) => !used.has(p.id) && fits(p, s.lbl, false))
-      || bench.find((p) => !used.has(p.id) && fits(p, s.lbl, true))
-      || bench.find((p) => !used.has(p.id));
+    const hit = bench.find((p) => !used.has(p.id) && slotOfPlayer(p) === s.lbl)
+      || bench.find((p) => !used.has(p.id) && POS_ALIASES[s.lbl].includes(courtPos(p)))
+      || benchAny.find((p) => !used.has(p.id) && POS_ALIASES[s.lbl].includes(courtPos(p)))
+      || benchAny.find((p) => !used.has(p.id));
     if (hit) take(i, hit, true);
   });
-  // pass 5: nobody healthy at all — show the hurt starter rather than a hole
+  // last resort: nobody healthy — show the hurt starter rather than a hole
   COURT_SLOTS.forEach((s, i) => {
     if (assigned[i]) return;
-    const hit = starters.find((p) => !used.has(p.id)) || roster.filter((p) => !used.has(p.id)).sort(bySort)[0];
+    const hit = roster.filter((p) => !used.has(p.id)).sort(byMinutes)[0];
     if (hit) take(i, hit);
   });
-  return { assigned, nextUp, used, automated: !!espnFive, source: espnFive ? "espn" : sortFive.length === 5 ? "sort" : "auto" };
+  return { assigned, nextUp, used, automated: !!espnFive, source: espnFive ? "espn" : "airtable" };
 }
 
 // Everything the court and the list view share: the five (in slot order),
-// then the bench by minutes per game, split Bench (top 5) / Reserves /
-// Two-Way.
-const mpgOf = (p) => latestStats(p)?.min ?? -1;
-const isTwoWay = (p) => /two\s*-?\s*way/i.test(String(p.role || "")) || /two\s*-?\s*way/i.test(String(activeOf(p)?.kind || ""));
+// then Bench / Reserves / Two-Way by Role, each ordered by minutes. An OUT
+// starter shows up in the Bench group with his IR badge.
 function lineupOf(roster, abbr) {
   const r = pickStartingFive(roster, abbr);
-  const notFive = roster.filter((p) => !r.used.has(p.id)).sort((a, b) => mpgOf(b) - mpgOf(a) || bySort(a, b));
-  const twoWay = notFive.filter(isTwoWay);
-  const rest = notFive.filter((p) => !twoWay.includes(p));
-  const benchGroups = [["Bench", rest.slice(0, 5)], ["Reserves", rest.slice(5)], ["Two-Way", twoWay]].filter(([, l]) => l.length);
+  const notFive = roster.filter((p) => !r.used.has(p.id)).sort(byMinutes);
+  const grp = (p) => (isTwoWay(p) ? "Two-Way" : roleOf(p) === "Reserves" ? "Reserves" : "Bench");
+  const benchGroups = [["Bench", notFive.filter((p) => grp(p) === "Bench")], ["Reserves", notFive.filter((p) => grp(p) === "Reserves")], ["Two-Way", notFive.filter((p) => grp(p) === "Two-Way")]].filter(([, l]) => l.length);
   return { ...r, benchGroups, bench: notFive, starters: COURT_SLOTS.map((s, i) => ({ slot: s.lbl, p: r.assigned[i] })).filter((x) => x.p) };
 }
 
