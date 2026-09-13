@@ -77,6 +77,7 @@ const FIELDS = {
   ySalary: ["Salary", "Amount", "Cap Hit"],
   yType: ["Type", "Year Type", "Guarantee"],
   yDecision: ["Decision", "Option Decision"],
+  yDeadline: ["Deadline", "Decision Deadline", "Option Deadline", "Due Date"],
   yGuaranteed: ["Guaranteed $", "Guaranteed", "Guaranteed Amount", "Gtd"],
 };
 
@@ -284,6 +285,12 @@ export default async function handler(req, res) {
         // Airtable stores SEASON TOTALS. Convert every counting stat to
         // per-game whenever we know games played (GP > 1).
         // Example: 1927 PTS / 65 GP = 29.6 PPG.
+        // Percentages: makes ÷ attempts is the source of truth whenever both
+        // columns exist (computed on season totals, before per-game rounding).
+        // The stored FG%/3P%/FT% column is only a fallback.
+        if (st.fgm != null && st.fga) st.fg = Math.round((st.fgm / st.fga) * 1000) / 10;
+        if (st.p3m != null && st.p3a) st.p3 = Math.round((st.p3m / st.p3a) * 1000) / 10;
+        if (st.ftm != null && st.fta) st.ft = Math.round((st.ftm / st.fta) * 1000) / 10;
         if (st.gp != null && st.gp > 1) {
           for (const k of ["min", "pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "p3m", "p3a", "ftm", "fta"]) {
             if (st[k] != null) st[k] = Math.round((st[k] / st.gp) * 10) / 10;
@@ -292,10 +299,6 @@ export default async function handler(req, res) {
         // A shooting percentage must be 0-100. Values above 100 mean the
         // column holds something else (e.g. total makes) - discard those.
         for (const k of ["fg", "p3", "ft"]) if (st[k] != null && (st[k] > 100 || st[k] < 0)) st[k] = null;
-        // percentages: prefer explicit fields; else derive from makes/attempts
-        if (st.fg == null && st.fgm != null && st.fga) st.fg = Math.round((st.fgm / st.fga) * 1000) / 10;
-        if (st.p3 == null && st.p3m != null && st.p3a) st.p3 = Math.round((st.p3m / st.p3a) * 1000) / 10;
-        if (st.ft == null && st.ftm != null && st.fta) st.ft = Math.round((st.ftm / st.fta) * 1000) / 10;
         // a "48.7%"-style text or 0.487 fraction both normalize to 48.7
         for (const k of ["fg", "p3", "ft"]) if (st[k] != null && st[k] > 0 && st[k] <= 1) st[k] = Math.round(st[k] * 1000) / 10;
       }
@@ -316,6 +319,7 @@ export default async function handler(req, res) {
         salary: typeof rawSalary === "number" ? rawSalary / 1e6 : null,
         type: TYPE_MAP[norm(rawType)] || rawType || "G",
         decision: asText(getField(y.fields, FIELDS.yDecision)) || null,
+        deadline: asText(getField(y.fields, FIELDS.yDeadline)) || null,
         gtd: typeof rawGtd === "number" ? rawGtd / 1e6 : null,
       });
     }
@@ -381,7 +385,7 @@ export default async function handler(req, res) {
       .sort((a, b) => a.name.localeCompare(b.name));
 
     res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
-    return res.status(200).json({ apiVersion: "v25.0", players: out, teams: teamsOut });
+    return res.status(200).json({ apiVersion: "v26.0", players: out, teams: teamsOut });
   } catch (e) {
     return res.status(500).json({ error: String(e.message || e) });
   }
