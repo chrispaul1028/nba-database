@@ -72,12 +72,22 @@ const COURT_THEMES = {
          circleR: 5, logoW: 30, apron: "#111111", apronText: "#FDB927",
          floorText: [[{ t: "State Farm", color: "#C8102E" }], [{ t: "ARENA", color: "#111111" }]] },
   BOS: { lines: "#FFFFFF", ft: "#FFFFFF", half: "#FFFFFF", side: "#FFFFFF", threePt: "#FFFFFF", center: "none", centerStroke: "none",
-         logoW: 34, apron: "#007A33", apronText: "#FFFFFF",
+         logoW: 34, apron: "#007A33", apronText: "#FFFFFF", courtLogo: "https://a.espncdn.com/i/teamlogos/nba/500/bos.png",
          floorText: [[{ t: "TD", color: "#FFFFFF", box: "#3FA35B" }, { t: " GARDEN", color: "#111111" }]] },
   MIA: { lines: "#111111", ft: "#111111", half: "#111111", side: "#111111", threePt: "#111111", center: "none", centerStroke: "none",
          paint: "#F9A01B", paintSides: "#98002E", logoW: 32, apron: "#111111", apronText: "#FFFFFF",
-         floorText: [[{ t: "kaseya", color: "#111111" }], [{ t: "center", color: "#111111" }]] },
+         floorText: [[{ t: "Kaseya", color: "#111111" }], [{ t: "Center", color: "#111111" }]] },
+  BKN: { floor: "repeating-linear-gradient(90deg,#b9b3aa 0 6.5%,#aea79e 6.5% 13%)", paint: "#8f877d",
+         lines: "#111111", ft: "#111111", half: "#111111", side: "#111111", threePt: "#111111", center: "none", centerStroke: "none",
+         logoW: 30, apron: "#111111", apronText: "#FFFFFF",
+         floorText: [[{ t: "BARCLAYS", color: "#0076B6" }], [{ t: "CENTER", color: "#0076B6" }]] },
+  SAS: { lines: "#FFFFFF", ft: "#FFFFFF", half: "#FFFFFF", side: "#FFFFFF", threePt: "#111111", center: "none", centerStroke: "none",
+         logoW: 30, floorText: [[{ t: "FrostBank", color: "#111111" }], [{ t: "CENTER", color: "#111111" }]] },
+  LAL: { lines: "#FFFFFF", ft: "#FFFFFF", half: "#FFFFFF", side: "#FFFFFF", threePt: "#552583", center: "none", centerStroke: "none",
+         logoW: 30, apron: "#FDB927", apronText: "#552583",
+         floorText: [[{ t: "crypto.com", color: "#552583" }], [{ t: "ARENA", color: "#552583" }]] },
 };
+COURT_THEMES.SA = COURT_THEMES.SAS;
 const courtTheme = (abbr) => COURT_THEMES[String(abbr || "").toUpperCase()] || {};
 
 // Full team names -> abbreviations, so a player's current team
@@ -1157,7 +1167,7 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
       {/* Half court, hoop at the bottom. Aspect = 50ft × 47ft. Lines are an
           SVG in real feet so the arcs stay true circles at any width. */}
       <div className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-sm"
-        style={{ paddingBottom: (COURT_FT / 50 * 100).toFixed(1) + "%", background: "repeating-linear-gradient(90deg,#d9a566 0 6.5%,#cf9a5c 6.5% 13%)" }}>
+        style={{ paddingBottom: (COURT_FT / 50 * 100).toFixed(1) + "%", background: th.floor || "repeating-linear-gradient(90deg,#d9a566 0 6.5%,#cf9a5c 6.5% 13%)" }}>
         {/* plank seams + top-down light so it reads as hardwood, not a flat panel */}
         <div className="absolute inset-0" style={{ background: "repeating-linear-gradient(0deg, rgba(0,0,0,0.045) 0 1px, transparent 1px 22px)" }} />
         <div className="absolute inset-0" style={{ background: "linear-gradient(180deg,rgba(255,255,255,0.14) 0%,rgba(0,0,0,0) 35%,rgba(0,0,0,0.16) 100%)" }} />
@@ -1226,10 +1236,10 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
         </svg>
         {/* center-court logo, sitting inside the center circle the way a
             real floor has it — we see the bottom half of it on a half court */}
-        {team && team.logo && (
+        {team && (th.courtLogo || team.logo) && (
           <div className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full overflow-hidden pointer-events-none select-none"
             style={{ top: ftY(0) + "%", width: (th.logoW || 26) + "%", aspectRatio: "1 / 1", animation: "hrbGlow 4s ease-in-out 1" }}>
-            <img src={team.logo} alt="" className="absolute inset-[6%] w-[88%] h-[88%] object-contain" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.3))", transform: "rotate(-90deg)" }} />
+            <img src={th.courtLogo || team.logo} alt="" className="absolute inset-[6%] w-[88%] h-[88%] object-contain" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.3))", transform: "rotate(-90deg)" }} />
             {/* light sweep — the "sparkle" */}
             <span className="absolute inset-0" style={{ background: "linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.55) 50%, transparent 65%)", animation: "hrbSweep 1.6s ease-in-out .5s 1 both" }} />
           </div>
@@ -1249,7 +1259,9 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
         </span>
         {(outCount > 0 || gtdCount > 0) && (
           <span className="absolute left-2 top-2 rounded-md bg-black/35 backdrop-blur-sm px-2 py-1 text-[10px] font-extrabold text-white/90 shadow-sm">
-            {[outCount > 0 ? `${outCount} out` : "", gtdCount > 0 ? `${gtdCount} GTD` : ""].filter(Boolean).join(" · ")}
+            {outCount > 0 && <span className="text-red-400">{outCount} out</span>}
+            {outCount > 0 && gtdCount > 0 && <span className="text-white/60"> · </span>}
+            {gtdCount > 0 && <span className="text-amber-300">{gtdCount} GTD</span>}
           </span>
         )}
         <style>{`@keyframes hrbPop { from { opacity: 0; transform: translate(-50%, -50%) scale(.6); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
