@@ -88,6 +88,28 @@ const COURT_THEMES = {
          floorText: [[{ t: "crypto.com", color: "#552583" }], [{ t: "ARENA", color: "#552583" }]] },
 };
 COURT_THEMES.SA = COURT_THEMES.SAS;
+Object.assign(COURT_THEMES, {
+  CLE: { lines: "#B8996F", ft: "#B8996F", threePt: "#6F263F", half: "#6F263F", side: "#6F263F", center: "none", centerStroke: "none",
+         logoW: 30, apron: "#6F263F", apronText: "#B8996F",
+         floorText: [[{ t: "Rocket Arena", color: "#6F263F" }]] },
+  DAL: { floor: "repeating-linear-gradient(90deg,#c9c5be 0 6.5%,#bfbab2 6.5% 13%)", paint: "#002B5E",
+         lines: "#FFFFFF", ft: "#FFFFFF", ftTop: "#00538C", threePt: "#00538C", half: "#00538C", side: "#FFFFFF", center: "none", centerStroke: "none",
+         logoW: 28, apron: "#002B5E", apronText: "#FFFFFF", apronLine: "#FFFFFF",
+         floorText: [{ parts: [{ t: "American", color: "#00538C" }] }, { parts: [{ t: "Airlines", color: "#00538C" }], indent: 3 }, { parts: [{ t: "Center", color: "#00538C" }], indent: 6 }] },
+  PHI: { lines: "#FFFFFF", ft: "#FFFFFF", threePt: "#FFFFFF", half: "#FFFFFF", side: "#FFFFFF", center: "none", centerStroke: "none",
+         paint: "#006BB6", logoW: 28, apron: "#006BB6", apronText: "#FFFFFF", apronLine: "#ED174C", apronLabel: "Philadelphia 76ers", apronScript: true,
+         floorText: [[{ t: "xfinity mobile", color: "#111111" }], [{ t: "ARENA", color: "#111111" }]] },
+  GSW: { lines: "#1D428A", ft: "#1D428A", threePt: "#1D428A", half: "#1D428A", side: "#1D428A", center: "none", centerStroke: "none",
+         logoW: 28, apron: "#FFC72C", apronText: "#1D428A",
+         floorText: [[{ t: "CHASE CENTER", color: "#1D428A" }]] },
+  HOU: { lines: "#111111", ft: "#111111", threePt: "#111111", half: "#111111", side: "#111111", center: "none", centerStroke: "none",
+         logoW: 28, apronLine: "#111111",
+         floorText: [{ parts: [{ t: "TOYOTA", color: "#111111" }], weight: 900 }, [{ t: "CENTER", color: "#111111" }]] },
+  CHA: { lines: "#FFFFFF", ft: "#FFFFFF", threePt: "#FFFFFF", half: "#FFFFFF", side: "#FFFFFF", center: "none", centerStroke: "none",
+         paint: "#00788C", logoW: 28, apron: "#00788C", apronText: "#FFFFFF", apronLine: "#FFFFFF",
+         floorText: [{ parts: [{ t: "Spectrum", color: "#1D1160" }], size: 1.35 }, { parts: [{ t: "CENTER", color: "#1D1160" }], align: "end" }] },
+});
+COURT_THEMES.GS = COURT_THEMES.GSW;
 const courtTheme = (abbr) => COURT_THEMES[String(abbr || "").toUpperCase()] || {};
 
 // Full team names -> abbreviations, so a player's current team
@@ -998,10 +1020,10 @@ const POS_ALIASES = {
 // the blocks. Same spacing left-to-right and top-to-bottom.
 // Court box shows 6 ft beyond half court (full center circle + logo), then
 // the 47 ft half court. Slot y values are % of that 53 ft box.
-const COURT_TOP_FT = 6, APRON_FT = 3, COURT_FT = 47 + COURT_TOP_FT + APRON_FT;
+const COURT_TOP_FT = 8, APRON_FT = 3, COURT_FT = 47 + COURT_TOP_FT + APRON_FT;
 const ftY = (ft) => ((ft + COURT_TOP_FT) / COURT_FT) * 100;
 const COURT_SLOTS = [
-  { lbl: "PG", x: 50, y: ftY(13), big: false },   // top of the key, above the arc
+  { lbl: "PG", x: 50, y: ftY(13.5), big: false }, // top of the key, above the arc
   { lbl: "SF", x: 24, y: ftY(22), big: false },   // sitting on the 3-pt arc
   { lbl: "SG", x: 76, y: ftY(22), big: false },
   { lbl: "PF", x: 24, y: ftY(37), big: true },
@@ -1192,7 +1214,7 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
           <path d="M 3 47 L 3 33.3 A 23.75 23.75 0 0 1 47 33.3 L 47 47" fill="none" stroke={th.threePt || th.lines || color} strokeWidth="0.35" />
           {/* key outline in the team color, free-throw circle in the secondary color */}
           <rect x="17" y="28" width="16" height="19" fill="none" stroke={th.lines || color} strokeWidth="0.35" />
-          <path d="M 19 28 A 6 6 0 0 1 31 28" fill="none" stroke={th.ft || teamColor2(abbr)} strokeWidth="0.35" />
+          <path d="M 19 28 A 6 6 0 0 1 31 28" fill="none" stroke={th.ftTop || th.ft || teamColor2(abbr)} strokeWidth="0.35" />
           <path d="M 19 28 A 6 6 0 0 0 31 28" fill="none" stroke={th.ft || teamColor2(abbr)} strokeWidth="0.35" strokeDasharray="1.2 0.9" opacity="0.8" />
           {/* lane hash marks */}
           {[36, 39, 42, 44.5].map((y) => (
@@ -1207,27 +1229,33 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
           <circle cx="25" cy="41.75" r="0.75" fill="none" stroke="#f97316" strokeWidth="0.35" />
           {/* out-of-bounds apron below the baseline, with the team name */}
           <rect x="0" y="47" width="50" height={APRON_FT} fill={th.apron || color} />
-          <text x="25" y={47 + APRON_FT * 0.68} fontSize="1.7" fontWeight="900" fontFamily="system-ui, sans-serif" letterSpacing="0.45"
-            fill={th.apronText || "#FFFFFF"} textAnchor="middle">{String(team?.name || nick).toUpperCase()}</text>
+          {th.apronLine && <line x1="0" y1="47" x2="50" y2="47" stroke={th.apronLine} strokeWidth="0.4" />}
+          <text x="25" y={47 + APRON_FT * (th.apronScript ? 0.72 : 0.68)} fontSize={th.apronScript ? "2.1" : "1.7"} fontWeight={th.apronScript ? "600" : "900"}
+            fontFamily={th.apronScript ? "'Snell Roundhand', 'Brush Script MT', 'Segoe Script', cursive" : "system-ui, sans-serif"} fontStyle={th.apronScript ? "italic" : "normal"} letterSpacing={th.apronScript ? "0.05" : "0.45"}
+            fill={th.apronText || "#FFFFFF"} textAnchor="middle">{th.apronLabel || String(team?.name || nick).toUpperCase()}</text>
           {/* baseline + sidelines */}
           <rect x="0.15" y={-COURT_TOP_FT} width="49.7" height={47 + COURT_TOP_FT - 0.15} fill="none" stroke={th.side || "rgba(255,255,255,0.7)"} strokeWidth="0.3" />
           {/* floor lettering along the left sideline, just below half court (reads bottom → top) */}
           {th.floorText && (() => {
-            const lineLen = (ln) => ln.reduce((a, pt) => a + pt.t.length, 0);
-            const longest = Math.max(...th.floorText.map(lineLen));
-            const fs = longest > 12 ? 1.15 : 1.5;
-            const cw = fs * 0.72;                                   // approx. char width incl. letter-spacing
-            const y0 = 1.2 + (longest * cw) / 2;                     // line center, just below half court
-            return th.floorText.map((ln, i) => {
-              const cx = 2.2 + i * (fs + 0.35);
-              const total = lineLen(ln) * cw;
-              let cursor = y0 + total / 2;                           // text runs bottom → top
-              return ln.map((pt, k) => {
-                const w = pt.t.trim().length * cw; const yc = cursor - w / 2; cursor -= w + (k < ln.length - 1 ? 1.1 : 0); // 1.1 ft gap between parts
+            const norm = th.floorText.map((ln) => (Array.isArray(ln) ? { parts: ln } : ln));
+            const lineLen = (ln) => ln.parts.reduce((a, pt) => a + pt.t.trim().length, 0) + (ln.parts.length - 1) * 1.5;
+            const longest = Math.max(...norm.map(lineLen));
+            const base = longest > 12 ? 1.15 : 1.5;
+            const cw = (fs) => fs * 0.72;
+            const T0 = longest * cw(base);
+            const y0 = 2.6 + T0 / 2;                                 // line center, clear of the half-court line
+            let x = 2.2;
+            return norm.map((ln, i) => {
+              const fs = base * (ln.size || 1);
+              const cx = x + (fs - base) / 2; x += fs + 0.35;
+              const total = ln.parts.reduce((a, pt) => a + pt.t.trim().length * cw(fs), 0) + (ln.parts.length - 1) * 1.1;
+              let cursor = ln.align === "end" ? y0 - T0 / 2 + total : y0 + T0 / 2 - (ln.indent || 0);   // text runs bottom → top
+              return ln.parts.map((pt, k) => {
+                const w = pt.t.trim().length * cw(fs); const yc = cursor - w / 2; cursor -= w + 1.1;
                 return (
-                  <g key={k}>
+                  <g key={i + "-" + k}>
                     {pt.box && <rect x={cx - fs * 0.62} y={yc - w / 2 - 0.2} width={fs * 1.24} height={w + 0.4} fill={pt.box} rx="0.25" />}
-                    <text x={cx} y={yc} fontSize={fs} fontWeight="800" fontFamily="system-ui, sans-serif" letterSpacing="0.2"
+                    <text x={cx} y={yc} fontSize={fs} fontWeight={ln.weight || 800} fontFamily="system-ui, sans-serif" letterSpacing="0.2"
                       fill={pt.color} textAnchor="middle" dominantBaseline="middle" transform={`rotate(-90 ${cx} ${yc})`}>{pt.t}</text>
                   </g>
                 );
@@ -1239,7 +1267,7 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
             real floor has it — we see the bottom half of it on a half court */}
         {team && (th.courtLogo || team.logo) && (
           <div className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full overflow-hidden pointer-events-none select-none"
-            style={{ top: ftY(0) + "%", width: (th.logoW || 26) + "%", aspectRatio: "1 / 1", animation: "hrbGlow 4s ease-in-out 1" }}>
+            style={{ top: ftY(0) + "%", width: Math.min(th.logoW || 26, 30) + "%", aspectRatio: "1 / 1", animation: "hrbGlow 4s ease-in-out 1" }}>
             <img src={th.courtLogo || team.logo} alt="" className="absolute inset-[6%] w-[88%] h-[88%] object-contain" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.3))", transform: "rotate(-90deg)" }}
               onError={(e) => { if (th.courtLogo && e.currentTarget.src !== team.logo && team.logo) e.currentTarget.src = team.logo; }} />
             {/* light sweep — the "sparkle" */}
