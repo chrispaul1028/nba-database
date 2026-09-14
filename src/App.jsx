@@ -975,8 +975,8 @@ const COURT_TOP_FT = 6, COURT_FT = 47 + COURT_TOP_FT;
 const ftY = (ft) => ((ft + COURT_TOP_FT) / COURT_FT) * 100;
 const COURT_SLOTS = [
   { lbl: "PG", x: 50, y: ftY(13), big: false },   // top of the key, above the arc
-  { lbl: "SF", x: 24, y: ftY(26), big: false },
-  { lbl: "SG", x: 76, y: ftY(26), big: false },
+  { lbl: "SF", x: 24, y: ftY(22), big: false },   // sitting on the 3-pt arc
+  { lbl: "SG", x: 76, y: ftY(22), big: false },
   { lbl: "PF", x: 24, y: ftY(37), big: true },
   { lbl: "C",  x: 76, y: ftY(37), big: true },
 ];
@@ -1155,7 +1155,7 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
           <rect x="17" y="28" width="16" height="19" fill="url(#paintTex)" />
           {/* half-court line + full center circle */}
           <line x1="0" y1="0" x2="50" y2="0" stroke={th.half || "rgba(255,255,255,0.8)"} strokeWidth="0.3" />
-          <circle cx="25" cy="0" r="6" fill={th.center ?? centerColor(abbr)} stroke={th.centerStroke || "rgba(255,255,255,0.9)"} strokeWidth="0.3" />
+          <circle cx="25" cy="0" r="4.5" fill={th.center ?? centerColor(abbr)} stroke={th.centerStroke || "rgba(255,255,255,0.9)"} strokeWidth="0.3" />
           {/* three-point line: corners + arc (23.75ft from the rim) */}
           <path d="M 3 47 L 3 33.3 A 23.75 23.75 0 0 1 47 33.3 L 47 47" fill="none" stroke={th.lines || color} strokeWidth="0.35" />
           {/* key outline in the team color, free-throw circle in the secondary color */}
@@ -1177,16 +1177,16 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
           <rect x="0.15" y={-COURT_TOP_FT} width="49.7" height={COURT_FT - 0.15} fill="none" stroke={th.side || "rgba(255,255,255,0.7)"} strokeWidth="0.3" />
           {/* floor lettering along the left sideline, just below half court (reads bottom → top) */}
           {th.floorText && th.floorText.lines.map((t, i) => (
-            <text key={t} x={2.2 + i * 1.6} y={13} fontSize="1.5" fontWeight="800" fontFamily="system-ui, sans-serif" letterSpacing="0.25"
-              fill={th.floorText.color} textAnchor="middle" transform={`rotate(-90 ${2.2 + i * 1.6} 13)`}>{t}</text>
+            <text key={t} x={2.2 + i * 1.6} y={6} fontSize="1.5" fontWeight="800" fontFamily="system-ui, sans-serif" letterSpacing="0.25"
+              fill={th.floorText.color} textAnchor="middle" transform={`rotate(-90 ${2.2 + i * 1.6} 6)`}>{t}</text>
           ))}
         </svg>
         {/* center-court logo, sitting inside the center circle the way a
             real floor has it — we see the bottom half of it on a half court */}
         {team && team.logo && (
-          <div className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 w-[24%] rounded-full overflow-hidden pointer-events-none select-none"
+          <div className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 w-[26%] rounded-full overflow-hidden pointer-events-none select-none"
             style={{ top: ftY(0) + "%", aspectRatio: "1 / 1", animation: "hrbGlow 4s ease-in-out 1" }}>
-            <img src={team.logo} alt="" className="absolute inset-[18%] w-[64%] h-[64%] object-contain" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.3))" }} />
+            <img src={team.logo} alt="" className="absolute inset-[6%] w-[88%] h-[88%] object-contain" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.3))" }} />
             {/* light sweep — the "sparkle" */}
             <span className="absolute inset-0" style={{ background: "linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.55) 50%, transparent 65%)", animation: "hrbSweep 1.6s ease-in-out .5s 1 both" }} />
           </div>
