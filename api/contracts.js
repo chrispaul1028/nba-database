@@ -44,6 +44,7 @@ const FIELDS = {
   teamConference: ["Conference", "Conf"],
   teamHeadCoach: ["Head Coach", "Coach", "HC"],
   teamArena: ["Arena", "Home Arena", "Venue", "Stadium"],
+  teamCourtLogo: ["Court Logo", "Floor Logo", "Center Court Logo"],
   teamAsstCoach: ["Assistant Coach", "Assistant", "Asst Coach", "Associate Head Coach", "Lead Assistant"],
   teamDivision: ["Division", "Div"],
   teamWins: ["W", "Wins"],
@@ -237,6 +238,7 @@ export default async function handler(req, res) {
           logo: findAnyPhoto(t.fields),
           headCoach: asText(getField(t.fields, FIELDS.teamHeadCoach)),
           arena: asText(getField(t.fields, FIELDS.teamArena)),
+          courtLogo: (() => { const v = getField(t.fields, FIELDS.teamCourtLogo); return Array.isArray(v) && v[0] ? (v[0].thumbnails?.large?.url || v[0].url) : (typeof v === "string" ? v : null); })(),
           asstCoach: asText(getField(t.fields, FIELDS.teamAsstCoach)),
         });
       }
@@ -387,7 +389,7 @@ export default async function handler(req, res) {
       .sort((a, b) => a.name.localeCompare(b.name));
 
     res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
-    return res.status(200).json({ apiVersion: "v27.0", players: out, teams: teamsOut });
+    return res.status(200).json({ apiVersion: "v28.0", players: out, teams: teamsOut });
   } catch (e) {
     return res.status(500).json({ error: String(e.message || e) });
   }
