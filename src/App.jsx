@@ -64,13 +64,19 @@ const centerColor = (abbr) => (FLIP_CENTER.has(String(abbr || "").toUpperCase())
 const COURT_THEMES = {
   CHI: { lines: "#111111", ft: "#111111", half: "#111111", side: "#111111", center: "none", centerStroke: "#111111",
          circleR: 3.2, logoW: 30, apron: "#111111", apronText: "#FFFFFF",
-         floorText: [{ t: "UNITED", color: "#111111" }, { t: "CENTER", color: "#111111" }] },
+         floorText: [[{ t: "UNITED", color: "#111111" }], [{ t: "CENTER", color: "#111111" }]] },
   NY:  { lines: "#FFFFFF", ft: "#FFFFFF", half: "#FFFFFF", side: "#FFFFFF", center: "none", centerStroke: "none",
          threePt: "#1D428A", logoW: 32, apron: "#1D428A", apronText: "#FFFFFF",
-         floorText: [{ t: "MADISON SQUARE GARDEN", color: "#1D428A" }, { t: "CHASE", color: "#1D428A" }] },
+         floorText: [[{ t: "MADISON SQUARE GARDEN", color: "#1D428A" }], [{ t: "CHASE", color: "#1D428A" }]] },
   ATL: { lines: "#FFFFFF", ft: "#FFFFFF", half: "#FFFFFF", side: "#FFFFFF", threePt: "#FFFFFF", center: "none", centerStroke: "#FFFFFF",
          circleR: 5, logoW: 30, apron: "#111111", apronText: "#FDB927",
-         floorText: [{ t: "State Farm", color: "#C8102E" }, { t: "ARENA", color: "#111111" }] },
+         floorText: [[{ t: "State Farm", color: "#C8102E" }], [{ t: "ARENA", color: "#111111" }]] },
+  BOS: { lines: "#FFFFFF", ft: "#FFFFFF", half: "#FFFFFF", side: "#FFFFFF", threePt: "#FFFFFF", center: "none", centerStroke: "none",
+         logoW: 34, apron: "#007A33", apronText: "#FFFFFF",
+         floorText: [[{ t: "TD", color: "#FFFFFF", box: "#3FA35B" }, { t: " GARDEN", color: "#111111" }]] },
+  MIA: { lines: "#111111", ft: "#111111", half: "#111111", side: "#111111", threePt: "#111111", center: "none", centerStroke: "none",
+         paint: "#F9A01B", paintSides: "#98002E", logoW: 32, apron: "#111111", apronText: "#FFFFFF",
+         floorText: [[{ t: "kaseya", color: "#111111" }], [{ t: "center", color: "#111111" }]] },
 };
 const courtTheme = (abbr) => COURT_THEMES[String(abbr || "").toUpperCase()] || {};
 
@@ -1162,7 +1168,11 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
               <rect width="0.6" height="1.2" fill="rgba(255,255,255,0.06)" />
             </pattern>
           </defs>
-          <rect x="17" y="28" width="16" height="19" fill={color} opacity="0.88" />
+          <rect x="17" y="28" width="16" height="19" fill={th.paint || color} opacity={th.paint ? 1 : 0.88} />
+          {th.paintSides && <>
+            <rect x="15.6" y="28" width="1.4" height="19" fill={th.paintSides} />
+            <rect x="33" y="28" width="1.4" height="19" fill={th.paintSides} />
+          </>}
           <rect x="17" y="28" width="16" height="19" fill="url(#paintTex)" />
           {/* half-court line + full center circle */}
           <line x1="0" y1="0" x2="50" y2="0" stroke={th.half || "rgba(255,255,255,0.8)"} strokeWidth="0.3" />
@@ -1192,15 +1202,25 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
           <rect x="0.15" y={-COURT_TOP_FT} width="49.7" height={47 + COURT_TOP_FT - 0.15} fill="none" stroke={th.side || "rgba(255,255,255,0.7)"} strokeWidth="0.3" />
           {/* floor lettering along the left sideline, just below half court (reads bottom → top) */}
           {th.floorText && (() => {
-            const longest = Math.max(...th.floorText.map((l) => l.t.length));
-            const fs = longest > 12 ? 1.6 : 2.1;                 // ft; long names shrink to fit
-            const cy = 1.5 + (longest * fs * 0.58) / 2;          // centered just below half court
+            const lineLen = (ln) => ln.reduce((a, pt) => a + pt.t.length, 0);
+            const longest = Math.max(...th.floorText.map(lineLen));
+            const fs = longest > 12 ? 1.15 : 1.5;
+            const cw = fs * 0.72;                                   // approx. char width incl. letter-spacing
+            const y0 = 1.2 + (longest * cw) / 2;                     // line center, just below half court
             return th.floorText.map((ln, i) => {
-              const cx = 2.4 + (th.floorText.length - 1 - i) * (fs + 0.6); // line 1 sits "above" line 2 for a reader on the far sideline
-              return (
-                <text key={i} x={cx} y={cy} fontSize={fs} fontWeight="800" fontFamily="system-ui, sans-serif" letterSpacing="0.25"
-                  fill={ln.color} textAnchor="middle" dominantBaseline="middle" transform={`rotate(90 ${cx} ${cy})`}>{ln.t}</text>
-              );
+              const cx = 2.2 + i * (fs + 0.35);
+              const total = lineLen(ln) * cw;
+              let cursor = y0 + total / 2;                           // text runs bottom → top
+              return ln.map((pt, k) => {
+                const w = pt.t.length * cw; const yc = cursor - w / 2; cursor -= w;
+                return (
+                  <g key={k}>
+                    {pt.box && <rect x={cx - fs * 0.62} y={yc - w / 2 - 0.2} width={fs * 1.24} height={w + 0.4} fill={pt.box} rx="0.25" />}
+                    <text x={cx} y={yc} fontSize={fs} fontWeight="800" fontFamily="system-ui, sans-serif" letterSpacing="0.2"
+                      fill={pt.color} textAnchor="middle" dominantBaseline="middle" transform={`rotate(-90 ${cx} ${yc})`}>{pt.t}</text>
+                  </g>
+                );
+              });
             });
           })()}
         </svg>
@@ -1209,7 +1229,7 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
         {team && team.logo && (
           <div className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full overflow-hidden pointer-events-none select-none"
             style={{ top: ftY(0) + "%", width: (th.logoW || 26) + "%", aspectRatio: "1 / 1", animation: "hrbGlow 4s ease-in-out 1" }}>
-            <img src={team.logo} alt="" className="absolute inset-[6%] w-[88%] h-[88%] object-contain" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.3))", transform: "rotate(90deg)" }} />
+            <img src={team.logo} alt="" className="absolute inset-[6%] w-[88%] h-[88%] object-contain" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.3))", transform: "rotate(-90deg)" }} />
             {/* light sweep — the "sparkle" */}
             <span className="absolute inset-0" style={{ background: "linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.55) 50%, transparent 65%)", animation: "hrbSweep 1.6s ease-in-out .5s 1 both" }} />
           </div>
