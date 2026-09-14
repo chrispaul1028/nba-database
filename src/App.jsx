@@ -62,8 +62,8 @@ const centerColor = (abbr) => (FLIP_CENTER.has(String(abbr || "").toUpperCase())
 //   ftLogos: small team logos either side of the free-throw line
 //   floorText: sideline lettering, one entry per line {t, color}
 const COURT_THEMES = {
-  CHI: { lines: "#111111", ft: "#111111", half: "#111111", side: "#111111", center: "none", centerStroke: "#111111",
-         circleR: 3.2, logoW: 30, apron: "#111111", apronText: "#FFFFFF",
+  CHI: { lines: "#111111", ft: "#111111", half: "#111111", side: "#111111", center: "none", centerStroke: "none",
+         logoW: 30, apron: "#111111", apronText: "#FFFFFF",
          floorText: [[{ t: "UNITED", color: "#111111" }], [{ t: "CENTER", color: "#111111" }]] },
   NY:  { lines: "#FFFFFF", ft: "#FFFFFF", half: "#FFFFFF", side: "#FFFFFF", center: "none", centerStroke: "none",
          threePt: "#1D428A", logoW: 32, apron: "#1D428A", apronText: "#FFFFFF",
@@ -72,8 +72,8 @@ const COURT_THEMES = {
          circleR: 5, logoW: 30, apron: "#111111", apronText: "#FDB927",
          floorText: [[{ t: "State Farm", color: "#C8102E" }], [{ t: "ARENA", color: "#111111" }]] },
   BOS: { lines: "#FFFFFF", ft: "#FFFFFF", half: "#FFFFFF", side: "#FFFFFF", threePt: "#FFFFFF", center: "none", centerStroke: "none",
-         logoW: 34, apron: "#007A33", apronText: "#FFFFFF", courtLogo: "https://a.espncdn.com/i/teamlogos/nba/500/bos.png",
-         floorText: [[{ t: "TD", color: "#FFFFFF", box: "#3FA35B" }, { t: " GARDEN", color: "#111111" }]] },
+         logoW: 34, apron: "#007A33", apronText: "#FFFFFF", courtLogo: "https://cdn.nba.com/logos/nba/1610612738/global/L/logo.svg",
+         floorText: [[{ t: "TD", color: "#FFFFFF", box: "#3FA35B" }, { t: "GARDEN", color: "#111111" }]] },
   MIA: { lines: "#111111", ft: "#111111", half: "#111111", side: "#111111", threePt: "#111111", center: "none", centerStroke: "none",
          paint: "#F9A01B", paintSides: "#98002E", logoW: 32, apron: "#111111", apronText: "#FFFFFF",
          floorText: [[{ t: "Kaseya", color: "#111111" }], [{ t: "Center", color: "#111111" }]] },
@@ -1115,8 +1115,9 @@ function pickStartingFive(roster, abbr) {
 function lineupOf(roster, abbr) {
   const r = pickStartingFive(roster, abbr);
   const notFive = roster.filter((p) => !r.used.has(p.id)).sort(byMinutes);
-  const grp = (p) => (isTwoWay(p) ? "Two-Way" : roleOf(p) === "Reserves" ? "Reserves" : "Bench");
-  const benchGroups = [["Bench", notFive.filter((p) => grp(p) === "Bench")], ["Reserves", notFive.filter((p) => grp(p) === "Reserves")], ["Two-Way", notFive.filter((p) => grp(p) === "Two-Way")]].filter(([, l]) => l.length);
+  // one Bench group: Bench + Reserves by minutes, two-way players at the end
+  const ordered = [...notFive.filter((p) => !isTwoWay(p)), ...notFive.filter(isTwoWay)];
+  const benchGroups = ordered.length ? [["Bench", ordered]] : [];
   return { ...r, benchGroups, bench: notFive, starters: COURT_SLOTS.map((s, i) => ({ slot: s.lbl, p: r.assigned[i] })).filter((x) => x.p) };
 }
 
@@ -1222,7 +1223,7 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
               const total = lineLen(ln) * cw;
               let cursor = y0 + total / 2;                           // text runs bottom → top
               return ln.map((pt, k) => {
-                const w = pt.t.length * cw; const yc = cursor - w / 2; cursor -= w;
+                const w = pt.t.trim().length * cw; const yc = cursor - w / 2; cursor -= w + (k < ln.length - 1 ? 1.1 : 0); // 1.1 ft gap between parts
                 return (
                   <g key={k}>
                     {pt.box && <rect x={cx - fs * 0.62} y={yc - w / 2 - 0.2} width={fs * 1.24} height={w + 0.4} fill={pt.box} rx="0.25" />}
@@ -1239,7 +1240,8 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
         {team && (th.courtLogo || team.logo) && (
           <div className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full overflow-hidden pointer-events-none select-none"
             style={{ top: ftY(0) + "%", width: (th.logoW || 26) + "%", aspectRatio: "1 / 1", animation: "hrbGlow 4s ease-in-out 1" }}>
-            <img src={th.courtLogo || team.logo} alt="" className="absolute inset-[6%] w-[88%] h-[88%] object-contain" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.3))", transform: "rotate(-90deg)" }} />
+            <img src={th.courtLogo || team.logo} alt="" className="absolute inset-[6%] w-[88%] h-[88%] object-contain" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.3))", transform: "rotate(-90deg)" }}
+              onError={(e) => { if (th.courtLogo && e.currentTarget.src !== team.logo && team.logo) e.currentTarget.src = team.logo; }} />
             {/* light sweep — the "sparkle" */}
             <span className="absolute inset-0" style={{ background: "linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.55) 50%, transparent 65%)", animation: "hrbSweep 1.6s ease-in-out .5s 1 both" }} />
           </div>
