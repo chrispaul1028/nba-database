@@ -57,9 +57,20 @@ const centerColor = (abbr) => (FLIP_CENTER.has(String(abbr || "").toUpperCase())
 //   lines: 3-pt, key, hash marks, restricted area · ft: free-throw circle
 //   half: half-court line · side: sideline/baseline · center: center-circle fill
 //   centerStroke: center-circle outline · floorText: lettering along the sideline
+//   circleR: center-circle radius in ft (default 4.5) · logoW: logo width as % of court
+//   apron: out-of-bounds strip color · apronText: lettering color on it
+//   ftLogos: small team logos either side of the free-throw line
+//   floorText: sideline lettering, one entry per line {t, color}
 const COURT_THEMES = {
   CHI: { lines: "#111111", ft: "#111111", half: "#111111", side: "#111111", center: "none", centerStroke: "#111111",
-         floorText: { lines: ["UNITED", "CENTER"], color: "#111111" } },
+         circleR: 3.2, logoW: 30, ftLogos: true, apron: "#111111", apronText: "#FFFFFF",
+         floorText: [{ t: "UNITED", color: "#111111" }, { t: "CENTER", color: "#111111" }] },
+  NY:  { lines: "#FFFFFF", ft: "#FFFFFF", half: "#FFFFFF", side: "#FFFFFF", center: "none", centerStroke: "none",
+         threePt: "#1D428A", logoW: 32, apron: "#1D428A", apronText: "#FFFFFF",
+         floorText: [{ t: "MADISON SQUARE GARDEN", color: "#1D428A" }, { t: "CHASE", color: "#1D428A" }] },
+  ATL: { lines: "#FFFFFF", ft: "#FFFFFF", half: "#FFFFFF", side: "#FFFFFF", threePt: "#FFFFFF", center: "none", centerStroke: "#FFFFFF",
+         circleR: 5, logoW: 30, apron: "#111111", apronText: "#FDB927",
+         floorText: [{ t: "State Farm", color: "#C8102E" }, { t: "ARENA", color: "#111111" }] },
 };
 const courtTheme = (abbr) => COURT_THEMES[String(abbr || "").toUpperCase()] || {};
 
@@ -971,7 +982,7 @@ const POS_ALIASES = {
 // the blocks. Same spacing left-to-right and top-to-bottom.
 // Court box shows 6 ft beyond half court (full center circle + logo), then
 // the 47 ft half court. Slot y values are % of that 53 ft box.
-const COURT_TOP_FT = 6, COURT_FT = 47 + COURT_TOP_FT;
+const COURT_TOP_FT = 6, APRON_FT = 3, COURT_FT = 47 + COURT_TOP_FT + APRON_FT;
 const ftY = (ft) => ((ft + COURT_TOP_FT) / COURT_FT) * 100;
 const COURT_SLOTS = [
   { lbl: "PG", x: 50, y: ftY(13), big: false },   // top of the key, above the arc
@@ -1155,9 +1166,9 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
           <rect x="17" y="28" width="16" height="19" fill="url(#paintTex)" />
           {/* half-court line + full center circle */}
           <line x1="0" y1="0" x2="50" y2="0" stroke={th.half || "rgba(255,255,255,0.8)"} strokeWidth="0.3" />
-          <circle cx="25" cy="0" r="4.5" fill={th.center ?? centerColor(abbr)} stroke={th.centerStroke || "rgba(255,255,255,0.9)"} strokeWidth="0.3" />
+          {th.centerStroke !== "none" && <circle cx="25" cy="0" r={th.circleR || 4.5} fill={th.center ?? centerColor(abbr)} stroke={th.centerStroke || "rgba(255,255,255,0.9)"} strokeWidth="0.3" />}
           {/* three-point line: corners + arc (23.75ft from the rim) */}
-          <path d="M 3 47 L 3 33.3 A 23.75 23.75 0 0 1 47 33.3 L 47 47" fill="none" stroke={th.lines || color} strokeWidth="0.35" />
+          <path d="M 3 47 L 3 33.3 A 23.75 23.75 0 0 1 47 33.3 L 47 47" fill="none" stroke={th.threePt || th.lines || color} strokeWidth="0.35" />
           {/* key outline in the team color, free-throw circle in the secondary color */}
           <rect x="17" y="28" width="16" height="19" fill="none" stroke={th.lines || color} strokeWidth="0.35" />
           <path d="M 19 28 A 6 6 0 0 1 31 28" fill="none" stroke={th.ft || teamColor2(abbr)} strokeWidth="0.35" />
@@ -1173,25 +1184,34 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
           <path d="M 21 45.75 A 4 4 0 0 1 29 45.75" fill="none" stroke={th.lines || "rgba(255,255,255,0.8)"} strokeWidth="0.25" />
           <line x1="22" y1="43" x2="28" y2="43" stroke="rgba(255,255,255,0.95)" strokeWidth="0.45" />
           <circle cx="25" cy="41.75" r="0.75" fill="none" stroke="#f97316" strokeWidth="0.35" />
+          {/* out-of-bounds apron below the baseline, with the team name */}
+          <rect x="0" y="47" width="50" height={APRON_FT} fill={th.apron || color} />
+          <text x="25" y={47 + APRON_FT * 0.68} fontSize="1.7" fontWeight="900" fontFamily="system-ui, sans-serif" letterSpacing="0.45"
+            fill={th.apronText || "#FFFFFF"} textAnchor="middle">{String(team?.name || nick).toUpperCase()}</text>
           {/* baseline + sidelines */}
-          <rect x="0.15" y={-COURT_TOP_FT} width="49.7" height={COURT_FT - 0.15} fill="none" stroke={th.side || "rgba(255,255,255,0.7)"} strokeWidth="0.3" />
+          <rect x="0.15" y={-COURT_TOP_FT} width="49.7" height={47 + COURT_TOP_FT - 0.15} fill="none" stroke={th.side || "rgba(255,255,255,0.7)"} strokeWidth="0.3" />
           {/* floor lettering along the left sideline, just below half court (reads bottom → top) */}
-          {th.floorText && th.floorText.lines.map((t, i) => (
-            <text key={t} x={2.2 + i * 1.6} y={6} fontSize="1.5" fontWeight="800" fontFamily="system-ui, sans-serif" letterSpacing="0.25"
-              fill={th.floorText.color} textAnchor="middle" transform={`rotate(-90 ${2.2 + i * 1.6} 6)`}>{t}</text>
+          {th.floorText && th.floorText.map((ln, i) => (
+            <text key={i} x={2.2 + i * 1.6} y={1.2 + Math.max(...th.floorText.map((l) => l.t.length)) * 0.55} fontSize={th.floorText.length > 1 && Math.max(...th.floorText.map((l) => l.t.length)) > 12 ? "1.15" : "1.5"} fontWeight="800" fontFamily="system-ui, sans-serif" letterSpacing="0.2"
+              fill={ln.color} textAnchor="middle" transform={`rotate(-90 ${2.2 + i * 1.6} ${1.2 + Math.max(...th.floorText.map((l) => l.t.length)) * 0.55})`}>{ln.t}</text>
           ))}
         </svg>
         {/* center-court logo, sitting inside the center circle the way a
             real floor has it — we see the bottom half of it on a half court */}
         {team && team.logo && (
-          <div className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 w-[26%] rounded-full overflow-hidden pointer-events-none select-none"
-            style={{ top: ftY(0) + "%", aspectRatio: "1 / 1", animation: "hrbGlow 4s ease-in-out 1" }}>
+          <div className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full overflow-hidden pointer-events-none select-none"
+            style={{ top: ftY(0) + "%", width: (th.logoW || 26) + "%", aspectRatio: "1 / 1", animation: "hrbGlow 4s ease-in-out 1" }}>
             <img src={team.logo} alt="" className="absolute inset-[6%] w-[88%] h-[88%] object-contain" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.3))" }} />
             {/* light sweep — the "sparkle" */}
             <span className="absolute inset-0" style={{ background: "linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.55) 50%, transparent 65%)", animation: "hrbSweep 1.6s ease-in-out .5s 1 both" }} />
           </div>
         )}
 
+        {/* small logos flanking the free-throw line (Bulls-style) */}
+        {th.ftLogos && team && team.logo && [9, 41].map((x) => (
+          <img key={x} src={team.logo} alt="" className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none"
+            style={{ left: (x / 50) * 100 + "%", top: ftY(29) + "%", width: "9%", opacity: 0.95 }} />
+        ))}
         {/* availability tag, top-left, same frosted style as the NFL personnel tag */}
         {/* where the five came from — last game's actual starters, or Airtable */}
         <span className={"absolute right-2 top-2 rounded-md bg-black/40 backdrop-blur-sm px-2 py-1 text-[9px] font-extrabold shadow-sm " + (automated ? "text-emerald-300" : "text-amber-300")}>
