@@ -73,7 +73,7 @@ const COURT_THEMES = {
          circleR: 5, logoW: 30, apron: "#111111", apronText: "#FDB927",
          floorText: [[{ t: "State Farm", color: "#C8102E" }], [{ t: "ARENA", color: "#111111" }]] },
   BOS: { lines: "#FFFFFF", ft: "#FFFFFF", half: "#FFFFFF", side: "#FFFFFF", threePt: "#FFFFFF", center: "none", centerStroke: "none",
-         logoW: 30, apron: "#007A33", apronText: "#FFFFFF", courtLogo: "https://cdn.nba.com/logos/nba/1610612738/global/L/logo.svg",
+         logoW: 34, apron: "#007A33", apronText: "#FFFFFF", courtLogo: "https://cdn.nba.com/logos/nba/1610612738/global/L/logo.svg",
          floorText: [[{ t: "TD", color: "#FFFFFF", box: "#3FA35B" }, { t: "GARDEN", color: "#111111" }]] },
   MIA: { lines: "#111111", ft: "#111111", half: "#111111", side: "#111111", threePt: "#111111", center: "none", centerStroke: "none",
          paint: "#F9A01B", paintSides: "#98002E", logoW: 30, apron: "#111111", apronText: "#FFFFFF",
@@ -93,7 +93,9 @@ const COURT_THEMES = {
   DAL: { floor: "repeating-linear-gradient(90deg,#c9c5be 0 6.5%,#bfbab2 6.5% 13%)", paint: "#002B5E",
          lines: "#FFFFFF", ft: "#FFFFFF", ftTop: "#00538C", threePt: "#00538C", half: "#00538C", side: "#FFFFFF", center: "none", centerStroke: "none",
          logoW: 28, apron: "#002B5E", apronText: "#FFFFFF", apronLine: "#FFFFFF",
-         floorText: [{ parts: [{ t: "American", color: "#00538C" }] }, { parts: [{ t: "Airlines", color: "#00538C" }], indent: 2.5 }, { parts: [{ t: "Center", color: "#00538C" }], indent: 5 }] },
+         floorText: [{ parts: [{ t: "American", color: "#00538C" }], align: "start" },
+                     { parts: [{ t: "Airlines", color: "#00538C" }], align: "start", indent: 2.2 },
+                     { parts: [{ t: "Center", color: "#00538C" }], align: "start", indent: 4.4 }] },
   PHI: { lines: "#FFFFFF", ft: "#FFFFFF", threePt: "#FFFFFF", half: "#FFFFFF", side: "#FFFFFF", center: "none", centerStroke: "none",
          paint: "#003087", logoW: 28, apron: "#003087", apronText: "#FFFFFF", apronLine: "#ED174C", apronLabel: "Philadelphia 76ers", apronScript: true,
          floorText: [[{ t: "xfinity mobile", color: "#111111" }], [{ t: "ARENA", color: "#111111" }]] },
@@ -107,26 +109,51 @@ const COURT_THEMES = {
          paint: "#00788C", logoW: 28, apron: "#00788C", apronText: "#FFFFFF", apronLine: "#FFFFFF",
          floorText: [{ parts: [{ t: "Spectrum", color: "#1D1160" }], size: 1.3 }, { parts: [{ t: "CENTER", color: "#1D1160" }], align: "end" }] },
   DET: { lines: "#1D42BA", ft: "#1D42BA", threePt: "#1D42BA", half: "#1D42BA", side: "#1D42BA", center: "none", centerStroke: "none",
-         paint: "none", logoW: 28, apron: "#1D42BA", apronText: "#FFFFFF",
+         paint: "none", logoW: 28, apron: "#1D42BA", apronText: "#FFFFFF", fs: 2.3,
          floorText: [{ parts: [{ t: "Platinum Equity", color: "#111111" }], script: true }] },
   IND: { lines: "#FFFFFF", ft: "#FFFFFF", threePt: "#FFFFFF", half: "#FFFFFF", side: "#FFFFFF", center: "none", centerStroke: "none",
          paint: "#002D62", logoW: 28, apron: "#002D62", apronText: "#FFFFFF", apronLine: "#FFFFFF",
          floorText: [{ parts: [{ t: "GAINBRIDGE", color: "#111111" }], size: 1.3, weight: 900 }, { parts: [{ t: "FIELDHOUSE", color: "#111111" }], weight: 500 }] },
-  LAC: { lines: "#FFFFFF", ft: "#FFFFFF", ftTop: "#C8102E", threePt: "#FFFFFF", half: "#FFFFFF", side: "#FFFFFF", center: "none", centerStroke: "#C8102E",
-         circleR: 7.2, paint: "#0C2340", logoW: 28, apron: "#0C2340", apronText: "#FFFFFF",
+  LAC: { lines: "#FFFFFF", ft: "#FFFFFF", ftTop: "#C8102E", threePt: "#FFFFFF", half: "#FFFFFF", side: "#FFFFFF", center: "none", centerStroke: "none",
+         paint: "#0C2340", logoW: 28, logoRing: "#C8102E", apron: "#0C2340", apronText: "#FFFFFF",
          floorText: [[{ t: "inTUIT", color: "#111111" }], [{ t: "DoMe", color: "#111111" }]] },
   MEM: { floor: WOOD_LIGHTER, lines: "#12173F", ft: "#12173F", threePt: "#12173F", half: "#12173F", side: "#12173F", center: "none", centerStroke: "none",
-         paint: "#5D76A9", logoW: 28, apron: "none", apronText: "#12173F", apronLine: "#12173F",
-         floorText: [[{ t: "Fed", color: "#111111", weight: 900 }, { t: "Ex", color: "none", weight: 900 }, { t: "Forum", color: "#111111", weight: 900 }]], tight: true },
+         paint: "#5D76A9", logoW: 28, apron: "none", apronText: "#12173F", apronLine: "#12173F", tight: true,
+         floorText: [[{ t: "Fed", color: "#111111", weight: 900 }, { t: "Ex", color: "none", outline: "#111111", weight: 900 }, { t: "Forum", color: "#111111", weight: 900 }]] },
   MIL: { lines: "#FFFFFF", ft: "#FFFFFF", threePt: "#FFFFFF", half: "#FFFFFF", side: "#FFFFFF", center: "none", centerStroke: "none",
          logoW: 28,
-         floorText: [[{ t: "fiserv", color: "#111111", weight: 900 }, { t: "forum", color: "#111111", weight: 500 }]] },
-  MIN: { lines: "#FFFFFF", ft: "#FFFFFF", ftTop: "#9EA2A2", ftBottom: "#111111", threePt: "#0C2340", half: "#0C2340", side: "#FFFFFF", center: "none", centerStroke: "none",
-         paint: "#236192", logoW: 30, apron: "#111111", apronText: "#FFFFFF", apronLine: "#FFFFFF",
+         floorText: [[{ t: "fiserv", color: "#111111", weight: 1000 }, { t: "forum", color: "#111111", weight: 600 }]] },
+  MIN: { lines: "#FFFFFF", ft: "#FFFFFF", ftTopFill: "#9EA2A2", ftBottomFill: "#111111", threePt: "#0C2340", half: "#0C2340", side: "#FFFFFF", center: "none", centerStroke: "none",
+         paint: "#1B4E77", logoW: 30, apron: "#111111", apronText: "#FFFFFF", apronLine: "#FFFFFF", fs: 1.7,
          floorText: [[{ t: "TARGET CENTER", color: "#FFFFFF" }]] },
+  OKC: { lines: "#FFFFFF", ft: "#FFFFFF", threePt: "#FFFFFF", half: "#FFFFFF", side: "#FFFFFF", center: "none", centerStroke: "none",
+         logoW: 32, apron: "#007AC1", apronText: "#FFFFFF",
+         floorText: [{ parts: [{ t: "paycom", color: "#00843D" }], weight: 900 }, [{ t: "center", color: "#111111" }]] },
+  ORL: { lines: "#111111", ft: "#111111", threePt: "#111111", half: "#111111", side: "#111111", center: "none", centerStroke: "none",
+         paint: "#0B3FA8", logoW: 28, apron: "#0B3FA8", apronText: "#FFFFFF",
+         floorText: [{ parts: [{ t: "KIA", color: "#111111" }], size: 1.5, weight: 900 }, [{ t: "CENTER", color: "#111111" }]] },
+  PHX: { lines: "#E56020", ft: "#E56020", threePt: "#111111", half: "#E56020", side: "#E56020", restricted: "#FFFFFF", center: "none", centerStroke: "none",
+         logoW: 32, apron: "#111111", apronText: "#FFFFFF", apronLine: "#E56020", fs: 1.6,
+         floorText: [{ parts: [{ t: "mortgage", color: "#111111" }], size: 1.3 }, [{ t: "matchup", color: "#111111" }], { parts: [{ t: "center", color: "#111111" }], size: 0.82 }] },
+  POR: { lines: "#111111", ft: "#111111", threePt: "#111111", half: "#FFFFFF", side: "#FFFFFF", restricted: "#FFFFFF", center: "none", centerStroke: "none",
+         paint: "#B32026", logoW: 30, apron: "#B32026", apronText: "#FFFFFF", apronLine: "#FFFFFF", fs: 2.1,
+         floorText: [{ parts: [{ t: "moda", color: "#111111" }], size: 1.35 }, { parts: [{ t: "center", color: "#111111" }], size: 0.8 }] },
+  SAC: { lines: "#FFFFFF", ft: "#FFFFFF", threePt: "#FFFFFF", half: "#FFFFFF", side: "#FFFFFF", ftBottomFill: "#111111", center: "none", centerStroke: "none",
+         paint: "#5A2D81", logoW: 28, apron: "#111111", apronText: "#FFFFFF",
+         floorText: [[{ t: "Golden 1", color: "#FDB927", weight: 900 }, { t: "Center", color: "#111111", weight: 900 }], { parts: [{ t: "Credit Union", color: "#111111" }], size: 0.7 }] },
+  TOR: { lines: "#111111", ft: "#111111", threePt: "#111111", half: "#111111", side: "#111111", center: "none", centerStroke: "none",
+         logoW: 28, apron: "#CE1141", apronText: "#FFFFFF", apronLabel: "TORONTO RAPTORS", apronTextAlt: "#111111", fs: 2.2,
+         floorText: [[{ t: "Scotia", color: "#CE1141", weight: 900 }], [{ t: "Arena", color: "#CE1141", weight: 900 }]] },
+  WSH: { lines: "#FFFFFF", ft: "#FFFFFF", threePt: "#FFFFFF", half: "#FFFFFF", side: "#FFFFFF", center: "none", centerStroke: "none",
+         paint: "#002B5C", logoW: 28, apron: "#002B5C", apronText: "#FFFFFF",
+         floorText: [[{ t: "Capital One", color: "#002B5C" }], { parts: [{ t: "Arena", color: "#002B5C" }], align: "end" }] },
+  UTAH:{ lines: "#7BAFD4", ft: "#7BAFD4", threePt: "#7BAFD4", half: "#7BAFD4", side: "#FFFFFF", center: "none", centerStroke: "none",
+         paint: "#4B2A85", logoW: 28, apron: "#4B2A85", apronText: "#FFFFFF",
+         floorText: [[{ t: "DELTA CENTER", color: "#0C2340" }]] },
 };
 COURT_THEMES.SA = COURT_THEMES.SAS;
 COURT_THEMES.GS = COURT_THEMES.GSW;
+COURT_THEMES.UTA = COURT_THEMES.UTAH;
 const courtTheme = (abbr) => COURT_THEMES[String(abbr || "").toUpperCase()] || {};
 
 // Full team names -> abbreviations, so a player's current team
@@ -1177,7 +1204,7 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
   const ringCls = (p) => {
     if (!p) return "border-white/40";
     const h = healthOf(p);
-    return h === "ok" ? "border-white" : h === "q" ? "border-amber-400" : "border-red-500";
+    return h === "ok" ? "border-white" : h === "q" ? "border-amber-400 hrb-pulse-q" : "border-red-500 hrb-pulse-out";
   };
   const HealthBadge = ({ p, small }) => {
     const h = healthOf(p);
@@ -1231,6 +1258,10 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
           <path d="M 3 47 L 3 33.3 A 23.75 23.75 0 0 1 47 33.3 L 47 47" fill="none" stroke={th.threePt || th.lines || color} strokeWidth="0.35" />
           {/* key outline in the team color, free-throw circle in the secondary color */}
           <rect x="17" y="28" width="16" height="19" fill="none" stroke={th.lines || color} strokeWidth="0.35" />
+          {th.ftFillTop && <path d="M 19 28 A 6 6 0 0 1 31 28 Z" fill={th.ftFillTop} />}
+          {th.ftFillBottom && <path d="M 19 28 A 6 6 0 0 0 31 28 Z" fill={th.ftFillBottom} />}
+          {th.ftTopFill && <path d="M 19 28 A 6 6 0 0 1 31 28 Z" fill={th.ftTopFill} />}
+          {th.ftBottomFill && <path d="M 19 28 A 6 6 0 0 0 31 28 Z" fill={th.ftBottomFill} />}
           <path d="M 19 28 A 6 6 0 0 1 31 28" fill="none" stroke={th.ftTop || th.ft || teamColor2(abbr)} strokeWidth="0.35" />
           <path d="M 19 28 A 6 6 0 0 0 31 28" fill="none" stroke={th.ftBottom || th.ft || teamColor2(abbr)} strokeWidth="0.35" strokeDasharray="1.2 0.9" opacity="0.8" />
           {/* lane hash marks */}
@@ -1241,7 +1272,7 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
             </React.Fragment>
           ))}
           {/* restricted area, backboard, rim */}
-          <path d="M 21 45.75 A 4 4 0 0 1 29 45.75" fill="none" stroke={th.lines || "rgba(255,255,255,0.8)"} strokeWidth="0.25" />
+          <path d="M 21 45.75 A 4 4 0 0 1 29 45.75" fill="none" stroke={th.restricted || th.lines || "rgba(255,255,255,0.8)"} strokeWidth="0.25" />
           <line x1="22" y1="43" x2="28" y2="43" stroke="rgba(255,255,255,0.95)" strokeWidth="0.45" />
           <circle cx="25" cy="41.75" r="0.75" fill="none" stroke="#f97316" strokeWidth="0.35" />
           {/* out-of-bounds apron below the baseline, with the team name */}
@@ -1259,16 +1290,20 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
             const cwOf = (fs) => fs * 0.72;
             const lineLen = (ln, fs) => ln.parts.reduce((a, pt) => a + pt.t.trim().length * cwOf(fs), 0) + (ln.parts.length - 1) * gap;
             const longestChars = Math.max(...norm.map((ln) => ln.parts.reduce((a, pt) => a + pt.t.trim().length, 0)));
-            const base = longestChars > 12 ? 1.15 : 1.5;
-            const T0 = lineLen(norm[0], base * (norm[0].size || 1));
-            const y0 = 2.8 + Math.max(...norm.map((ln) => lineLen(ln, base * (ln.size || 1)))) / 2;   // every line clears the half-court line
+            const base = th.fs || (longestChars > 12 ? 1.15 : 1.5);
+            const lens = norm.map((ln) => lineLen(ln, base * (ln.size || 1)));
+            const T = Math.max(...lens);
+            const top = 2.8, bottom = top + T;      // text runs bottom → top, clear of half court
             let x = 2.2;
             return norm.map((ln, i) => {
               const fs = base * (ln.size || 1);
-              const cx = x + (fs - base) / 2; x += fs + 0.35;
-              const total = lineLen(ln, fs);
-              // centered on the first line by default; "end" lines up the tops; indent steps toward the baseline
-              let cursor = ln.align === "end" ? y0 - T0 / 2 + total : y0 + total / 2 + (ln.indent || 0);
+              const cx = x + (fs - base) / 2; x += fs + 0.4;
+              const total = lens[i], ind = ln.indent || 0;
+              // where this line's first character sits
+              const start = ln.align === "end" ? top + total          // last letters line up
+                : ln.align === "start" ? bottom - ind                  // first letters line up (indent steps in)
+                : (top + bottom) / 2 + total / 2;                      // centered (default)
+              let cursor = start;
               return ln.parts.map((pt, k) => {
                 const w = pt.t.trim().length * cwOf(fs); const yc = cursor - w / 2; cursor -= w + gap;
                 return (
@@ -1276,7 +1311,8 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
                     {pt.box && <rect x={cx - fs * 0.62} y={yc - w / 2 - 0.2} width={fs * 1.24} height={w + 0.4} fill={pt.box} rx="0.25" />}
                     <text x={cx} y={yc} fontSize={fs} fontWeight={pt.weight || ln.weight || 800}
                       fontFamily={ln.script ? "'Snell Roundhand', 'Brush Script MT', 'Segoe Script', cursive" : "system-ui, sans-serif"} fontStyle={ln.script ? "italic" : "normal"} letterSpacing={ln.script ? "0" : "0.2"}
-                      fill={pt.color} textAnchor="middle" dominantBaseline="middle" transform={`rotate(-90 ${cx} ${yc})`}>{pt.t}</text>
+                      fill={pt.color === "none" ? "none" : pt.color} stroke={pt.color === "none" ? (pt.outline || "#111111") : "none"} strokeWidth={pt.color === "none" ? 0.12 : 0}
+                      textAnchor="middle" dominantBaseline="middle" transform={`rotate(-90 ${cx} ${yc})`}>{pt.t}</text>
                   </g>
                 );
               });
@@ -1287,7 +1323,9 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
             real floor has it — we see the bottom half of it on a half court */}
         {team && (team.courtLogo || th.courtLogo || team.logo) && (
           <div className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full overflow-hidden pointer-events-none select-none"
-            style={{ top: ftY(0) + "%", width: Math.min(th.logoW || 26, 30) + "%", aspectRatio: "1 / 1", animation: "hrbLogoIn .5s ease-out both" }}>
+            style={{ top: ftY(0) + "%", width: Math.min(th.logoW || 26, 34) + "%", aspectRatio: "1 / 1", animation: "hrbLogoIn .5s ease-out both",
+              ...(th.logoRing ? { boxShadow: "0 0 0 2px " + th.logoRing } : {}) }}>
+            {th.logoRing && <span className="absolute inset-0 rounded-full" style={{ border: "0.35vw solid " + th.logoRing }} />}
             <img src={team.courtLogo || th.courtLogo || team.logo} alt="" className="absolute inset-[6%] w-[88%] h-[88%] object-contain" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.3))", transform: "rotate(-90deg)" }}
               onError={(e) => { if (e.currentTarget.src !== team.logo && team.logo) e.currentTarget.src = team.logo; }} />
 
@@ -1314,6 +1352,10 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
           </span>
         )}
         <style>{`@keyframes hrbPop { from { opacity: 0; transform: translate(-50%, -50%) scale(.6); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+.hrb-pulse-q { animation: hrbPulseQ 1.9s ease-in-out infinite; }
+.hrb-pulse-out { animation: hrbPulseOut 1.9s ease-in-out infinite; }
+@keyframes hrbPulseQ { 0%, 100% { box-shadow: 0 0 0 0 rgba(251,191,36,0); } 50% { box-shadow: 0 0 0 4px rgba(251,191,36,0.45); } }
+@keyframes hrbPulseOut { 0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); } 50% { box-shadow: 0 0 0 4px rgba(239,68,68,0.45); } }
 @keyframes hrbLogoIn { from { opacity: 0; transform: translate(-50%, -50%) scale(.85); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
 @keyframes hrbSweepOld { 0% { transform: translateX(-120%); } 100% { transform: translateX(120%); } }
 @keyframes hrbGlow { 0%, 100% { filter: drop-shadow(0 0 0px rgba(255,255,255,0)); } 50% { filter: drop-shadow(0 0 6px rgba(255,255,255,0.55)); } }`}</style>
@@ -2320,7 +2362,7 @@ function TonightTab({ players, teams, onSelect, onSelectTeam }) {
 
 // ═══════════════ APP SHELL ═══════════════════════════════════════
 const TABS = [
-  { id: "tonight", label: "Matchups", icon: "📅" },
+  { id: "tonight", label: "Matchups", icon: "🗓️" },
   { id: "teams", label: "Teams", icon: "🏀" },
   { id: "players", label: "Players", icon: "👤" },
   { id: "stats", label: "Stats", icon: "📊" },
