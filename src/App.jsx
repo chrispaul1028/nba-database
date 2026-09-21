@@ -47,6 +47,13 @@ const TEAM_COLORS2 = {
   POR: "#000000", UTA: "#F9A01B", UTAH: "#F9A01B", LAC: "#1D428A",
   SA: "#C4CED4", NO: "#C8102E",
 };
+// Blend two hex colors for the team-card gradient
+function mixHex(a, b, t) {
+  const p = (h) => [1, 3, 5].map((i) => parseInt(String(h).slice(i, i + 2), 16));
+  const [r1, g1, b1] = p(a), [r2, g2, b2] = p(b);
+  const m = (x, y) => Math.round(x + (y - x) * t).toString(16).padStart(2, "0");
+  return "#" + m(r1, r2) + m(g1, g2) + m(b1, b2);
+}
 const teamColor2 = (abbr) => TEAM_COLORS2[String(abbr || "").toUpperCase()] || "#F59E0B";
 // Teams whose logo is mostly the primary color — the center circle uses the
 // secondary color for them so the logo doesn't disappear into it.
@@ -108,8 +115,11 @@ const COURT_THEMES = {
   CHA: { lines: "#FFFFFF", ft: "#FFFFFF", threePt: "#FFFFFF", half: "#FFFFFF", side: "#FFFFFF", center: "none", centerStroke: "none",
          paint: "#00788C", logoW: 28, apron: "#00788C", apronText: "#FFFFFF", apronLine: "#FFFFFF",
          floorText: [{ parts: [{ t: "Spectrum", color: "#1D1160" }], size: 1.3 }, { parts: [{ t: "CENTER", color: "#1D1160" }], align: "end" }] },
+  DEN: { lines: "#0E2240", ft: "#0E2240", threePt: "#0E2240", half: "#0E2240", side: "#0E2240", center: "none", centerStroke: "none",
+         paint: "none", logoW: 30, fs: 2.2,
+         floorText: [{ parts: [{ t: "Ball", color: "#0E2240" }], script: true, size: 1.4 }, { parts: [{ t: "Arena", color: "#0E2240" }], size: 0.7 }] },
   DET: { lines: "#1D42BA", ft: "#1D42BA", threePt: "#1D42BA", half: "#1D42BA", side: "#1D42BA", center: "none", centerStroke: "none",
-         paint: "none", logoW: 28, apron: "#1D42BA", apronText: "#FFFFFF", fs: 2.3,
+         paint: "none", logoW: 28, apron: "#1D42BA", apronText: "#FFFFFF", fs: 2.3, textTop: 1.6,
          floorText: [{ parts: [{ t: "Platinum Equity", color: "#111111" }], script: true }] },
   IND: { lines: "#FFFFFF", ft: "#FFFFFF", threePt: "#FFFFFF", half: "#FFFFFF", side: "#FFFFFF", center: "none", centerStroke: "none",
          paint: "#002D62", logoW: 28, apron: "#002D62", apronText: "#FFFFFF", apronLine: "#FFFFFF",
@@ -129,7 +139,7 @@ const COURT_THEMES = {
   OKC: { lines: "#FFFFFF", ft: "#FFFFFF", threePt: "#FFFFFF", half: "#FFFFFF", side: "#FFFFFF", center: "none", centerStroke: "none",
          logoW: 32, apron: "#007AC1", apronText: "#FFFFFF",
          floorText: [{ parts: [{ t: "paycom", color: "#00843D" }], weight: 900 }, [{ t: "center", color: "#111111" }]] },
-  ORL: { lines: "#111111", ft: "#111111", threePt: "#111111", half: "#111111", side: "#111111", center: "none", centerStroke: "none",
+  ORL: { lines: "#111111", ft: "#111111", threePt: "#111111", half: "#111111", side: "none", center: "none", centerStroke: "none",
          paint: "#0B3FA8", logoW: 28, apron: "#0B3FA8", apronText: "#FFFFFF",
          floorText: [{ parts: [{ t: "KIA", color: "#111111" }], size: 1.5, weight: 900 }, [{ t: "CENTER", color: "#111111" }]] },
   PHX: { lines: "#E56020", ft: "#E56020", threePt: "#111111", half: "#E56020", side: "#E56020", restricted: "#FFFFFF", center: "none", centerStroke: "none",
@@ -139,7 +149,7 @@ const COURT_THEMES = {
          paint: "#B32026", logoW: 30, apron: "#B32026", apronText: "#FFFFFF", apronLine: "#FFFFFF", fs: 2.1,
          floorText: [{ parts: [{ t: "moda", color: "#111111" }], size: 1.35 }, { parts: [{ t: "center", color: "#111111" }], size: 0.8 }] },
   SAC: { lines: "#FFFFFF", ft: "#FFFFFF", threePt: "#FFFFFF", half: "#FFFFFF", side: "#FFFFFF", ftBottomFill: "#111111", center: "none", centerStroke: "none",
-         paint: "#5A2D81", logoW: 28, apron: "#111111", apronText: "#FFFFFF",
+         paint: "#5A2D81", logoW: 28, apron: "#111111", apronText: "#FFFFFF", fs: 1.75,
          floorText: [[{ t: "Golden 1", color: "#FDB927", weight: 900 }, { t: "Center", color: "#111111", weight: 900 }], { parts: [{ t: "Credit Union", color: "#111111" }], size: 0.7 }] },
   TOR: { lines: "#111111", ft: "#111111", threePt: "#111111", half: "#111111", side: "#111111", center: "none", centerStroke: "none",
          logoW: 28, apron: "#CE1141", apronText: "#FFFFFF", apronLabel: "TORONTO RAPTORS", apronTextAlt: "#111111", fs: 2.2,
@@ -205,7 +215,7 @@ function ContractLine({ c }) {
     <span className="inline-flex items-center gap-1 min-w-0">
       <span className="shrink-0">{terms(c)}</span>
       {abbr && (logo
-        ? <img src={logo} alt={abbr} title={c.team} className="w-4 h-4 rounded-full object-contain bg-white shrink-0" />
+        ? <img src={logo} alt={abbr} title={c.team} className="w-4 h-4 object-contain shrink-0" />
         : <span className="text-[9px] font-extrabold text-slate-400 shrink-0">{abbr}</span>)}
       <span className="truncate">· {c.kind}</span>
     </span>
@@ -618,7 +628,7 @@ function TeamPill({ team }) {
   if (!abbr) return null;
   const logo = TEAM_LOGOS[abbr];
   if (logo) {
-    return <img src={logo} alt={abbr} className="w-8 h-8 rounded-full object-contain bg-white p-0.5 shrink-0" />;
+    return <img src={logo} alt={abbr} className="w-8 h-8 object-contain shrink-0" />;
   }
   return (
     <span className="text-[10px] font-bold text-white px-2 py-1 rounded-full shrink-0" style={{ backgroundColor: teamColor(abbr) }}>
@@ -982,28 +992,32 @@ function TeamsTab({ teams, players, onSelect }) {
             ))}
           </div>
         )}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden mt-4">
+        <div className="space-y-2.5 mt-4">
           {list.map((t) => {
             const abbr = t.abbr || toAbbr(t.name);
+            const c1 = teamColor(abbr), c2 = teamColor2(abbr);
             return (
-              <button key={t.id} onClick={() => onSelect(t)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
+              <button key={t.id} onClick={() => onSelect(t)}
+                className="w-full flex items-center gap-3 px-4 py-4 text-left rounded-2xl shadow-sm active:opacity-90 overflow-hidden relative"
+                style={{ background: `linear-gradient(105deg, ${c1} 0%, ${mixHex(c1, c2, 0.45)} 100%)` }}>
+                <span className="absolute inset-0" style={{ background: "linear-gradient(180deg,rgba(255,255,255,0.10) 0%,rgba(0,0,0,0) 45%,rgba(0,0,0,0.12) 100%)" }} />
                 {t.logo ? (
-                  <img src={t.logo} alt="" className="w-11 h-11 rounded-full object-contain bg-white p-1 shrink-0" />
+                  <img src={t.logo} alt="" className="w-12 h-12 object-contain shrink-0 relative" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.35))" }} />
                 ) : (
-                  <span className="w-11 h-11 rounded-full shrink-0" style={{ backgroundColor: teamColor(abbr) }} />
+                  <span className="w-12 h-12 rounded-full shrink-0 bg-white/20 relative" />
                 )}
-                <span className="flex-1 min-w-0">
-                  <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{t.name}</span>
-                  <span className="block text-[11px] text-slate-400 font-medium truncate">
+                <span className="flex-1 min-w-0 relative">
+                  <span className="block text-[17px] font-extrabold text-white truncate" style={{ textShadow: "0 1px 2px rgba(0,0,0,0.3)" }}>{t.name}</span>
+                  <span className="block text-[12px] text-white/75 font-medium truncate">
                     {t.division ? (divRank[t.id] ? `${divRank[t.id]} in ${t.division} Division` : t.division + " Division") : "—"}
                   </span>
                 </span>
                 {(t.wins != null || t.losses != null) && (
-                  <span className="flex gap-2.5 shrink-0">
+                  <span className="flex gap-3 shrink-0 relative">
                     {[["W", t.wins ?? 0], ["L", t.losses ?? 0]].map(([lbl, v]) => (
                       <span key={lbl} className="w-7 text-center">
-                        <span className="block text-[8px] font-bold text-slate-400 uppercase">{lbl}</span>
-                        <span className="block text-xs font-extrabold text-slate-800 dark:text-slate-100 tabular-nums">{v}</span>
+                        <span className="block text-[9px] font-bold text-white/60 uppercase">{lbl}</span>
+                        <span className="block text-lg font-extrabold text-white tabular-nums">{v}</span>
                       </span>
                     ))}
                   </span>
@@ -1282,7 +1296,7 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
             fontFamily={th.apronScript ? "'Snell Roundhand', 'Brush Script MT', 'Segoe Script', cursive" : "system-ui, sans-serif"} fontStyle={th.apronScript ? "italic" : "normal"} letterSpacing={th.apronScript ? "0.05" : "0.45"}
             fill={th.apronText || "#FFFFFF"} textAnchor="middle">{th.apronLabel || String(team?.name || nick).toUpperCase()}</text>
           {/* baseline + sidelines */}
-          <rect x="0.15" y={-COURT_TOP_FT} width="49.7" height={47 + COURT_TOP_FT - 0.15} fill="none" stroke={th.side || "rgba(255,255,255,0.7)"} strokeWidth="0.3" />
+          <rect x="0.15" y={-COURT_TOP_FT} width="49.7" height={47 + COURT_TOP_FT - 0.15} fill="none" stroke={th.side === "none" ? "transparent" : th.side || "rgba(255,255,255,0.7)"} strokeWidth="0.3" />
           {/* floor lettering along the left sideline, just below half court (reads bottom → top) */}
           {th.floorText && (() => {
             const norm = th.floorText.map((ln) => (Array.isArray(ln) ? { parts: ln } : ln));
@@ -1293,7 +1307,7 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
             const base = th.fs || (longestChars > 12 ? 1.15 : 1.5);
             const lens = norm.map((ln) => lineLen(ln, base * (ln.size || 1)));
             const T = Math.max(...lens);
-            const top = 2.8, bottom = top + T;      // text runs bottom → top, clear of half court
+            const top = th.textTop ?? 2.8, bottom = top + T;      // text runs bottom → top, clear of half court
             let x = 2.2;
             return norm.map((ln, i) => {
               const fs = base * (ln.size || 1);
@@ -1436,16 +1450,27 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
       )}
       {/* Coaching staff — reads the Teams table's "Head Coach" and
           "Assistant Coach" columns; hidden until at least one is filled */}
-      {team && (team.headCoach || team.asstCoach) && (
-        <div className="mt-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm px-3 py-2.5 grid grid-cols-2 gap-2">
-          {[["Head Coach", team.headCoach], ["Assistant Coach", team.asstCoach]].map(([k, v]) => (
-            <div key={k} className="min-w-0">
-              <div className="text-[8px] font-semibold tracking-widest uppercase text-slate-400">{k}</div>
-              <div className="text-[11px] font-bold text-slate-800 dark:text-slate-100 truncate">{v || "—"}</div>
-            </div>
-          ))}
-        </div>
-      )}
+      {team && (team.headCoach || team.asstCoach || team.asstCoach2) && (() => {
+        // "Since" years become tenure: 2023 → "2023 · 4th season"
+        const yrs = (since) => {
+          const y = Number(String(since || "").match(/\d{4}/)?.[0]);
+          if (!y) return since ? String(since) : null;
+          const n = startYear(CURRENT_SEASON) - y + 1;
+          return y + (n > 0 ? " · " + (ORDINALS[n - 1] || n + "th") + " season" : "");
+        };
+        const rows = [["Head Coach", team.headCoach, team.hcSince], ["Assistant Coach", team.asstCoach, team.acSince], ["Assistant Coach", team.asstCoach2, team.acSince2]].filter(([, v]) => v);
+        return (
+          <div className={"mt-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm px-3 py-2.5 grid gap-2 " + (rows.length > 2 ? "grid-cols-3" : "grid-cols-2")}>
+            {rows.map(([k, v, since], i) => (
+              <div key={i} className="min-w-0">
+                <div className="text-[8px] font-semibold tracking-widest uppercase text-slate-400">{k}</div>
+                <div className="text-[11px] font-bold text-slate-800 dark:text-slate-100 truncate">{v}</div>
+                {yrs(since) && <div className="text-[9px] font-semibold text-slate-400 truncate">{yrs(since)}</div>}
+              </div>
+            ))}
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -1807,7 +1832,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
         <button onClick={onBack} className="text-sm font-semibold opacity-80 mb-4">‹ {backLabel || "Teams"}</button>
         <div className="flex items-center gap-4">
           {team.logo ? (
-            <img src={team.logo} alt="" className="w-16 h-16 rounded-full object-contain bg-white p-1.5 shrink-0" />
+            <img src={team.logo} alt="" className="w-16 h-16 object-contain shrink-0" style={{ filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.35))" }} />
           ) : (
             <span className="text-3xl">🏀</span>
           )}
@@ -2299,7 +2324,7 @@ function TonightTab({ players, teams, onSelect, onSelectTeam }) {
               const tm = teamByAbbr(t.abbr);
               return (
                 <button onClick={tm && onSelectTeam ? () => onSelectTeam(tm) : undefined} className="w-full flex items-center gap-2.5 text-left">
-                  <img src={t.logo || TEAM_LOGOS[t.abbr] || ""} alt="" className="w-7 h-7 rounded-full bg-white object-contain shrink-0" />
+                  <img src={t.logo || TEAM_LOGOS[t.abbr] || ""} alt="" className="w-7 h-7 object-contain shrink-0" />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline gap-1.5">
                       <span className={"text-[13px] font-extrabold tracking-wide " + (lost ? "text-slate-400" : "text-slate-900 dark:text-white")}>{t.abbr}</span>
