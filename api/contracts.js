@@ -45,7 +45,11 @@ const FIELDS = {
   teamHeadCoach: ["Head Coach", "Coach", "HC"],
   teamArena: ["Arena", "Home Arena", "Venue", "Stadium"],
   teamCourtLogo: ["Court Logo", "Floor Logo", "Center Court Logo"],
-  teamAsstCoach: ["Assistant Coach", "Assistant", "Asst Coach", "Associate Head Coach", "Lead Assistant"],
+  teamAsstCoach: ["Assistant Coach", "Assistant", "Asst Coach", "Associate Head Coach", "Lead Assistant", "AC1"],
+  teamHcSince: ["HC Since", "Head Coach Since", "HC Start"],
+  teamAcSince: ["AC1 Since", "AC Since", "Assistant Coach Since", "AC1 since"],
+  teamAsstCoach2: ["AC2", "Assistant Coach 2", "Second Assistant"],
+  teamAcSince2: ["AC2 Since", "AC2 since"],
   teamDivision: ["Division", "Div"],
   teamWins: ["W", "Wins"],
   teamPPG: ["PPG", "Points Per Game", "Team PPG", "Offense PPG", "PTS/G"],
@@ -240,6 +244,10 @@ export default async function handler(req, res) {
           arena: asText(getField(t.fields, FIELDS.teamArena)),
           courtLogo: (() => { const v = getField(t.fields, FIELDS.teamCourtLogo); return Array.isArray(v) && v[0] ? (v[0].thumbnails?.large?.url || v[0].url) : (typeof v === "string" ? v : null); })(),
           asstCoach: asText(getField(t.fields, FIELDS.teamAsstCoach)),
+          hcSince: asText(getField(t.fields, FIELDS.teamHcSince)),
+          acSince: asText(getField(t.fields, FIELDS.teamAcSince)),
+          asstCoach2: asText(getField(t.fields, FIELDS.teamAsstCoach2)),
+          acSince2: asText(getField(t.fields, FIELDS.teamAcSince2)),
         });
       }
       teamsOut.sort((a, b) => String(a.name).localeCompare(String(b.name)));
@@ -389,7 +397,7 @@ export default async function handler(req, res) {
       .sort((a, b) => a.name.localeCompare(b.name));
 
     res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
-    return res.status(200).json({ apiVersion: "v28.0", players: out, teams: teamsOut });
+    return res.status(200).json({ apiVersion: "v29.0", players: out, teams: teamsOut });
   } catch (e) {
     return res.status(500).json({ error: String(e.message || e) });
   }
