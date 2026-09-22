@@ -39,7 +39,7 @@ export default async function handler(req, res) {
           age: a.age ?? null,
           injury: (a.injuries || [])[0]?.status || null,
           // ESPN's injury write-up + estimated return, when it has one
-          injuryDetail: (() => { const inj = (a.injuries || [])[0]; if (!inj) return null; const d = inj.details || {}; return [d.type, d.detail, d.side].filter(Boolean).join(" ") || inj.longComment || inj.shortComment || null; })(),
+          injuryDetail: (() => { const inj = (a.injuries || [])[0]; if (!inj) return null; const d = inj.details || {}; return [d.side, d.type, d.detail].filter(Boolean).join(" ") || null; })(),
           injuryReturn: (a.injuries || [])[0]?.details?.returnDate || null,
           espnId: a.id,
         };
