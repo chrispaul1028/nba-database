@@ -295,6 +295,9 @@ function injuryLine(p) {
   const retTxt = ret && !isNaN(ret) ? "est. return " + ret.toLocaleDateString([], { month: "short", day: "numeric" }) : "";
   return [note, retTxt].filter(Boolean).join(" · ");
 }
+// "(right ankle sprain)" — Airtable notes first, else ESPN's write-up
+const injuryDetailOf = (p) => { const t = p.injuryNotes || espnOf(p)?.injuryDetail || ""; return t ? String(t).toLowerCase().replace(/[()]/g, "").trim() : ""; };
+const injuryReturnOf = (p) => { const r = espnOf(p)?.injuryReturn; const d = r ? new Date(r) : null; return d && !isNaN(d) ? d.toLocaleDateString([], { month: "short", day: "numeric" }) : null; };
 const isActiveStatus = (p) => { const st = String(p.status || "").toLowerCase(); return !st || st.includes("active") || st.includes("available"); };
 const GENERIC_POS = new Set(["", "G", "F", "G-F", "F-G", "F-C", "C-F", "G/F", "F/C", "GUARD", "FORWARD", "WING", "BIG"]);
 // Court position: Airtable's exact label (PG/SG/SF/PF/C) if it has one,
@@ -628,7 +631,7 @@ function TeamPill({ team }) {
   if (!abbr) return null;
   const logo = TEAM_LOGOS[abbr];
   if (logo) {
-    return <img src={logo} alt={abbr} className="w-8 h-8 object-contain shrink-0" />;
+    return <img src={logo} alt={abbr} className="w-11 h-11 object-contain shrink-0" />;
   }
   return (
     <span className="text-[10px] font-bold text-white px-2 py-1 rounded-full shrink-0" style={{ backgroundColor: teamColor(abbr) }}>
@@ -640,7 +643,7 @@ function TeamPill({ team }) {
 // ═══════════════ TAB: PLAYER HUB ═════════════════════════════════
 // One bottom tab for players, the injury report, contracts and the draft —
 // same hub the NFL app uses, so the bottom nav stays at four buttons.
-function PlayersHub({ players, onSelect }) {
+function PlayersHub({ players, teams, onSelect }) {
   const [view, setView] = useState("players");
   const pills = (
     <div className="flex gap-2 mt-3 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
@@ -654,7 +657,81 @@ function PlayersHub({ players, onSelect }) {
   );
   if (view === "contracts") return <ContractsTab players={players} onSelect={onSelect} pills={pills} />;
   if (view === "draft") return <DraftTab players={players} onSelect={onSelect} pills={pills} />;
-  return <PlayersTab players={players} onSelect={onSelect} pills={pills} forceInj={view === "injury"} key={view} />;
+  if (view === "injury") return <InjuryFeed players={players} teams={teams} onSelect={onSelect} pills={pills} />;
+  return <PlayersTab players={players} onSelect={onSelect} pills={pills} key={view} />;
+}
+
+// ═══════════════ INJURY REPORT (ESPN feed, newest first) ═════════
+function InjuryFeed({ players, teams, onSelect, pills }) {
+  const [q, setQ] = useState("");
+  const [feed, setFeed] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/injuries").then((r) => r.json()).then((d) => { if (alive) setFeed(d && d.records ? d : { records: [], error: d?.error || "unavailable" }); }).catch(() => alive && setFeed({ records: [], error: "unreachable" }));
+    return () => { alive = false; };
+  }, []);
+  const byName = useMemo(() => { const m = {}; for (const p of players) m[espnNrm(p.name)] = p; return m; }, [players]);
+  const abbrOfTeamName = (name) => { const t = (teams || []).find((t) => String(t.name).toLowerCase() === String(name).toLowerCase()); return t ? (t.abbr || toAbbr(t.name)) : toAbbr(name); };
+  const s = q.toLowerCase().trim();
+  const recs = (feed?.records || []).filter((r) => !s || r.name.toLowerCase().includes(s) || r.team.toLowerCase().includes(s));
+  // group by ESPN update date
+  const groups = [];
+  for (const r of recs) {
+    const d = r.date ? new Date(r.date) : null;
+    const key = d && !isNaN(d) ? d.toLocaleDateString([], { month: "short", day: "numeric" }).toUpperCase() : "UNDATED";
+    let g = groups[groups.length - 1]; if (!g || g.key !== key) { g = { key, items: [] }; groups.push(g); }
+    g.items.push(r);
+  }
+  const stamp = feed?.updatedAt ? new Date(feed.updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : null;
+  return (
+    <div>
+      <ListHeader title="Injury Report" q={q} setQ={setQ} pills={pills} placeholder="Search players or teams…" />
+      <div className="px-4 pb-28 mt-4">
+        {!feed && <div className="text-center text-xs text-slate-400 py-10">Loading ESPN feed…</div>}
+        {feed && feed.error && <div className="text-center text-xs text-slate-400 py-10">Couldn't reach ESPN's injury feed. Try again in a minute.</div>}
+        {feed && !feed.error && (
+          <div className="text-[11px] font-semibold text-slate-400 mb-3">ESPN feed · {recs.length} records{stamp ? " · " + stamp : ""} · newest update first</div>
+        )}
+        {groups.map((g) => (
+          <div key={g.key}>
+            <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mb-2 px-1">{g.key}</div>
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden mb-4">
+              {g.items.map((r) => {
+                const p = byName[espnNrm(r.name)];
+                const ab = abbrOfTeamName(r.team);
+                const time = r.date ? new Date(r.date).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
+                const photo = p ? photoOf(p) : r.headshot;
+                const ret = r.returnDate ? new Date(r.returnDate) : null;
+                return (
+                  <button key={r.id} onClick={p ? () => onSelect(p) : undefined} className="w-full flex items-start gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800"
+                    style={{ borderLeft: "3px solid " + teamColor(ab) }}>
+                    <span className="w-12 shrink-0 text-center text-[11px] font-extrabold text-white rounded-md py-1 tabular-nums mt-1" style={{ backgroundColor: teamColor(ab) }}>
+                      {r.jersey ? "#" + r.jersey : "—"}
+                    </span>
+                    {photo ? <img src={photo} alt="" className="w-11 h-11 rounded-full object-cover object-top bg-slate-200 shrink-0" /> : <span className="w-11 h-11 rounded-full bg-slate-200 shrink-0" />}
+                    <span className="flex-1 min-w-0">
+                      <span className="flex items-center gap-2 min-w-0">
+                        <span className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate"><span className="text-slate-400 font-extrabold mr-1.5">{r.pos}</span>{r.name}</span>
+                        {TEAM_LOGOS[ab] && <img src={TEAM_LOGOS[ab]} alt="" className="w-6 h-6 object-contain shrink-0" />}
+                      </span>
+                      <span className="flex items-center justify-between mt-1.5">
+                        <StatusBadge status={r.status || "Injured"} />
+                        <span className="text-[11px] font-semibold text-slate-400 tabular-nums">{time}</span>
+                      </span>
+                      {r.detail && <span className="block text-[11px] font-semibold text-red-500 mt-1">({String(r.detail).toLowerCase()})</span>}
+                      {ret && !isNaN(ret) && <span className="block text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Estimated Return Date: {ret.toLocaleDateString([], { month: "short", day: "numeric" })}</span>}
+                      {r.comment && <span className="block text-[11px] text-slate-400 mt-1 leading-snug">{r.comment}</span>}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+        {feed && !feed.error && recs.length === 0 && <div className="text-center text-sm text-slate-400 py-12">No injury records{q ? ` matching "${q}"` : ""}.</div>}
+      </div>
+    </div>
+  );
 }
 
 // Anyone not fully Active, or with an injury note, is on the report.
@@ -679,25 +756,24 @@ function PlayersTab({ players, onSelect, pills, forceInj }) {
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
           {list.map((p) => (
             <button key={p.id} onClick={() => onSelect(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
-              <span className="w-7 text-center text-[11px] font-extrabold text-slate-400 uppercase shrink-0">{p.pos || "—"}</span>
+              {(() => { const ab = teamOfPlayer(p) || toAbbr(p.teamName) || toAbbr(activeOf(p)?.team); return (
+                <span className="w-12 shrink-0 text-center text-[11px] font-extrabold text-white rounded-md py-1 tabular-nums" style={{ backgroundColor: ab ? teamColor(ab) : "#64748b" }}>
+                  {cleanNo(p.no) ? "#" + cleanNo(p.no) : "—"}
+                </span>
+              ); })()}
               <Avatar p={p} />
               <span className="flex-1 min-w-0">
-                <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
-                <span className="block text-[11px] text-slate-400 font-medium truncate">
-                  {[p.height, p.weight, p.age ? p.age + " yrs" : ""]
-                    .filter(Boolean)
-                    .join(" · ") || "—"}
+                <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
+                  <span className="text-slate-400 font-extrabold mr-1.5">{courtPos(p) || ""}</span>{p.name}
                 </span>
-                {(p.rating2k != null || p.archetype) && (
-                  <span className="flex items-center gap-1.5 mt-1 min-w-0">
-                    <Rating2kBadge r={p.rating2k} />
-                    {p.archetype && <span className="text-[10px] font-semibold text-slate-400 truncate">{p.archetype}</span>}
-                  </span>
-                )}
-                {forceInj && (
-                  <span className="flex items-center gap-1.5 mt-1 min-w-0">
+                <span className="block text-[11px] text-slate-400 font-medium truncate">
+                  {[p.height, p.weight ? String(p.weight).replace(/\s*lbs?$/i, "") + " lbs" : "", p.age ? p.age + " yrs" : ""].filter(Boolean).join(" · ") || "—"}
+                </span>
+                {!isActiveStatus(p) && (
+                  <span className="block mt-1.5">
                     <StatusBadge status={p.status || "Injured"} />
-                    {p.injuryNotes && <span className="text-[11px] font-semibold text-red-500 truncate">{p.injuryNotes}</span>}
+                    {injuryDetailOf(p) && <span className="block text-[11px] font-semibold text-red-500 mt-1">({injuryDetailOf(p)})</span>}
+                    {injuryReturnOf(p) && <span className="block text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Estimated Return Date: {injuryReturnOf(p)}</span>}
                   </span>
                 )}
               </span>
@@ -1002,12 +1078,12 @@ function TeamsTab({ teams, players, onSelect }) {
                 style={{ background: `linear-gradient(105deg, ${c1} 0%, ${mixHex(c1, c2, 0.45)} 100%)` }}>
                 <span className="absolute inset-0" style={{ background: "linear-gradient(180deg,rgba(255,255,255,0.10) 0%,rgba(0,0,0,0) 45%,rgba(0,0,0,0.12) 100%)" }} />
                 {t.logo ? (
-                  <img src={t.logo} alt="" className="w-12 h-12 object-contain shrink-0 relative" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.35))" }} />
+                  <img src={t.logo} alt="" className="w-12 h-12 object-contain shrink-0 relative" style={{ filter: (abbr === "HOU" ? "brightness(0) invert(1) " : "") + "drop-shadow(0 1px 2px rgba(0,0,0,0.35))" }} />
                 ) : (
                   <span className="w-12 h-12 rounded-full shrink-0 bg-white/20 relative" />
                 )}
                 <span className="flex-1 min-w-0 relative">
-                  <span className="block text-[17px] font-extrabold text-white truncate" style={{ textShadow: "0 1px 2px rgba(0,0,0,0.3)" }}>{t.name}</span>
+                  <span className="block text-[17px] font-extrabold text-white truncate" style={{ textShadow: "0 1px 2px rgba(0,0,0,0.3)" }}>{isFaTeam(t) ? "Free Agents" : t.name}</span>
                   <span className="block text-[12px] text-white/75 font-medium truncate">
                     {t.division ? (divRank[t.id] ? `${divRank[t.id]} in ${t.division} Division` : t.division + " Division") : "—"}
                   </span>
@@ -1037,7 +1113,7 @@ function StatusBadge({ status }) {
   if (!status) return null;
   const s = String(status).toLowerCase().trim();
   let cls = "bg-slate-100 text-slate-500 dark:text-slate-400";
-  if (s === "ir" || s.includes("injured reserve") || s.includes("out")) cls = "bg-red-100 text-red-600 dark:bg-red-900/50 dark:text-red-300";
+  if (s === "ir" || s.includes("injured reserve") || s.includes("out") || s.includes("suspend")) cls = "bg-red-600 text-white";
   else if (s.includes("active") || s.includes("available")) cls = "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300";
   else if (s.includes("game time") || s === "gtd" || s.includes("injur") || s.includes("day") || s.includes("question") || s.includes("doubt") || s.includes("probable")) cls = "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300";
   return (
@@ -1832,7 +1908,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
         <button onClick={onBack} className="text-sm font-semibold opacity-80 mb-4">‹ {backLabel || "Teams"}</button>
         <div className="flex items-center gap-4">
           {team.logo ? (
-            <img src={team.logo} alt="" className="w-16 h-16 object-contain shrink-0" style={{ filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.35))" }} />
+            <img src={team.logo} alt="" className="w-16 h-16 object-contain shrink-0" style={{ filter: (abbr === "HOU" ? "brightness(0) invert(1) " : "") + "drop-shadow(0 1px 3px rgba(0,0,0,0.35))" }} />
           ) : (
             <span className="text-3xl">🏀</span>
           )}
@@ -2470,7 +2546,7 @@ export default function App() {
           backLabel={tab === "tonight" ? "Matchups" : "Teams"}
         />
       )}
-      {players && tab === "players" && <PlayersHub players={players} onSelect={setSel} />}
+      {players && tab === "players" && <PlayersHub players={players} teams={teams} onSelect={setSel} />}
       {players && tab === "stats" && <StatsTab players={players} onSelect={setSel} />}
 
       <div className="fixed bottom-0 inset-x-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex pb-[env(safe-area-inset-bottom)] z-20">
