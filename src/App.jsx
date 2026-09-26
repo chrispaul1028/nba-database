@@ -245,12 +245,22 @@ function prevStats(p) {
 const fmt1 = (v) => (v == null ? null : Number(v).toFixed(1));
 
 // Inclusive season count: drafted 2014 -> 2025-26 is season #12.
-function experienceOf(p) {
-  if (!p.draftYear) return "";
+// Has the current season tipped off? (NBA opens in the third week of Oct.)
+function seasonStarted() {
+  const y = parseInt(String(CURRENT_SEASON).slice(0, 4), 10);
+  return new Date() >= new Date(y, 9, 15);
+}
+function seasonsPlayed(p) {
+  if (!p.draftYear) return null;
   const nowYear = parseInt(String(CURRENT_SEASON).slice(0, 4), 10);
-  const seasons = nowYear - p.draftYear + 1;
-  if (isNaN(seasons) || seasons < 1) return "";
-  return seasons === 1 ? "Rookie" : seasons + " seasons";
+  const n = nowYear - p.draftYear + (seasonStarted() ? 1 : 0);   // "5 seasons" in Sept, "6 seasons" once the season starts
+  return isNaN(n) ? null : Math.max(0, n);
+}
+function experienceOf(p) {
+  const n = seasonsPlayed(p);
+  if (n == null) return "";
+  if (n === 0) return "Rookie";
+  return n === 1 ? "1 season" : n + " seasons";
 }
 
 // Search matches player name, current team (full name or abbreviation),
@@ -296,7 +306,8 @@ function injuryLine(p) {
   return [note, retTxt].filter(Boolean).join(" · ");
 }
 // "(right ankle sprain)" — Airtable notes first, else ESPN's write-up
-const injuryDetailOf = (p) => { const t = p.injuryNotes || espnOf(p)?.injuryDetail || ""; return t ? String(t).toLowerCase().replace(/[()]/g, "").trim() : ""; };
+const tidyInjury = (t) => { const x = String(t || "").toLowerCase().replace(/[()]/g, "").trim(); return !x ? "" : /\s/.test(x) || /injur|sprain|strain|surgery|fracture|tear|soreness|illness|rest|contusion|bruise|concussion|tendin|manage/.test(x) ? x : x + " injury"; };
+const injuryDetailOf = (p) => tidyInjury(p.injuryNotes || espnOf(p)?.injuryDetail || "");
 const injuryReturnOf = (p) => { const r = espnOf(p)?.injuryReturn; const d = r ? new Date(r) : null; return d && !isNaN(d) ? d.toLocaleDateString([], { month: "short", day: "numeric" }) : null; };
 const isActiveStatus = (p) => { const st = String(p.status || "").toLowerCase(); return !st || st.includes("active") || st.includes("available"); };
 const GENERIC_POS = new Set(["", "G", "F", "G-F", "F-G", "F-C", "C-F", "G/F", "F/C", "GUARD", "FORWARD", "WING", "BIG"]);
@@ -460,6 +471,21 @@ function ContractCard({ c, big }) {
   );
 }
 
+// League rank of a player in a per-game stat across everyone in the database
+function leagueRank(players, p, key) {
+  const v = latestStats(p)?.[key];
+  if (v == null) return null;
+  const all = players.map((q) => latestStats(q)?.[key]).filter((x) => x != null && x > 0).sort((a, b) => b - a);
+  const i = all.indexOf(v);
+  return i >= 0 ? { rank: i + 1, of: all.length } : null;
+}
+const POS_WORD = (p) => { const x = courtPos(p); return /^C/.test(x) ? "Center" : /F/.test(x) && !/G/.test(x) ? "Forward" : /G/.test(x) ? "Guard" : x || ""; };
+function fullTeamName(p, teams) {
+  const ab = teamOfPlayer(p);
+  const t = (teams || []).find((t) => (t.abbr || toAbbr(t.name)) === ab);
+  return t ? t.name : (p.teamName || ab || "");
+}
+
 function BioRow({ k, v }) {
   if (!v) return null;
   return (
@@ -471,7 +497,7 @@ function BioRow({ k, v }) {
 }
 
 // ═══════════════ PLAYER DETAIL ═══════════════════════════════════
-function PlayerDetail({ p, onBack, backLabel, mode = "full" }) {
+function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJumpToStats }) {
   useEffect(() => { window.scrollTo(0, 0); }, []);
   const swipe = useSwipe(null, onBack);
   const act = activeOf(p);
@@ -487,14 +513,15 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full" }) {
             <div className="text-2xl font-extrabold leading-tight truncate">
               {p.name}
             </div>
-            <div className="flex items-center gap-2 mt-0.5 min-w-0">
-              <span className="text-sm opacity-80 font-medium truncate">
-                {[cleanNo(p.no) ? "#" + cleanNo(p.no) : "", p.pos].filter(Boolean).join(" · ")}
-              </span>
-              <StatusBadge status={p.status} />
+            <div className="text-sm opacity-85 font-medium mt-0.5 leading-snug">
+              {[fullTeamName(p, teams), cleanNo(p.no) ? "#" + cleanNo(p.no) : "", POS_WORD(p)].filter(Boolean).join(" · ")}
             </div>
-            {p.injuryNotes && (
-              <div className="text-xs font-semibold text-red-200 mt-1 truncate">{p.injuryNotes}</div>
+            <div className="mt-1.5"><StatusBadge status={p.status} /></div>
+            {!isActiveStatus(p) && injuryDetailOf(p) && (
+              <div className="text-xs font-semibold text-red-200 mt-1">({injuryDetailOf(p)}){injuryReturnOf(p) ? " · est. return " + injuryReturnOf(p) : ""}</div>
+            )}
+            {!isActiveStatus(p) && espnOf(p)?.injuryComment && (
+              <div className="text-[11px] opacity-80 mt-1 leading-snug">{espnOf(p).injuryComment}</div>
             )}
           </div>
         </div>
@@ -502,39 +529,23 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full" }) {
 
       <div className="px-4 -mt-3">
         <div className="grid grid-cols-3 gap-2">
-          <Tile
-            value={p.rating2k != null ? Math.round(p.rating2k) : "—"}
-            label="2K Rating"
-            valueClass={p.rating2k == null ? null
-              : Math.round(p.rating2k) >= 90 ? "text-amber-500 dark:text-amber-400"
-              : Math.round(p.rating2k) >= 80 ? "text-slate-500 dark:text-slate-300"
-              : "text-orange-700 dark:text-orange-400"}
-          />
-          <Tile value={currentSalary(p) > 0 ? fmtM(currentSalary(p)) : "—"} label={CURRENT_SEASON.slice(2, 4) + "-" + CURRENT_SEASON.slice(7) + " Salary"} />
-          {(() => {
-            const ev = nextEvent(p);
-            const labels = { PO: "Player Option", TO: "Team Option", UFA: "Free Agent", RFA: "Restricted FA" };
-            const colors = {
-              PO: "text-emerald-600 dark:text-emerald-400",
-              TO: "text-red-600 dark:text-red-400",
-              UFA: "text-slate-500 dark:text-slate-400",
-              RFA: "text-purple-600 dark:text-purple-400",
-            };
+          {[["pts", "PTS"], ["reb", "REB"], ["ast", "AST"]].map(([k, lbl]) => {
+            const st = latestStats(p); const v = st?.[k];
+            const r = players ? leagueRank(players, p, k) : null;
+            const cls = r ? (r.rank <= 10 ? "text-green-600 dark:text-green-400" : r.rank <= 50 ? "text-yellow-600 dark:text-yellow-400" : "text-slate-400") : null;
             return (
-              <Tile
-                value={ev ? seasonTick({ season: ev.season }) : "—"}
-                label={ev ? labels[ev.kind] : "Free Agent"}
-                valueClass={ev ? colors[ev.kind] : null}
-              />
+              <Tile key={k} value={v != null ? fmt1(v) : "—"} label={lbl}
+                sub={r ? { label: ordinal(r.rank) + " in NBA", cls } : (st ? "per game" : null)}
+                onClick={onJumpToStats && v != null ? () => onJumpToStats(p, k) : undefined} />
             );
-          })()}
+          })}
         </div>
 
         {mode === "full" && (p.height || p.weight || p.age || p.draft || p.birthplace || p.draftYear) && (
           <>
             <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">Bio</div>
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800">
-              <BioRow k="Height / Weight" v={[p.height, p.weight].filter(Boolean).join(" · ")} />
+              <BioRow k="Height / Weight" v={[p.height ? String(p.height).replace(/^(\d)[-\s'](\d{1,2})"?$/, "$1'$2\"") : "", p.weight ? String(p.weight).replace(/\s*lbs?$/i, "") + " lbs" : ""].filter(Boolean).join(", ")} />
               <BioRow k="Age" v={p.age} />
               <BioRow k="Draft" v={[p.draftYear, p.draft].filter(Boolean).join(": ")} />
               <BioRow k="Experience" v={experienceOf(p)} />
@@ -748,7 +759,7 @@ function InjuryFeed({ players, teams, onSelect, pills, feed, markSeen }) {
                         <StatusBadge status={r.status || "Injured"} />
                         <span className="text-[11px] font-semibold text-slate-400 tabular-nums">{time}</span>
                       </span>
-                      {r.detail && <span className="block text-[11px] font-semibold text-red-500 mt-1">({String(r.detail).toLowerCase()})</span>}
+                      {r.detail && <span className="block text-[11px] font-semibold text-red-500 mt-1">({tidyInjury(r.detail)})</span>}
                       {ret && !isNaN(ret) && <span className="block text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Estimated Return Date: {ret.toLocaleDateString([], { month: "short", day: "numeric" })}</span>}
                       {r.comment && <span className="block text-[11px] text-slate-400 mt-1 leading-snug">{r.comment}</span>}
                     </span>
@@ -1144,7 +1155,7 @@ function StatusBadge({ status }) {
   const s = String(status).toLowerCase().trim();
   let cls = "bg-slate-100 text-slate-500 dark:text-slate-400";
   if (s === "ir" || s.includes("injured reserve") || s.includes("out") || s.includes("suspend")) cls = "bg-red-600 text-white";
-  else if (s.includes("active") || s.includes("available")) cls = "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300";
+  else if (s.includes("active") || s.includes("available")) cls = "bg-green-600 text-white";
   else if (s.includes("game time") || s === "gtd" || s.includes("injur") || s.includes("day") || s.includes("question") || s.includes("doubt") || s.includes("probable")) cls = "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300";
   return (
     <span className={"shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wide " + cls}>
@@ -1827,16 +1838,25 @@ function CapOutlook({ roster, color, onSelectPlayer }) {
 }
 
 // ═══════════════ BIO PANEL (Avg Age tile) ════════════════════════
-function BioPanel({ roster, color, onSelectPlayer }) {
+function BioPanel({ roster, abbr, teams, players, color, onSelectPlayer }) {
   const ages = roster.map((p) => Number(p.age)).filter((a) => a > 0);
   const buckets = [["≤ 23", (a) => a <= 23], ["24–27", (a) => a >= 24 && a <= 27], ["28–31", (a) => a >= 28 && a <= 31], ["32+", (a) => a >= 32]]
     .map(([lbl, f]) => [lbl, ages.filter(f).length]);
   const maxB = Math.max(1, ...buckets.map(([, n]) => n));
-  const exp = (p) => { const e = experienceOf(p); return e ? Number(String(e).replace(/\D/g, "")) : null; };
+  const exp = (p) => seasonsPlayed(p);
   const exps = roster.map(exp).filter((e) => e != null);
   const avgExp = exps.length ? exps.reduce((a, b) => a + b, 0) / exps.length : null;
-  const rookies = roster.filter((p) => exp(p) === 1).length;
-  const drafted = roster.filter((p) => !isUndrafted(p) && (p.draftYear || p.draftPick || p.draft)).length;
+  const rookies = roster.filter((p) => exp(p) === 0 || (exp(p) === 1 && seasonStarted())).length;
+  // Homegrown: drafted by this same team (Draft Team field, or "(NY)" at the end of the Draft text)
+  const draftAb = (p) => { const t = p.draftTeam ? (toAbbr(p.draftTeam) || String(p.draftTeam).toUpperCase()) : draftedBy(p); return t ? String(t).toUpperCase() : null; };
+  const drafted = roster.filter((p) => !isUndrafted(p) && draftAb(p) && draftAb(p) === String(abbr).toUpperCase()).length;
+  // Avg experience ranked against the league (1st = most experienced)
+  const expRank = (() => {
+    const teamAvg = (t) => { const ab = t.abbr || toAbbr(t.name); const rs = (players || []).filter((q) => teamOfPlayer(q) === ab); const es = rs.map(seasonsPlayed).filter((e) => e != null); return es.length >= 5 ? es.reduce((a, b) => a + b, 0) / es.length : null; };
+    const ranked = (teams || []).filter((t) => !isFaTeam(t)).map((t) => [t.id, teamAvg(t)]).filter(([, v]) => v != null).sort((a, b) => b[1] - a[1]);
+    const i = ranked.findIndex(([id]) => (teams || []).find((t) => t.id === id && (t.abbr || toAbbr(t.name)) === abbr));
+    return i >= 0 ? { rank: i + 1, of: ranked.length } : null;
+  })();
   const list = roster.slice().sort((a, b) => (Number(b.age) || 0) - (Number(a.age) || 0) || a.name.localeCompare(b.name));
   const draftLine = (p) => {
     if (isUndrafted(p)) return "Undrafted";
@@ -1849,9 +1869,9 @@ function BioPanel({ roster, color, onSelectPlayer }) {
   return (
     <div className="mt-4">
       <div className="grid grid-cols-3 gap-2">
-        <Tile value={avgExp != null ? avgExp.toFixed(1) : "—"} label="Avg Exp" sub="seasons" />
-        <Tile value={rookies} label="Rookies" sub={rookies === 1 ? "first season" : "first season"} />
-        <Tile value={roster.length ? Math.round((drafted / roster.length) * 100) + "%" : "—"} label="Drafted" sub={drafted + " of " + roster.length} />
+        <Tile value={avgExp != null ? avgExp.toFixed(1) : "—"} label="Avg Exp" sub={expRank ? { label: ordinal(expRank.rank) + " most exp.", cls: expRank.rank <= 10 ? "text-green-600 dark:text-green-400" : expRank.rank <= 20 ? "text-yellow-600 dark:text-yellow-400" : "text-red-500 dark:text-red-400" } : "seasons"} />
+        <Tile value={rookies} label="Rookies" sub="first season" />
+        <Tile value={roster.length ? Math.round((drafted / roster.length) * 100) + "%" : "—"} label="Homegrown" sub={drafted + " drafted by " + abbr} />
       </div>
       <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-5 mb-1.5 px-1">Age profile</div>
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm px-4 py-3">
@@ -2071,7 +2091,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
           </div>
         ))}
         {seg === "contracts" && cView === "cap" && <CapOutlook roster={roster} color={teamColor(abbr)} onSelectPlayer={onSelectPlayer} />}
-        {seg === "contracts" && cView === "bio" && <BioPanel roster={roster} color={teamColor(abbr)} onSelectPlayer={onSelectPlayer} />}
+        {seg === "contracts" && cView === "bio" && <BioPanel roster={roster} abbr={abbr} teams={teams} players={players} color={teamColor(abbr)} onSelectPlayer={onSelectPlayer} />}
         {seg === "contracts" && (cView === "list" || cView === "fa") && (
           <>
             <div className="flex items-baseline justify-between mt-6 mb-2 px-1">
@@ -2155,78 +2175,91 @@ const STAT_CATS = [
   { key: "tov", label: "TO" },
 ];
 
-function StatsTab({ players, onSelect }) {
-  const seasons = Array.from(
-    new Set(players.flatMap((p) => (p.stats || []).map((s) => s.season)).filter(Boolean))
-  ).sort((a, b) => String(b).localeCompare(String(a)));
+const STAT_GROUPS = [
+  { key: "scoring", label: "Scoring", cats: [["pts", "PTS"], ["fgm", "FGM"], ["p3m", "3PM"], ["ftm", "FTM"]] },
+  { key: "rebounds", label: "Rebounds", cats: [["reb", "REB"]] },
+  { key: "playmaking", label: "Playmaking", cats: [["ast", "AST"], ["tov", "TOV"]] },
+  { key: "defense", label: "Defense", cats: [["stl", "STL"], ["blk", "BLK"]] },
+  { key: "shooting", label: "Shooting", cats: [["fg", "FG%"], ["p3", "3P%"], ["ft", "FT%"]], pct: true },
+  { key: "minutes", label: "Minutes", cats: [["min", "MIN"]] },
+];
+function StatsTab({ players, teams, onSelect, focus }) {
+  const seasons = Array.from(new Set(players.flatMap((p) => (p.stats || []).map((s) => s.season)).filter(Boolean))).sort((a, b) => String(b).localeCompare(String(a)));
   const [selSeason, setSelSeason] = useState(null);
   const season = selSeason && seasons.includes(selSeason) ? selSeason : (seasons.includes(CURRENT_SEASON) ? CURRENT_SEASON : seasons[0]);
+  const [group, setGroup] = useState("scoring");
   const [cat, setCat] = useState("pts");
-
-  const rows = players
-    .map((p) => {
-      const st = (p.stats || []).find((s) => s.season === season);
-      return st && st[cat] != null ? { p, st } : null;
-    })
-    .filter(Boolean)
-    .sort((a, b) => b.st[cat] - a.st[cat]);
-
-  const catLabel = STAT_CATS.find((c) => c.key === cat)?.label || "";
-
+  // A jump from a player card lands on that stat and highlights the row
+  useEffect(() => {
+    if (!focus) return;
+    const g = STAT_GROUPS.find((g) => g.cats.some(([k]) => k === focus.cat));
+    if (g) { setGroup(g.key); setCat(focus.cat); }
+    setTimeout(() => { const el = document.getElementById("stat-row-" + focus.id); if (el) el.scrollIntoView({ block: "center", behavior: "smooth" }); }, 120);
+  }, [focus?.n]);
+  const grp = STAT_GROUPS.find((g) => g.key === group) || STAT_GROUPS[0];
+  const pickGroup = (k) => { setGroup(k); setCat(STAT_GROUPS.find((g) => g.key === k).cats[0][0]); };
+  const gate = grp.pct ? { fg: ["fga", 3], p3: ["p3a", 1.5], ft: ["fta", 1.5] }[cat] : null;
+  const rows = players.map((p) => { const st = (p.stats || []).find((s) => s.season === season); return st && st[cat] != null && (!gate || (st[gate[0]] ?? 0) >= gate[1]) ? { p, st } : null; })
+    .filter(Boolean).sort((a, b) => b.st[cat] - a.st[cat]);
+  const catLabel = grp.cats.find(([k]) => k === cat)?.[1] || "";
+  const abbrOf = (p) => teamOfPlayer(p) || toAbbr(p.teamName) || "";
   return (
     <div>
       <div className="bg-blue-600 pb-4 px-4" style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.75rem)" }}>
-        <h1 className="text-3xl font-extrabold text-white mb-3">Stats</h1>
-        {seasons.length > 1 && (
-          <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1" style={{ scrollbarWidth: "none" }}>
-            {seasons.map((s) => (
-              <button key={s} onClick={() => setSelSeason(s)}
-                className={"shrink-0 px-3 py-1 rounded-full text-xs font-bold " + (s === season ? "bg-white text-blue-700" : "bg-blue-500/60 text-blue-100 active:bg-blue-500")}>
-                {s}
-              </button>
+        <div className="flex items-baseline gap-2 mb-3">
+          <h1 className="text-3xl font-extrabold text-white">Leaders</h1>
+          <span className="text-sm font-semibold text-blue-200">{season ? seasonTick({ season }) : ""} · per game</span>
+          {seasons.length > 1 && (
+            <select value={season || ""} onChange={(e) => setSelSeason(e.target.value)} className="ml-auto bg-blue-500/60 text-blue-100 text-[11px] font-bold rounded-full px-2 py-1 outline-none">
+              {seasons.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          )}
+        </div>
+        <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1" style={{ scrollbarWidth: "none" }}>
+          {STAT_GROUPS.map((g) => (
+            <button key={g.key} onClick={() => pickGroup(g.key)}
+              className={"shrink-0 px-4 py-1.5 rounded-full text-sm font-bold " + (g.key === group ? "bg-white text-blue-700" : "bg-blue-500/60 text-blue-100 active:bg-blue-500")}>{g.label}</button>
+          ))}
+        </div>
+        {grp.cats.length > 1 && (
+          <div className="flex gap-2 overflow-x-auto -mx-1 px-1" style={{ scrollbarWidth: "none" }}>
+            {grp.cats.map(([k, lbl]) => (
+              <button key={k} onClick={() => setCat(k)}
+                className={"shrink-0 px-3.5 py-1 rounded-full text-xs font-bold " + (k === cat ? "bg-white/90 text-blue-700" : "bg-blue-500/60 text-blue-100 active:bg-blue-500")}>{lbl}</button>
             ))}
           </div>
         )}
-        <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1" style={{ scrollbarWidth: "none" }}>
-          {STAT_CATS.map((c) => (
-            <button key={c.key} onClick={() => setCat(c.key)}
-              className={"shrink-0 px-4 py-1.5 rounded-full text-sm font-bold " + (c.key === cat ? "bg-white text-blue-700" : "bg-blue-500/60 text-blue-100 active:bg-blue-500")}>
-              {c.label}
-            </button>
-          ))}
-        </div>
       </div>
       <div className="px-4 pb-28 mt-4">
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
-          {rows.map(({ p, st }, i) => (
-            <button key={p.id} onClick={() => onSelect(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
-              <span className="w-6 text-center text-sm font-extrabold shrink-0 text-slate-400">{i + 1}</span>
-              <Avatar p={p} />
-              <span className="flex-1 min-w-0">
-                <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
-                <span className="block text-[11px] text-slate-400 font-medium truncate">
-                  {[teamOfPlayer(p), p.pos].filter(Boolean).join(" · ") || "—"}
-                </span>
-              </span>
-              <span className="text-right shrink-0 w-8">
-                <span className="block text-[10px] font-bold text-slate-400 uppercase">G</span>
-                <span className="block text-sm font-extrabold text-slate-900 dark:text-slate-100 tabular-nums">
-                  {st.gp != null ? Math.round(st.gp) : "—"}
-                </span>
-              </span>
-              <span className="text-right shrink-0">
-                <span className="block text-[10px] font-bold text-slate-400 uppercase">{catLabel}</span>
-                <span className="block text-sm font-extrabold text-slate-900 dark:text-slate-100 tabular-nums">
-                  {st[cat].toFixed(1)}
-                </span>
-              </span>
-            </button>
-          ))}
-          {rows.length === 0 && (
-            <div className="text-center text-sm text-slate-400 py-12 px-6">
-              No {catLabel} entries for {season || "any season"} yet. Fill the Stats table in Airtable and they appear here.
-            </div>
-          )}
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+          <div className="flex justify-between px-4 py-2 text-[10px] font-semibold tracking-widest uppercase text-slate-400 border-b border-slate-100 dark:border-slate-800">
+            <span>Player</span><span>{catLabel} · per game</span>
+          </div>
+          <div className="divide-y divide-slate-100 dark:divide-slate-800">
+            {rows.map(({ p, st }, i) => {
+              const ab = abbrOf(p); const hot = focus && focus.id === p.id;
+              return (
+                <button key={p.id} id={"stat-row-" + p.id} onClick={() => onSelect(p)}
+                  className={"w-full flex items-center gap-3 pr-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800 " + (hot ? "bg-slate-100 dark:bg-slate-800 ring-2 ring-inset ring-slate-400" : "")}
+                  style={{ borderLeft: "4px solid " + teamColor(ab), paddingLeft: 12 }}>
+                  <span className={"w-7 text-center text-lg font-extrabold shrink-0 tabular-nums " + (i < 5 ? "text-blue-600" : "text-slate-400")}>{i + 1}</span>
+                  <Avatar p={p} />
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-[15px] font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
+                    <span className="flex items-center gap-1.5 mt-0.5">
+                      {TEAM_LOGOS[ab] && <img src={TEAM_LOGOS[ab]} alt="" className="w-4 h-4 object-contain" />}
+                      <span className="text-[12px] text-slate-400 font-semibold">{ab}</span>
+                    </span>
+                  </span>
+                  <span className="text-right shrink-0">
+                    <span className="block text-2xl font-extrabold text-slate-900 dark:text-slate-100 tabular-nums leading-none">{grp.pct ? Number(st[cat]).toFixed(1) + "%" : fmt1(st[cat])}</span>
+                    <span className="block text-[11px] font-semibold text-slate-400 mt-1">{st.gp != null ? Math.round(st.gp) + " g" : ""}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {rows.length === 0 && <div className="text-center text-sm text-slate-400 py-12 px-6">No {catLabel} entries for {season || "any season"} yet.</div>}
         </div>
       </div>
     </div>
@@ -2522,6 +2555,7 @@ export default function App() {
 
   const [, setEspnTick] = useState(0);
   const injury = useInjuryFeed(players || []);
+  const [statsFocus, setStatsFocus] = useState(null); // { id, cat } — highlight a player on the Stats tab
   useEffect(() => {
     // Headshots + positions for anyone Airtable is missing them for.
     fetch("/api/lineups").then((r) => r.json())
@@ -2545,9 +2579,12 @@ export default function App() {
     return (
       <PlayerDetail
         p={sel}
+        teams={teams}
+        players={players}
         onBack={() => setSel(null)}
         backLabel={selTeam ? selTeam.name : tab === "teams" ? "Teams" : tab === "tonight" ? "Matchups" : "Players"}
         mode="full"
+        onJumpToStats={(pl, cat) => { setStatsFocus({ id: pl.id, cat, n: Date.now() }); setSel(null); setSelTeam(null); setTab("stats"); }}
       />
     );
   }
@@ -2578,7 +2615,7 @@ export default function App() {
         />
       )}
       {players && tab === "players" && <PlayersHub players={players} teams={teams} onSelect={setSel} injury={injury} />}
-      {players && tab === "stats" && <StatsTab players={players} onSelect={setSel} />}
+      {players && tab === "stats" && <StatsTab players={players} teams={teams} onSelect={setSel} focus={statsFocus} />}
 
       <div className="fixed bottom-0 inset-x-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex pb-[env(safe-area-inset-bottom)] z-20">
         {TABS.map((t) => (
