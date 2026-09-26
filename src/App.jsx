@@ -29,7 +29,7 @@ const TEAM_COLORS = {
   PHI: "#006BB6", LAL: "#552583", GSW: "#FDB927", GS: "#FDB927",
   MIA: "#98002E", MIL: "#00471B", CHI: "#CE1141", CLE: "#860038",
   TOR: "#CE1141", BKN: "#000000", WSH: "#E31837", ORL: "#0077C0",
-  CHA: "#1D1160", DET: "#1D42BA", HOU: "#CE1141", SAS: "#000000",
+  CHA: "#00788C", DET: "#1D42BA", HOU: "#CE1141", SAS: "#000000",
   MEM: "#5D76A9", NOP: "#0C2340", PHX: "#E56020", SAC: "#5A2D81",
   POR: "#E03A3E", UTA: "#002B5C", UTAH: "#002B5C", LAC: "#C8102E",
   SA: "#000000", NO: "#0C2340", // ESPN spellings
@@ -42,7 +42,7 @@ const TEAM_COLORS2 = {
   PHI: "#ED174C", LAL: "#FDB927", GSW: "#1D428A", GS: "#1D428A",
   MIA: "#F9A01B", MIL: "#EEE1C6", CHI: "#000000", CLE: "#FDBB30",
   TOR: "#000000", BKN: "#FFFFFF", WSH: "#002B5C", ORL: "#C4CED4",
-  CHA: "#00788C", DET: "#C8102E", HOU: "#000000", SAS: "#C4CED4",
+  CHA: "#1D1160", DET: "#C8102E", HOU: "#000000", SAS: "#C4CED4",
   MEM: "#12173F", NOP: "#C8102E", PHX: "#1D1160", SAC: "#63727A",
   POR: "#000000", UTA: "#F9A01B", UTAH: "#F9A01B", LAC: "#1D428A",
   SA: "#C4CED4", NO: "#C8102E",
@@ -271,8 +271,9 @@ function matchesQuery(p, q) {
   if (p.name.toLowerCase().includes(s)) return true;
   const team = String(p.teamName || "").toLowerCase();
   if (team.includes(s)) return true;
-  const abbr = toAbbr(p.teamName) || (activeOf(p) && activeOf(p).team) || "";
+  const abbr = teamOfPlayer(p) || "";
   if (String(abbr).toLowerCase().includes(s)) return true;
+  if (String(TEAM_NAMES[abbr] || "").toLowerCase().includes(s)) return true;   // "knicks", "new york"
   const actTeam = activeOf(p) ? String(activeOf(p).team).toLowerCase() : "";
   if (actTeam.includes(s)) return true;
   for (const c of p.contracts) {
@@ -472,12 +473,17 @@ function ContractCard({ c, big }) {
 }
 
 // League rank of a player in a per-game stat across everyone in the database
+// Season total for a per-game stat (per-game × games)
+const totalOf = (st, key) => (st && st[key] != null && st.gp ? Math.round(st[key] * st.gp) : st && st[key] != null ? st[key] : null);
+// League rank by season TOTAL (not average). Ties share a rank: "30th (tied)".
 function leagueRank(players, p, key) {
-  const v = latestStats(p)?.[key];
+  const st = latestStats(p); const v = totalOf(st, key);
   if (v == null) return null;
-  const all = players.map((q) => latestStats(q)?.[key]).filter((x) => x != null && x > 0).sort((a, b) => b - a);
+  const all = players.map((q) => totalOf(latestStats(q), key)).filter((x) => x != null && x > 0).sort((a, b) => b - a);
   const i = all.indexOf(v);
-  return i >= 0 ? { rank: i + 1, of: all.length } : null;
+  if (i < 0) return null;
+  const tied = all.filter((x) => x === v).length > 1;
+  return { rank: i + 1, of: all.length, tied, label: ordinal(i + 1) + (tied ? " (tied)" : "") };
 }
 const POS_WORD = (p) => { const x = courtPos(p); return /^C/.test(x) ? "Center" : /F/.test(x) && !/G/.test(x) ? "Forward" : /G/.test(x) ? "Guard" : x || ""; };
 function fullTeamName(p, teams) {
@@ -518,7 +524,10 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
             </div>
             <div className="mt-1.5"><StatusBadge status={p.status} /></div>
             {!isActiveStatus(p) && injuryDetailOf(p) && (
-              <div className="text-xs font-semibold text-red-200 mt-1">({injuryDetailOf(p)}){injuryReturnOf(p) ? " · est. return " + injuryReturnOf(p) : ""}</div>
+              <div className="text-xs font-bold text-red-500 mt-1" style={{ textShadow: "0 0 4px rgba(255,255,255,0.7)" }}>({injuryDetailOf(p)})</div>
+            )}
+            {!isActiveStatus(p) && injuryReturnOf(p) && (
+              <div className="text-xs font-bold text-red-500 mt-0.5" style={{ textShadow: "0 0 4px rgba(255,255,255,0.7)" }}>(Estimated Return Date: {injuryReturnOf(p)})</div>
             )}
             {!isActiveStatus(p) && espnOf(p)?.injuryComment && (
               <div className="text-[11px] opacity-80 mt-1 leading-snug">{espnOf(p).injuryComment}</div>
@@ -535,7 +544,7 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
             const cls = r ? (r.rank <= 10 ? "text-green-600 dark:text-green-400" : r.rank <= 50 ? "text-yellow-600 dark:text-yellow-400" : "text-slate-400") : null;
             return (
               <Tile key={k} value={v != null ? fmt1(v) : "—"} label={lbl}
-                sub={r ? { label: ordinal(r.rank) + " in NBA", cls } : (st ? "per game" : null)}
+                sub={r ? { label: r.label, cls } : (st ? "per game" : null)}
                 onClick={onJumpToStats && v != null ? () => onJumpToStats(p, k) : undefined} />
             );
           })}
@@ -636,6 +645,7 @@ function ListHeader({ title, q, setQ, placeholder, pills, noSearch }) {
 
 // Populated once data loads: abbr -> logo URL
 const TEAM_LOGOS = {};
+const TEAM_NAMES = {}; // abbr → full name, filled once teams load
 
 function TeamPill({ team }) {
   const abbr = toAbbr(team) || team;
@@ -1573,7 +1583,7 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
           const y = Number(String(since || "").match(/\d{4}/)?.[0]);
           if (!y) return since ? String(since) : null;
           const n = startYear(CURRENT_SEASON) - y + 1;
-          return y + (n > 0 ? " · " + (ORDINALS[n - 1] || n + "th") + " season" : "");
+          return n > 0 ? (ORDINALS[n - 1] || n + "th") + " season" : String(y);
         };
         const rows = [["Head Coach", team.headCoach, team.hcSince], ["Assistant Coach", team.asstCoach, team.acSince], ["Assistant Coach", team.asstCoach2, team.acSince2]].filter(([, v]) => v);
         return (
@@ -2049,14 +2059,14 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
               {(faTeam ? members.slice().sort((a, b) => currentSalary(b) - currentSalary(a)) : members)
                 .map((p) => (
                   <button key={p.id} onClick={() => onSelectPlayer(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
-                    <span className="w-7 text-center text-[11px] font-extrabold text-slate-400 uppercase shrink-0">{p._slot || courtPos(p) || "—"}</span>
+                    <span className="w-7 text-center text-[11px] font-extrabold uppercase shrink-0" style={{ color: teamColor(abbr) }}>{p._slot || courtPos(p) || "—"}</span>
                     <Avatar p={p} />
                     <span className="flex-1 min-w-0">
                       <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
                         {cleanNo(p.no) && <span className="text-slate-400 font-semibold mr-1.5">#{cleanNo(p.no)}</span>}{p.name}
                       </span>
                       <span className="flex items-center gap-1.5 mt-0.5 min-w-0">
-                        {!isActiveStatus(p) && <StatusBadge status={p.status} />}
+                        {!isActiveStatus(p) && <StatusBadge status={/game\s*time|gtd/i.test(String(p.status)) ? "GTD" : p.status} />}
                         <span className="flex-1" />
                         {(() => {
                           const st = latestStats(p), pv = prevStats(p);
@@ -2081,8 +2091,11 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
                           );
                         })()}
                       </span>
-                      {!isActiveStatus(p) && injuryLine(p) && (
-                        <span className="block text-[11px] font-semibold text-red-500 mt-1 leading-snug">{injuryLine(p)}</span>
+                      {!isActiveStatus(p) && injuryDetailOf(p) && (
+                        <span className="block text-[11px] font-semibold text-red-500 mt-1 leading-snug">({injuryDetailOf(p)})</span>
+                      )}
+                      {!isActiveStatus(p) && injuryReturnOf(p) && (
+                        <span className="block text-[11px] font-semibold text-red-500 mt-0.5 leading-snug">(Estimated Return Date: {injuryReturnOf(p)})</span>
                       )}
                     </span>
                   </button>
@@ -2199,8 +2212,8 @@ function StatsTab({ players, teams, onSelect, focus }) {
   const grp = STAT_GROUPS.find((g) => g.key === group) || STAT_GROUPS[0];
   const pickGroup = (k) => { setGroup(k); setCat(STAT_GROUPS.find((g) => g.key === k).cats[0][0]); };
   const gate = grp.pct ? { fg: ["fga", 3], p3: ["p3a", 1.5], ft: ["fta", 1.5] }[cat] : null;
-  const rows = players.map((p) => { const st = (p.stats || []).find((s) => s.season === season); return st && st[cat] != null && (!gate || (st[gate[0]] ?? 0) >= gate[1]) ? { p, st } : null; })
-    .filter(Boolean).sort((a, b) => b.st[cat] - a.st[cat]);
+  const rows = players.map((p) => { const st = (p.stats || []).find((s) => s.season === season); return st && st[cat] != null && (!gate || (st[gate[0]] ?? 0) >= gate[1]) ? { p, st, tot: grp.pct ? st[cat] : totalOf(st, cat) } : null; })
+    .filter(Boolean).sort((a, b) => b.tot - a.tot);
   const catLabel = grp.cats.find(([k]) => k === cat)?.[1] || "";
   const abbrOf = (p) => teamOfPlayer(p) || toAbbr(p.teamName) || "";
   return (
@@ -2208,7 +2221,7 @@ function StatsTab({ players, teams, onSelect, focus }) {
       <div className="bg-blue-600 pb-4 px-4" style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.75rem)" }}>
         <div className="flex items-baseline gap-2 mb-3">
           <h1 className="text-3xl font-extrabold text-white">Leaders</h1>
-          <span className="text-sm font-semibold text-blue-200">{season ? seasonTick({ season }) : ""} · per game</span>
+          <span className="text-sm font-semibold text-blue-200">{season ? seasonTick({ season }) : ""} · season totals</span>
           {seasons.length > 1 && (
             <select value={season || ""} onChange={(e) => setSelSeason(e.target.value)} className="ml-auto bg-blue-500/60 text-blue-100 text-[11px] font-bold rounded-full px-2 py-1 outline-none">
               {seasons.map((s) => <option key={s} value={s}>{s}</option>)}
@@ -2233,16 +2246,17 @@ function StatsTab({ players, teams, onSelect, focus }) {
       <div className="px-4 pb-28 mt-4">
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
           <div className="flex justify-between px-4 py-2 text-[10px] font-extrabold tracking-widest uppercase text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800">
-            <span>Player</span><span>{catLabel} · per game</span>
+            <span>Player</span><span>{catLabel}{grp.pct ? "" : " · total"}</span>
           </div>
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
-            {rows.map(({ p, st }, i) => {
+            {rows.map(({ p, st, tot }, i) => {
               const ab = abbrOf(p); const hot = focus && focus.id === p.id;
+              const rankNo = rows.findIndex((r) => r.tot === tot) + 1;   // ties share a rank
               return (
                 <button key={p.id} id={"stat-row-" + p.id} onClick={() => onSelect(p)}
                   className={"w-full flex items-center gap-3 pr-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800 " + (hot ? "bg-slate-100 dark:bg-slate-800 ring-2 ring-inset ring-slate-400" : "")}
                   style={{ borderLeft: "4px solid " + teamColor(ab), paddingLeft: 12 }}>
-                  <span className={"w-6 text-center text-sm font-extrabold shrink-0 tabular-nums " + (i < 5 ? "text-blue-600" : "text-slate-400")}>{i + 1}</span>
+                  <span className={"w-6 text-center text-sm font-extrabold shrink-0 tabular-nums " + (rankNo <= 5 ? "text-blue-600" : "text-slate-400")}>{rankNo}</span>
                   <Avatar p={p} />
                   <span className="flex-1 min-w-0">
                     <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
@@ -2252,8 +2266,8 @@ function StatsTab({ players, teams, onSelect, focus }) {
                     </span>
                   </span>
                   <span className="text-right shrink-0">
-                    <span className="block text-lg font-extrabold text-slate-900 dark:text-slate-100 tabular-nums leading-none">{grp.pct ? Number(st[cat]).toFixed(1) + "%" : fmt1(st[cat])}</span>
-                    <span className="block text-[10px] font-semibold text-slate-400 mt-1">{st.gp != null ? Math.round(st.gp) + " g" : ""}</span>
+                    <span className="block text-lg font-extrabold text-slate-900 dark:text-slate-100 tabular-nums leading-none">{grp.pct ? Number(st[cat]).toFixed(1) + "%" : tot.toLocaleString()}</span>
+                    <span className="block text-[10px] font-semibold text-slate-400 mt-1">{grp.pct ? (st.gp != null ? Math.round(st.gp) + " g" : "") : fmt1(st[cat]) + "/g"}</span>
                   </span>
                 </button>
               );
@@ -2576,7 +2590,7 @@ export default function App() {
     fetch("/api/contracts")
       .then((r) => r.json())
       .then((d) => { if (d.error) setError(d.error); else {
-        for (const t of d.teams || []) { const a = t.abbr || toAbbr(t.name); if (a && t.logo) TEAM_LOGOS[a] = t.logo; }
+        for (const t of d.teams || []) { const a = t.abbr || toAbbr(t.name); if (a && t.logo) TEAM_LOGOS[a] = t.logo; if (a) TEAM_NAMES[a] = t.name; }
         setPlayers(d.players); setTeams(d.teams || []);
       } })
       .catch((e) => setError(String(e)));
