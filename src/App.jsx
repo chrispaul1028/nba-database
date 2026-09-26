@@ -346,7 +346,7 @@ function useSwipe(onLeft, onRight) {
 
 // ═══════════════ SHARED PIECES ═══════════════════════════════════
 function Avatar({ p, size }) {
-  const px = size === "lg" ? "w-20 h-20 text-2xl" : "w-11 h-11 text-sm";
+  const px = size === "lg" ? "w-20 h-20 text-2xl" : size === "md" ? "w-14 h-14 text-base" : "w-11 h-11 text-sm";
   const url = photoOf(p);
   if (url) {
     return <img src={url} alt={p.name} loading="lazy" className={px + " rounded-full object-cover object-top bg-slate-200 shrink-0"} onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />;
@@ -527,7 +527,7 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
               <div className="text-xs font-bold text-red-500 mt-1" style={{ textShadow: "0 0 4px rgba(255,255,255,0.7)" }}>({injuryDetailOf(p)})</div>
             )}
             {!isActiveStatus(p) && injuryReturnOf(p) && (
-              <div className="text-xs font-bold text-red-500 mt-0.5" style={{ textShadow: "0 0 4px rgba(255,255,255,0.7)" }}>(Estimated Return Date: {injuryReturnOf(p)})</div>
+              <div className="text-xs font-semibold text-white mt-0.5">Estimated Return Date: {injuryReturnOf(p)}</div>
             )}
             {!isActiveStatus(p) && espnOf(p)?.injuryComment && (
               <div className="text-[11px] opacity-80 mt-1 leading-snug">{espnOf(p).injuryComment}</div>
@@ -636,7 +636,7 @@ function ListHeader({ title, q, setQ, placeholder, pills, noSearch }) {
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder={placeholder || "Search players or teams…"}
-        className="mt-3 w-full rounded-xl px-4 py-2.5 text-sm text-slate-800 dark:text-slate-200 bg-white/95 dark:bg-slate-900/80 placeholder-slate-400 outline-none"
+        className="mt-3 w-full rounded-xl px-4 py-2.5 text-base text-slate-800 dark:text-slate-200 bg-white/95 dark:bg-slate-900/80 placeholder-slate-400 outline-none"
       />}
       {pills}
     </div>
@@ -770,7 +770,7 @@ function InjuryFeed({ players, teams, onSelect, pills, feed, markSeen }) {
                         <span className="text-[11px] font-semibold text-slate-400 tabular-nums">{time}</span>
                       </span>
                       {r.detail && <span className="block text-[11px] font-semibold text-red-500 mt-1">({tidyInjury(r.detail)})</span>}
-                      {ret && !isNaN(ret) && <span className="block text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Estimated Return Date: {ret.toLocaleDateString([], { month: "short", day: "numeric" })}</span>}
+                      {ret && !isNaN(ret) && <span className="block text-[11px] font-semibold text-slate-900 dark:text-white mt-0.5">Estimated Return Date: {ret.toLocaleDateString([], { month: "short", day: "numeric" })}</span>}
                       {r.comment && <span className="block text-[11px] text-slate-400 mt-1 leading-snug">{r.comment}</span>}
                     </span>
                   </button>
@@ -824,7 +824,7 @@ function PlayersTab({ players, onSelect, pills, forceInj }) {
                   <span className="block mt-1.5">
                     <StatusBadge status={p.status || "Injured"} />
                     {injuryDetailOf(p) && <span className="block text-[11px] font-semibold text-red-500 mt-1">({injuryDetailOf(p)})</span>}
-                    {injuryReturnOf(p) && <span className="block text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Estimated Return Date: {injuryReturnOf(p)}</span>}
+                    {injuryReturnOf(p) && <span className="block text-[11px] font-semibold text-slate-900 dark:text-white mt-0.5">Estimated Return Date: {injuryReturnOf(p)}</span>}
                   </span>
                 )}
               </span>
@@ -2059,8 +2059,8 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
               {(faTeam ? members.slice().sort((a, b) => currentSalary(b) - currentSalary(a)) : members)
                 .map((p) => (
                   <button key={p.id} onClick={() => onSelectPlayer(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
-                    <span className="w-7 text-center text-[11px] font-extrabold uppercase shrink-0" style={{ color: teamColor(abbr) }}>{p._slot || courtPos(p) || "—"}</span>
-                    <Avatar p={p} />
+                    <span className="w-7 text-center text-[12px] font-extrabold uppercase shrink-0 text-slate-900 dark:text-white">{p._slot || courtPos(p) || "—"}</span>
+                    <Avatar p={p} size="md" />
                     <span className="flex-1 min-w-0">
                       <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
                         {cleanNo(p.no) && <span className="text-slate-400 font-semibold mr-1.5">#{cleanNo(p.no)}</span>}{p.name}
@@ -2095,7 +2095,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
                         <span className="block text-[11px] font-semibold text-red-500 mt-1 leading-snug">({injuryDetailOf(p)})</span>
                       )}
                       {!isActiveStatus(p) && injuryReturnOf(p) && (
-                        <span className="block text-[11px] font-semibold text-red-500 mt-0.5 leading-snug">(Estimated Return Date: {injuryReturnOf(p)})</span>
+                        <span className="block text-[11px] font-semibold text-slate-900 dark:text-white mt-0.5 leading-snug">Estimated Return Date: {injuryReturnOf(p)}</span>
                       )}
                     </span>
                   </button>
@@ -2256,7 +2256,7 @@ function StatsTab({ players, teams, onSelect, focus }) {
                 <button key={p.id} id={"stat-row-" + p.id} onClick={() => onSelect(p)}
                   className={"w-full flex items-center gap-3 pr-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800 " + (hot ? "bg-slate-100 dark:bg-slate-800 ring-2 ring-inset ring-slate-400" : "")}
                   style={{ borderLeft: "4px solid " + teamColor(ab), paddingLeft: 12 }}>
-                  <span className={"w-6 text-center text-sm font-extrabold shrink-0 tabular-nums " + (rankNo <= 5 ? "text-blue-600" : "text-slate-400")}>{rankNo}</span>
+                  <span className="w-6 text-center text-sm font-extrabold shrink-0 tabular-nums text-slate-400">{rankNo}</span>
                   <Avatar p={p} />
                   <span className="flex-1 min-w-0">
                     <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
@@ -2576,6 +2576,12 @@ export default function App() {
 
   const [, setEspnTick] = useState(0);
   const injury = useInjuryFeed(players || []);
+  // Lock pinch/focus zoom app-wide (Safari zooms into any input smaller than 16px)
+  useEffect(() => {
+    let m = document.querySelector('meta[name="viewport"]');
+    if (!m) { m = document.createElement("meta"); m.name = "viewport"; document.head.appendChild(m); }
+    m.content = "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover";
+  }, []);
   const [statsFocus, setStatsFocus] = useState(null); // { id, cat } — highlight a player on the Stats tab
   useEffect(() => {
     // Headshots + positions for anyone Airtable is missing them for.
