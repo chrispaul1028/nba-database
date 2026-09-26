@@ -41,6 +41,7 @@ export default async function handler(req, res) {
           // ESPN's injury write-up + estimated return, when it has one
           injuryDetail: (() => { const inj = (a.injuries || [])[0]; if (!inj) return null; const d = inj.details || {}; return [d.side, d.type, d.detail].filter(Boolean).join(" ") || null; })(),
           injuryReturn: (a.injuries || [])[0]?.details?.returnDate || null,
+          injuryComment: (a.injuries || [])[0]?.longComment || (a.injuries || [])[0]?.shortComment || null,
           espnId: a.id,
         };
         players[nrm(name)] = rec;
