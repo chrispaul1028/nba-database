@@ -643,33 +643,63 @@ function TeamPill({ team }) {
 // ═══════════════ TAB: PLAYER HUB ═════════════════════════════════
 // One bottom tab for players, the injury report, contracts and the draft —
 // same hub the NFL app uses, so the bottom nav stays at four buttons.
-function PlayersHub({ players, teams, onSelect }) {
+function PlayersHub({ players, teams, onSelect, injury }) {
   const [view, setView] = useState("players");
   const pills = (
-    <div className="flex gap-2 mt-3 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
+    <div className="flex gap-2 mt-3 overflow-x-auto pt-1.5" style={{ scrollbarWidth: "none" }}>
       {[["players", "Players"], ["injury", "🏥 Injury Report"], ["contracts", "Contracts"], ["draft", "Draft"]].map(([k, lbl]) => (
         <button key={k} onClick={() => setView(k)}
-          className={"shrink-0 px-3.5 py-1.5 rounded-full text-[11px] font-extrabold " + (view === k ? "bg-white text-blue-700" : "bg-blue-500/60 text-blue-100 active:bg-blue-500")}>
+          className={"relative shrink-0 px-3.5 py-1.5 rounded-full text-[11px] font-extrabold " + (view === k ? "bg-white text-blue-700" : "bg-blue-500/60 text-blue-100 active:bg-blue-500")}>
           {lbl}
+          {k === "injury" && <Badge n={injury.unseen} />}
         </button>
       ))}
     </div>
   );
   if (view === "contracts") return <ContractsTab players={players} onSelect={onSelect} pills={pills} />;
   if (view === "draft") return <DraftTab players={players} onSelect={onSelect} pills={pills} />;
-  if (view === "injury") return <InjuryFeed players={players} teams={teams} onSelect={onSelect} pills={pills} />;
+  if (view === "injury") return <InjuryFeed players={players} teams={teams} onSelect={onSelect} pills={pills} feed={injury.feed} markSeen={injury.markSeen} />;
   return <PlayersTab players={players} onSelect={onSelect} pills={pills} key={view} />;
 }
 
-// ═══════════════ INJURY REPORT (ESPN feed, newest first) ═════════
-function InjuryFeed({ players, teams, onSelect, pills }) {
-  const [q, setQ] = useState("");
+// ═══════════════ INJURY FEED STORE + UNSEEN BADGE ════════════════
+// The feed is loaded once at app start (and refreshed every 15 min). The
+// last time you opened the Injury Report is remembered on the device; any
+// update to one of YOUR players newer than that counts as unseen and shows
+// as a badge on the Players tab and the Injury Report pill until you open it.
+const INJ_SEEN_KEY = "hrb_injury_seen_at";
+const readSeen = () => { try { return Number(localStorage.getItem(INJ_SEEN_KEY) || 0); } catch { return 0; } };
+const writeSeen = (t) => { try { localStorage.setItem(INJ_SEEN_KEY, String(t)); } catch {} };
+function useInjuryFeed(players) {
   const [feed, setFeed] = useState(null);
+  const [seenAt, setSeenAt] = useState(readSeen);
   useEffect(() => {
     let alive = true;
-    fetch("/api/injuries").then((r) => r.json()).then((d) => { if (alive) setFeed(d && d.records ? d : { records: [], error: d?.error || "unavailable" }); }).catch(() => alive && setFeed({ records: [], error: "unreachable" }));
-    return () => { alive = false; };
+    const load = () => fetch("/api/injuries").then((r) => r.json())
+      .then((d) => { if (alive) setFeed(d && d.records ? d : { records: [], error: d?.error || "unavailable" }); })
+      .catch(() => alive && setFeed({ records: [], error: "unreachable" }));
+    load();
+    const t = setInterval(load, 15 * 60 * 1000);
+    return () => { alive = false; clearInterval(t); };
   }, []);
+  const mine = useMemo(() => new Set((players || []).map((p) => espnNrm(p.name))), [players]);
+  const unseen = useMemo(() => (feed?.records || []).filter((r) => mine.has(espnNrm(r.name)) && r.date && new Date(r.date).getTime() > seenAt).length, [feed, mine, seenAt]);
+  const markSeen = () => {
+    const latest = Math.max(seenAt, ...(feed?.records || []).map((r) => (r.date ? new Date(r.date).getTime() : 0)), 0);
+    writeSeen(latest); setSeenAt(latest);
+  };
+  return { feed, unseen, markSeen };
+}
+function Badge({ n }) {
+  if (!n) return null;
+  return <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-white text-[9px] font-extrabold flex items-center justify-center leading-none shadow">{n > 99 ? "99+" : n}</span>;
+}
+
+// ═══════════════ INJURY REPORT (ESPN feed, newest first) ═════════
+function InjuryFeed({ players, teams, onSelect, pills, feed, markSeen }) {
+  const [q, setQ] = useState("");
+  // Opening the report is what clears the badge — once the feed is in hand.
+  useEffect(() => { if (feed && !feed.error) markSeen(); }, [feed]);
   const byName = useMemo(() => { const m = {}; for (const p of players) m[espnNrm(p.name)] = p; return m; }, [players]);
   const abbrOfTeamName = (name) => { const t = (teams || []).find((t) => String(t.name).toLowerCase() === String(name).toLowerCase()); return t ? (t.abbr || toAbbr(t.name)) : toAbbr(name); };
   const s = q.toLowerCase().trim();
@@ -2491,6 +2521,7 @@ export default function App() {
   const [error, setError] = useState(null);
 
   const [, setEspnTick] = useState(0);
+  const injury = useInjuryFeed(players || []);
   useEffect(() => {
     // Headshots + positions for anyone Airtable is missing them for.
     fetch("/api/lineups").then((r) => r.json())
@@ -2546,7 +2577,7 @@ export default function App() {
           backLabel={tab === "tonight" ? "Matchups" : "Teams"}
         />
       )}
-      {players && tab === "players" && <PlayersHub players={players} teams={teams} onSelect={setSel} />}
+      {players && tab === "players" && <PlayersHub players={players} teams={teams} onSelect={setSel} injury={injury} />}
       {players && tab === "stats" && <StatsTab players={players} onSelect={setSel} />}
 
       <div className="fixed bottom-0 inset-x-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex pb-[env(safe-area-inset-bottom)] z-20">
@@ -2556,7 +2587,7 @@ export default function App() {
             onClick={() => { setTab(t.id); setSel(null); setSelTeam(null); }}
             className={"flex-1 py-2.5 text-center " + (tab === t.id ? "text-blue-600" : "text-slate-400")}
           >
-            <div className="text-lg leading-none">{t.icon}</div>
+            <div className="text-lg leading-none relative inline-block">{t.icon}{t.id === "players" && <Badge n={injury.unseen} />}</div>
             <div className="text-[10px] font-bold mt-1">{t.label}</div>
           </button>
         ))}
