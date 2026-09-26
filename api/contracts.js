@@ -35,6 +35,7 @@ const FIELDS = {
   playerRole: ["Role", "Depth Chart", "Depth", "Lineup Role", "Rotation"],
   playerSort: ["Sort Priority", "Sort", "Priority", "Depth Order", "Order"],
   playerDraft: ["Draft", "Draft Info", "Drafted"],
+  playerDraftTeam: ["Draft Team", "Drafted By", "Drafting Team"],
   playerDraftYear: ["Draft Year"],
   playerDraftRound: ["Draft Round", "Round", "Rd"],
   playerDraftPick: ["Draft Pick", "Pick", "Pick No", "Pick Number"],
@@ -384,6 +385,7 @@ export default async function handler(req, res) {
         sort: coerceNum(getField(p.fields, FIELDS.playerSort)),
         draft: asText(getField(p.fields, FIELDS.playerDraft)).replace(/^\s*\d{4}\s*[:\u00b7\-]?\s*/, ""),
         draftYear: coerceNum(getField(p.fields, FIELDS.playerDraftYear)),
+        draftTeam: asText(getField(p.fields, FIELDS.playerDraftTeam)),
         birthplace: asText(getField(p.fields, FIELDS.playerBirthplace)),
         college: asText(getField(p.fields, FIELDS.playerCollege)),
         draftRound: coerceNum(getField(p.fields, FIELDS.playerDraftRound)),
@@ -397,7 +399,7 @@ export default async function handler(req, res) {
       .sort((a, b) => a.name.localeCompare(b.name));
 
     res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
-    return res.status(200).json({ apiVersion: "v29.0", players: out, teams: teamsOut });
+    return res.status(200).json({ apiVersion: "v30.0", players: out, teams: teamsOut });
   } catch (e) {
     return res.status(500).json({ error: String(e.message || e) });
   }
