@@ -300,7 +300,7 @@ const photoOf = (p) => p.photo || espnOf(p)?.headshot || null;
 // description; plus ESPN's estimated return date when it publishes one.
 function injuryLine(p) {
   const e = espnOf(p);
-  const note = p.injuryNotes || e?.injuryDetail || "";
+  const note = tidyInjury(p.injuryNotes || e?.injuryDetail || "");
   const ret = e?.injuryReturn ? new Date(e.injuryReturn) : null;
   const retTxt = ret && !isNaN(ret) ? "est. return " + ret.toLocaleDateString([], { month: "short", day: "numeric" }) : "";
   return [note, retTxt].filter(Boolean).join(" · ");
@@ -438,7 +438,7 @@ function ContractCard({ c, big }) {
     <div className={"bg-white dark:bg-slate-900 rounded-2xl border shadow-sm px-4 py-4 " + (big ? ACCENT_BORDER : "border-slate-200 dark:border-slate-800")}>
       <div className="flex items-baseline justify-between gap-2">
         <div className="min-w-0">
-          <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase truncate">
+          <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase truncate">
             {c.kind}{c.team ? " · " + c.team : ""}{c.signed ? " · " + c.signed : ""}
           </div>
           <div className="text-sm font-extrabold text-slate-800 dark:text-slate-200 mt-0.5">{terms(c)}</div>
@@ -543,7 +543,7 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
 
         {mode === "full" && (p.height || p.weight || p.age || p.draft || p.birthplace || p.draftYear) && (
           <>
-            <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">Bio</div>
+            <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mt-6 mb-2 px-1">Bio</div>
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800">
               <BioRow k="Height / Weight" v={[p.height ? String(p.height).replace(/^(\d)[-\s'](\d{1,2})"?$/, "$1'$2\"") : "", p.weight ? String(p.weight).replace(/\s*lbs?$/i, "") + " lbs" : ""].filter(Boolean).join(", ")} />
               <BioRow k="Age" v={p.age} />
@@ -557,7 +557,7 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
 
         {mode === "full" && p.stats && p.stats.length > 0 && (
           <>
-            <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">Stats</div>
+            <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mt-6 mb-2 px-1">Stats</div>
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800">
               {p.stats.map((st, i) => {
                 const fmtPct = (v) => (v == null ? null : Number(v).toFixed(1) + "%");
@@ -593,7 +593,7 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
 
         {past.length > 0 && (
           <>
-            <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">Contract history</div>
+            <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mt-6 mb-2 px-1">Contract history</div>
             <div className="flex flex-col gap-3">
               {past.map((c, i) => <ContractCard key={i} c={c} />)}
             </div>
@@ -603,7 +603,7 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
 
         {mode === "full" && p.awards && p.awards.length > 0 && (
           <>
-            <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">Awards</div>
+            <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mt-6 mb-2 px-1">Awards</div>
             <div className="flex flex-wrap gap-1.5">
               {p.awards.map((a, i) => (
                 <span key={i} className="text-[11px] font-semibold px-2.5 py-1.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
@@ -735,7 +735,7 @@ function InjuryFeed({ players, teams, onSelect, pills, feed, markSeen }) {
         )}
         {groups.map((g) => (
           <div key={g.key}>
-            <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mb-2 px-1">{g.key}</div>
+            <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mb-2 px-1">{g.key}</div>
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden mb-4">
               {g.items.map((r) => {
                 const p = byName[espnNrm(r.name)];
@@ -1643,7 +1643,7 @@ function TeamStatsPanel({ roster, abbr, mode, setMode, onSelectPlayer }) {
       ) : (
         <div className="mt-4">
           <div className="flex items-baseline justify-between px-1 mb-1.5">
-            <span className="text-[11px] font-bold tracking-widest text-slate-400 uppercase">{yr} per game</span>
+            <span className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase">{yr} per game</span>
             <span className="text-[9px] font-semibold text-slate-400">tap a column to rank</span>
           </div>
           <style>{`@keyframes hrbRowIn { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: none; } }`}</style>
@@ -1759,7 +1759,7 @@ function CapOutlook({ roster, color, onSelectPlayer }) {
 
   return (
     <div className="mt-4">
-      <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mb-1.5 px-1">Salary cap outlook</div>
+      <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mb-1.5 px-1">Salary cap outlook</div>
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm px-3 pt-3 pb-2">
         <style>{`@keyframes capRise { from { transform: scaleY(0); } to { transform: scaleY(1); } }`}</style>
         <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: "auto" }}>
@@ -1809,7 +1809,7 @@ function CapOutlook({ roster, color, onSelectPlayer }) {
             <Tile value={(room >= 0 ? "+" : "−") + fmtM(Math.abs(room)).slice(1)} label="vs Cap" valueClass={room >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-slate-900 dark:text-slate-100"} sub={room >= 0 ? "cap space" : "over the cap"} />
             <Tile value={(vsTax >= 0 ? "+" : "−") + fmtM(Math.abs(vsTax)).slice(1)} label="vs Tax" valueClass={vsTax > 0 ? "text-red-500" : "text-emerald-600 dark:text-emerald-400"} sub={{ label: status, cls: statusCls }} />
           </div>
-          <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-5 mb-1.5 px-1">{seasonLabel(cur.yr)} on the books</div>
+          <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mt-5 mb-1.5 px-1">{seasonLabel(cur.yr)} on the books</div>
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
             {cur.rows.length === 0 && <div className="text-center text-sm text-slate-400 py-8 px-6">No salary on the books for {seasonLabel(cur.yr)} yet.</div>}
             {cur.rows.map(({ p, salary, bucket, type }) => (
@@ -1869,11 +1869,11 @@ function BioPanel({ roster, abbr, teams, players, color, onSelectPlayer }) {
   return (
     <div className="mt-4">
       <div className="grid grid-cols-3 gap-2">
-        <Tile value={avgExp != null ? avgExp.toFixed(1) : "—"} label="Avg Exp" sub={expRank ? { label: ordinal(expRank.rank) + " most exp.", cls: expRank.rank <= 10 ? "text-green-600 dark:text-green-400" : expRank.rank <= 20 ? "text-yellow-600 dark:text-yellow-400" : "text-red-500 dark:text-red-400" } : "seasons"} />
+        <Tile value={avgExp != null ? avgExp.toFixed(1) : "—"} label="Avg Exp" sub={expRank ? { label: ordinal(expRank.rank), cls: expRank.rank <= 10 ? "text-green-600 dark:text-green-400" : expRank.rank <= 20 ? "text-yellow-600 dark:text-yellow-400" : "text-red-500 dark:text-red-400" } : "seasons"} />
         <Tile value={rookies} label="Rookies" sub="first season" />
         <Tile value={roster.length ? Math.round((drafted / roster.length) * 100) + "%" : "—"} label="Homegrown" sub={drafted + " drafted by " + abbr} />
       </div>
-      <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-5 mb-1.5 px-1">Age profile</div>
+      <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mt-5 mb-1.5 px-1">Age profile</div>
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm px-4 py-3">
         <div className="grid grid-cols-4 gap-2 items-end h-20">
           {buckets.map(([lbl, n]) => (
@@ -1885,7 +1885,7 @@ function BioPanel({ roster, abbr, teams, players, color, onSelectPlayer }) {
           ))}
         </div>
       </div>
-      <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-5 mb-1.5 px-1">Roster bios · oldest first</div>
+      <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mt-5 mb-1.5 px-1">Roster bios · oldest first</div>
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
         {list.map((p) => (
           <button key={p.id} onClick={() => onSelectPlayer(p)} className="w-full flex items-center gap-3 px-4 py-2.5 text-left active:bg-slate-50 dark:active:bg-slate-800">
@@ -2044,7 +2044,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
         )}
         {seg === "roster" && (rosterView === "list" || faTeam) && listGroups.map(([role, members]) => (
           <div key={role}>
-            <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">{role}</div>
+            <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mt-6 mb-2 px-1">{role}</div>
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
               {(faTeam ? members.slice().sort((a, b) => currentSalary(b) - currentSalary(a)) : members)
                 .map((p) => (
@@ -2068,12 +2068,12 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
                             return <span className={"text-[7px] leading-none " + (d > 0 ? "text-emerald-500" : "text-red-500")}>{d > 0 ? "▲" : "▼"}</span>;
                           };
                           return (
-                            <span className="flex gap-1 shrink-0">
-                              {[["G", "gp"], ["PTS", "pts"], ["REB", "reb"], ["AST", "ast"]].map(([lbl, k]) => (
-                                <span key={lbl} className="w-[34px] text-center">
-                                  <span className="block text-[8px] font-bold text-slate-400 uppercase">{lbl}</span>
-                                  <span className="flex items-center justify-center gap-[2px] text-[11px] font-extrabold text-slate-800 dark:text-slate-100 tabular-nums">
-                                    <span>{k === "gp" ? (st.gp != null ? Math.round(st.gp) : "—") : (fmt1(st[k]) ?? "—")}</span>{k !== "gp" && <Arrow k={k} />}
+                            <span className="flex gap-1.5 shrink-0">
+                              {[["PTS", "pts"], ["REB", "reb"], ["AST", "ast"]].map(([lbl, k]) => (
+                                <span key={lbl} className="w-[52px] rounded-lg overflow-hidden border text-center" style={{ borderColor: teamColor(abbr) }}>
+                                  <span className="block text-[8px] font-extrabold text-white uppercase tracking-wide py-[3px]" style={{ backgroundColor: teamColor(abbr) }}>{lbl}</span>
+                                  <span className="flex items-center justify-center gap-[2px] text-[13px] font-extrabold text-slate-800 dark:text-slate-100 tabular-nums py-1 bg-slate-50 dark:bg-slate-800">
+                                    <span>{fmt1(st[k]) ?? "—"}</span><Arrow k={k} />
                                   </span>
                                 </span>
                               ))}
@@ -2095,7 +2095,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
         {seg === "contracts" && (cView === "list" || cView === "fa") && (
           <>
             <div className="flex items-baseline justify-between mt-6 mb-2 px-1">
-              <span className="text-[11px] font-bold tracking-widest text-slate-400 uppercase">{faOnly ? "Free Agent Eligible · " + (startYear(CURRENT_SEASON) + 1) : "Team Contracts"}</span>
+              <span className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase">{faOnly ? "Free Agent Eligible · " + (startYear(CURRENT_SEASON) + 1) : "Team Contracts"}</span>
               <span className="text-[11px] font-bold text-slate-400">{(faOnly ? faEligible(roster) : roster).length} players</span>
             </div>
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
@@ -2232,7 +2232,7 @@ function StatsTab({ players, teams, onSelect, focus }) {
       </div>
       <div className="px-4 pb-28 mt-4">
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-          <div className="flex justify-between px-4 py-2 text-[10px] font-semibold tracking-widest uppercase text-slate-400 border-b border-slate-100 dark:border-slate-800">
+          <div className="flex justify-between px-4 py-2 text-[10px] font-extrabold tracking-widest uppercase text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800">
             <span>Player</span><span>{catLabel} · per game</span>
           </div>
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -2242,18 +2242,18 @@ function StatsTab({ players, teams, onSelect, focus }) {
                 <button key={p.id} id={"stat-row-" + p.id} onClick={() => onSelect(p)}
                   className={"w-full flex items-center gap-3 pr-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800 " + (hot ? "bg-slate-100 dark:bg-slate-800 ring-2 ring-inset ring-slate-400" : "")}
                   style={{ borderLeft: "4px solid " + teamColor(ab), paddingLeft: 12 }}>
-                  <span className={"w-7 text-center text-lg font-extrabold shrink-0 tabular-nums " + (i < 5 ? "text-blue-600" : "text-slate-400")}>{i + 1}</span>
+                  <span className={"w-6 text-center text-sm font-extrabold shrink-0 tabular-nums " + (i < 5 ? "text-blue-600" : "text-slate-400")}>{i + 1}</span>
                   <Avatar p={p} />
                   <span className="flex-1 min-w-0">
-                    <span className="block text-[15px] font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
+                    <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
                     <span className="flex items-center gap-1.5 mt-0.5">
                       {TEAM_LOGOS[ab] && <img src={TEAM_LOGOS[ab]} alt="" className="w-4 h-4 object-contain" />}
-                      <span className="text-[12px] text-slate-400 font-semibold">{ab}</span>
+                      <span className="text-[11px] text-slate-400 font-semibold">{ab}</span>
                     </span>
                   </span>
                   <span className="text-right shrink-0">
-                    <span className="block text-2xl font-extrabold text-slate-900 dark:text-slate-100 tabular-nums leading-none">{grp.pct ? Number(st[cat]).toFixed(1) + "%" : fmt1(st[cat])}</span>
-                    <span className="block text-[11px] font-semibold text-slate-400 mt-1">{st.gp != null ? Math.round(st.gp) + " g" : ""}</span>
+                    <span className="block text-lg font-extrabold text-slate-900 dark:text-slate-100 tabular-nums leading-none">{grp.pct ? Number(st[cat]).toFixed(1) + "%" : fmt1(st[cat])}</span>
+                    <span className="block text-[10px] font-semibold text-slate-400 mt-1">{st.gp != null ? Math.round(st.gp) + " g" : ""}</span>
                   </span>
                 </button>
               );
@@ -2275,30 +2275,28 @@ function DraftTab({ players, onSelect, pills }) {
   }
   const years = Object.keys(byYear).map(Number).sort((a, b) => b - a);
   const [selYear, setSelYear] = useState(null);
+  const [q, setQ] = useState("");
   const yr = selYear && byYear[selYear] ? selYear : years[0]; // default: newest class
+  const s0 = q.toLowerCase().trim();
+  const match = (p) => !s0 || p.name.toLowerCase().includes(s0) || String(draftedBy(p) || teamOfPlayer(p) || "").toLowerCase().includes(s0) || String(p.college || "").toLowerCase().includes(s0);
   return (
     <div>
-      <div className="bg-blue-600 pb-4 px-4" style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.75rem)" }}>
-        <h1 className="text-3xl font-extrabold text-white mb-3">Draft</h1>
-        {pills && <div className="mb-3">{pills}</div>}
-        <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1" style={{ scrollbarWidth: "none" }}>
-          {years.map((y) => (
-            <button
-              key={y}
-              onClick={() => setSelYear(y)}
-              className={
-                "shrink-0 px-4 py-1.5 rounded-full text-sm font-bold transition-colors " +
-                (y === yr ? "bg-white text-blue-700" : "bg-blue-500/60 text-blue-100 active:bg-blue-500")
-              }
-            >
-              {y}
-            </button>
-          ))}
-        </div>
-      </div>
+      <ListHeader title="Draft" q={q} setQ={setQ} pills={pills} placeholder="Search players or teams…" />
       <div className="px-4 pb-28 mt-4">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase">Draft class</span>
+          {years.length > 0 && (
+            <span className="relative">
+              <select value={yr || ""} onChange={(e) => setSelYear(Number(e.target.value))}
+                className="appearance-none bg-blue-600 text-white text-sm font-bold rounded-full pl-4 pr-8 py-2 outline-none">
+                {years.map((y) => <option key={y} value={y}>{y} class</option>)}
+              </select>
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-white text-xs">▼</span>
+            </span>
+          )}
+        </div>
         {[yr].filter((y) => y != null).map((yr) => {
-          const cls = byYear[yr];
+          const cls = byYear[yr].filter(match);
           const rounds = [
             ["Round 1", cls.filter((p) => roundOf(p) === 1)],
             ["Round 2", cls.filter((p) => roundOf(p) === 2)],
@@ -2309,23 +2307,32 @@ function DraftTab({ players, onSelect, pills }) {
             <div key={yr}>
               {rounds.map(([label, group]) => (
                 <div key={label}>
-                  <div className="text-[11px] font-bold tracking-widest text-slate-400 uppercase mt-6 mb-2 px-1">
-                    {label}
+                  <div className="flex items-baseline gap-2 mt-5 mb-2 px-1">
+                    <span className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase">{label}</span>
+                    <span className="text-[11px] font-semibold text-slate-400">· {group.length} player{group.length === 1 ? "" : "s"}</span>
                   </div>
                   <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
-                    {group
-                      .sort((a, b) => pickOf(a) - pickOf(b))
-                      .map((p) => (
-                        <button key={p.id} onClick={() => onSelect(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
-                          <span className="w-7 text-center text-sm font-extrabold text-slate-400 tabular-nums shrink-0">{pickOf(p) !== 999 ? pickOf(p) : "—"}</span>
+                    {group.sort((a, b) => pickOf(a) - pickOf(b)).map((p) => {
+                      const ab = draftedBy(p) || teamOfPlayer(p) || "";
+                      const c = teamColor(ab);
+                      return (
+                        <button key={p.id} onClick={() => onSelect(p)} className="w-full flex items-center gap-3 pr-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800" style={{ borderLeft: "3px solid " + c, paddingLeft: 13 }}>
+                          <span className="w-12 h-12 rounded-xl flex flex-col items-center justify-center shrink-0 text-white" style={{ backgroundColor: c }}>
+                            <span className="text-[8px] font-bold uppercase tracking-wider leading-none opacity-90">{isUndrafted(p) ? "UDFA" : "Pick"}</span>
+                            <span className="text-base font-extrabold leading-tight tabular-nums">{pickOf(p) !== 999 ? pickOf(p) : "—"}</span>
+                          </span>
                           <Avatar p={p} />
                           <span className="flex-1 min-w-0">
                             <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
-                            <span className="block text-[11px] text-slate-400 font-medium truncate">{[p.pos, p.college].filter(Boolean).join(" · ") || "—"}</span>
+                            <span className="flex items-center gap-2 mt-1 min-w-0">
+                              {courtPos(p) && <span className="px-1.5 py-0.5 rounded-md text-[10px] font-extrabold text-white shrink-0" style={{ backgroundColor: c }}>{courtPos(p)}</span>}
+                              <span className="text-[11px] text-slate-400 font-medium truncate">{p.college || "—"}</span>
+                            </span>
                           </span>
-                          <TeamPill team={draftedBy(p) || teamOfPlayer(p)} />
+                          {TEAM_LOGOS[ab] ? <img src={TEAM_LOGOS[ab]} alt="" className="w-11 h-11 object-contain shrink-0" /> : <TeamPill team={ab} />}
                         </button>
-                      ))}
+                      );
+                    })}
                   </div>
                 </div>
               ))}
@@ -2621,7 +2628,7 @@ export default function App() {
         {TABS.map((t) => (
           <button
             key={t.id}
-            onClick={() => { setTab(t.id); setSel(null); setSelTeam(null); }}
+            onClick={() => { if (t.id !== "stats") setStatsFocus(null); setTab(t.id); setSel(null); setSelTeam(null); }}
             className={"flex-1 py-2.5 text-center " + (tab === t.id ? "text-blue-600" : "text-slate-400")}
           >
             <div className="text-lg leading-none relative inline-block">{t.icon}{t.id === "players" && <Badge n={injury.unseen} />}</div>
