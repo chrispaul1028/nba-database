@@ -314,8 +314,10 @@ function injuryLine(p) {
 //         split off into the return date), else ESPN's description.
 // Return: Airtable Return Date column, else a date inside the notes, else
 //         ESPN's estimate. Always shown as "Estimated Return Date: Oct 2".
+// Freshest source first: the live injury feed (5-min cache, re-polled on wake).
+// The roster feed is only a stopgap before the live feed has loaded.
 function effectiveStatus(p) {
-  const e = espnOf(p)?.injury || injOf(p)?.status;
+  const e = INJ_LOADED ? injOf(p)?.status : (espnOf(p)?.injury || injOf(p)?.status);
   if (e && !/active|available/i.test(String(e))) return String(e);
   return p.status || "";
 }
@@ -715,6 +717,7 @@ const INJ_SEEN_KEY = "hrb_injury_seen_at";
 const readSeen = () => { try { return Number(localStorage.getItem(INJ_SEEN_KEY) || 0); } catch { return 0; } };
 const writeSeen = (t) => { try { localStorage.setItem(INJ_SEEN_KEY, String(t)); } catch {} };
 const INJ_BY_NAME = {}; // ESPN injury-feed record per player name (filled by useInjuryFeed)
+let INJ_LOADED = false;  // once the live feed is in, the 6-hour roster cache is no longer trusted for status
 const injOf = (p) => (p ? INJ_BY_NAME[espnNrm(p.name)] || null : null);
 function useInjuryFeed(players) {
   const [feed, setFeed] = useState(null);
@@ -722,11 +725,21 @@ function useInjuryFeed(players) {
   useEffect(() => {
     let alive = true;
     const load = () => fetch("/api/injuries").then((r) => r.json())
-      .then((d) => { if (!alive) return; for (const r of d?.records || []) { const k = espnNrm(r.name); if (!INJ_BY_NAME[k]) INJ_BY_NAME[k] = r; } setFeed(d && d.records ? d : { records: [], error: d?.error || "unavailable" }); })
+      .then((d) => {
+        if (!alive) return;
+        if (d && d.records) {
+          for (const k of Object.keys(INJ_BY_NAME)) delete INJ_BY_NAME[k];         // rebuild: a player who dropped off the feed is healthy again
+          for (const r of d.records) { const k = espnNrm(r.name); if (!INJ_BY_NAME[k]) INJ_BY_NAME[k] = r; }
+          INJ_LOADED = true;
+        }
+        setFeed(d && d.records ? d : { records: [], error: d?.error || "unavailable" });
+      })
       .catch(() => alive && setFeed({ records: [], error: "unreachable" }));
     load();
-    const t = setInterval(load, 15 * 60 * 1000);
-    return () => { alive = false; clearInterval(t); };
+    const t = setInterval(load, 5 * 60 * 1000);                      // every 5 min while open
+    const onWake = () => { if (document.visibilityState === "visible") load(); };   // and the moment the app is reopened
+    document.addEventListener("visibilitychange", onWake);
+    return () => { alive = false; clearInterval(t); document.removeEventListener("visibilitychange", onWake); };
   }, []);
   const mine = useMemo(() => new Set((players || []).map((p) => espnNrm(p.name))), [players]);
   const unseen = useMemo(() => (feed?.records || []).filter((r) => mine.has(espnNrm(r.name)) && r.date && new Date(r.date).getTime() > seenAt).length, [feed, mine, seenAt]);
