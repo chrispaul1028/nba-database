@@ -1,6 +1,6 @@
 // /api/injuries — ESPN's NBA injury feed, flattened and newest-first.
 // Each record: player, team, status, injury detail, estimated return, and
-// ESPN's write-up. Cached 15 minutes.
+// ESPN's write-up. Cached 5 minutes.
 //
 // Lessons carried over from the NFL version of this feed:
 //  - the feed nests as injuries[team].injuries[entry]
@@ -46,7 +46,7 @@ export default async function handler(req, res) {
       }
     }
     out.sort((x, y) => new Date(y.date || 0) - new Date(x.date || 0));
-    res.setHeader("Cache-Control", "s-maxage=900, stale-while-revalidate=1800");
+    res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600"); // 5-minute window
     return res.status(200).json({ count: out.length, records: out, updatedAt: new Date().toISOString() });
   } catch (e) {
     return res.status(502).json({ error: String(e.message || e) });
