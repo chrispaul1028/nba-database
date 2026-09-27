@@ -25,8 +25,8 @@ const ACCENT_BORDER = "border-emerald-200";
 
 const TEAM_COLORS = {
   NY: "#1D428A", DAL: "#00538C", ATL: "#C8102E", OKC: "#007AC1",
-  MIN: "#0C2340", DEN: "#0E2240", IND: "#FDBB30", BOS: "#007A33",
-  PHI: "#006BB6", LAL: "#552583", GSW: "#FDB927", GS: "#FDB927",
+  MIN: "#0C2340", DEN: "#0E2240", IND: "#002D62", BOS: "#007A33",
+  PHI: "#006BB6", LAL: "#552583", GSW: "#1D428A", GS: "#1D428A",
   MIA: "#98002E", MIL: "#00471B", CHI: "#CE1141", CLE: "#860038",
   TOR: "#CE1141", BKN: "#000000", WSH: "#E31837", ORL: "#0077C0",
   CHA: "#00788C", DET: "#1D42BA", HOU: "#CE1141", SAS: "#000000",
@@ -38,8 +38,8 @@ const TEAM_COLORS = {
 // teams whose logo is the same color as their primary).
 const TEAM_COLORS2 = {
   NY: "#F58426", DAL: "#B8C4CA", ATL: "#FDB927", OKC: "#EF6024",
-  MIN: "#236192", DEN: "#FEC524", IND: "#002D62", BOS: "#BA9653",
-  PHI: "#ED174C", LAL: "#FDB927", GSW: "#1D428A", GS: "#1D428A",
+  MIN: "#236192", DEN: "#FEC524", IND: "#FDBB30", BOS: "#BA9653",
+  PHI: "#ED174C", LAL: "#FDB927", GSW: "#FDB927", GS: "#FDB927",
   MIA: "#F9A01B", MIL: "#EEE1C6", CHI: "#000000", CLE: "#FDBB30",
   TOR: "#000000", BKN: "#FFFFFF", WSH: "#002B5C", ORL: "#C4CED4",
   CHA: "#1D1160", DET: "#C8102E", HOU: "#000000", SAS: "#C4CED4",
@@ -189,6 +189,10 @@ function toAbbr(team) {
   return NAME_TO_ABBR[t.toLowerCase()] || "";
 }
 const teamColor = (abbr) => TEAM_COLORS[String(abbr).toUpperCase()] || "#334155";
+// Per-team logo trims. Orlando's artwork carries a heavy black ring; clip to
+// the inner circle so only the ball shows. Spread onto any logo <img>.
+const LOGO_TRIM = { ORL: { clipPath: "circle(38% at 50% 50%)", transform: "scale(1.3)" } };
+const logoTrim = (abbr) => LOGO_TRIM[String(abbr || "").toUpperCase()] || {};
 // Current-team color first; falls back to the contract team if no current team.
 function playerHeaderColor(p) {
   if (HEADER_COLOR !== "team") return HEADER_COLOR;
@@ -215,7 +219,7 @@ function ContractLine({ c }) {
     <span className="inline-flex items-center gap-1 min-w-0">
       <span className="shrink-0">{terms(c)}</span>
       {abbr && (logo
-        ? <img src={logo} alt={abbr} title={c.team} className="w-4 h-4 object-contain shrink-0" />
+        ? <img src={logo} alt={abbr} title={c.team} className="w-4 h-4 object-contain shrink-0" style={logoTrim(abbr)} />
         : <span className="text-[9px] font-extrabold text-slate-400 shrink-0">{abbr}</span>)}
       <span className="truncate">· {c.kind}</span>
     </span>
@@ -677,7 +681,7 @@ function TeamPill({ team }) {
   if (!abbr) return null;
   const logo = TEAM_LOGOS[abbr];
   if (logo) {
-    return <img src={logo} alt={abbr} className="w-11 h-11 object-contain shrink-0" />;
+    return <img src={logo} alt={abbr} className="w-11 h-11 object-contain shrink-0" style={logoTrim(abbr)} />;
   }
   return (
     <span className="text-[10px] font-bold text-white px-2 py-1 rounded-full shrink-0" style={{ backgroundColor: teamColor(abbr) }}>
@@ -801,7 +805,7 @@ function InjuryFeed({ players, teams, onSelect, pills, feed, markSeen }) {
                     <span className="flex-1 min-w-0">
                       <span className="flex items-center gap-2 min-w-0">
                         <span className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate"><span className="text-slate-400 font-extrabold mr-1.5">{r.pos}</span>{r.name}</span>
-                        {TEAM_LOGOS[ab] && <img src={TEAM_LOGOS[ab]} alt="" className="w-6 h-6 object-contain shrink-0" />}
+                        {TEAM_LOGOS[ab] && <img src={TEAM_LOGOS[ab]} alt="" className="w-6 h-6 object-contain shrink-0" style={logoTrim(ab)} />}
                       </span>
                       <span className="flex items-center justify-between mt-1.5">
                         <StatusBadge status={r.status || "Injured"} />
@@ -1167,7 +1171,7 @@ function TeamsTab({ teams, players, onSelect }) {
                 style={{ background: `linear-gradient(105deg, ${c1} 0%, ${mixHex(c1, c2, 0.45)} 100%)` }}>
                 <span className="absolute inset-0" style={{ background: "linear-gradient(180deg,rgba(255,255,255,0.10) 0%,rgba(0,0,0,0) 45%,rgba(0,0,0,0.12) 100%)" }} />
                 {t.logo ? (
-                  <img src={t.logo} alt="" className="w-12 h-12 object-contain shrink-0 relative" style={{ filter: (abbr === "HOU" ? "brightness(0) invert(1) " : "") + "drop-shadow(0 1px 2px rgba(0,0,0,0.35))" }} />
+                  <img src={t.logo} alt="" className="w-12 h-12 object-contain shrink-0 relative" style={{ filter: (abbr === "HOU" ? "brightness(0) invert(1) " : "") + "drop-shadow(0 1px 2px rgba(0,0,0,0.35))", ...logoTrim(abbr) }} />
                 ) : (
                   <span className="w-12 h-12 rounded-full shrink-0 bg-white/20 relative" />
                 )}
@@ -1505,7 +1509,7 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
             style={{ top: ftY(0) + "%", width: Math.min(th.logoW || 26, 34) + "%", aspectRatio: "1 / 1", animation: "hrbLogoIn .5s ease-out both",
               ...(th.logoRing ? { boxShadow: "0 0 0 2px " + th.logoRing } : {}) }}>
             {th.logoRing && <span className="absolute inset-0 rounded-full" style={{ border: "0.35vw solid " + th.logoRing }} />}
-            <img src={team.courtLogo || th.courtLogo || team.logo} alt="" className="absolute inset-[6%] w-[88%] h-[88%] object-contain" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.3))", transform: "rotate(-90deg)" }}
+            <img src={team.courtLogo || th.courtLogo || team.logo} alt="" className="absolute inset-[6%] w-[88%] h-[88%] object-contain" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.3))", transform: "rotate(-90deg)" + (logoTrim(abbr).transform ? " " + logoTrim(abbr).transform : ""), clipPath: logoTrim(abbr).clipPath }}
               onError={(e) => { if (e.currentTarget.src !== team.logo && team.logo) e.currentTarget.src = team.logo; }} />
 
           </div>
@@ -1627,7 +1631,7 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
         return (
           <div className={"mt-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm px-3 py-2.5 grid gap-2 " + (rows.length > 2 ? "grid-cols-3" : "grid-cols-2")}>
             {rows.map(([k, v, since], i) => (
-              <div key={i} className="min-w-0">
+              <div key={i} className="min-w-0 text-center">
                 <div className="text-[8px] font-semibold tracking-widest uppercase text-slate-400">{k}</div>
                 <div className="text-[11px] font-bold text-slate-800 dark:text-slate-100 truncate">{v}</div>
                 {yrs(since) && <div className="text-[9px] font-semibold text-slate-400 truncate">{yrs(since)}</div>}
@@ -1995,7 +1999,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
   const roleGroups = [...ROLE_ORDER.filter((r) => groups[r]), ...(groups["Roster"] ? ["Roster"] : [])].map((r) => [r, groups[r]]);
   // List view mirrors the court: Starters PG→C, then Bench/Reserves/Two-Way by minutes.
   const listGroups = useMemo(() => {
-    if (isFaTeam(team)) return roleGroups;
+    if (isFaTeam(team)) return [["Free Agents", roster.slice().sort(byMinutes)]];   // one list, by minutes
     const lu = lineupOf(roster, abbr);
     return [["Starters", lu.starters.map((x) => Object.assign(Object.create(x.p), { _slot: x.slot }))], ...lu.benchGroups];
   }, [roster, abbr, team, LINEUPS[abbr]]);
@@ -2006,7 +2010,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
         <button onClick={onBack} className="text-sm font-semibold opacity-80 mb-4">‹ {backLabel || "Teams"}</button>
         <div className="flex items-center gap-4">
           {team.logo ? (
-            <img src={team.logo} alt="" className="w-16 h-16 object-contain shrink-0" style={{ filter: (abbr === "HOU" ? "brightness(0) invert(1) " : "") + "drop-shadow(0 1px 3px rgba(0,0,0,0.35))" }} />
+            <img src={team.logo} alt="" className="w-16 h-16 object-contain shrink-0" style={{ filter: (abbr === "HOU" ? "brightness(0) invert(1) " : "") + "drop-shadow(0 1px 3px rgba(0,0,0,0.35))", ...logoTrim(abbr) }} />
           ) : (
             <span className="text-3xl">🏀</span>
           )}
@@ -2299,7 +2303,7 @@ function StatsTab({ players, teams, onSelect, focus }) {
                   <span className="flex-1 min-w-0">
                     <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
                     <span className="flex items-center gap-1.5 mt-0.5">
-                      {TEAM_LOGOS[ab] && <img src={TEAM_LOGOS[ab]} alt="" className="w-4 h-4 object-contain" />}
+                      {TEAM_LOGOS[ab] && <img src={TEAM_LOGOS[ab]} alt="" className="w-4 h-4 object-contain" style={logoTrim(ab)} />}
                       <span className="text-[11px] text-slate-400 font-semibold">{ab}</span>
                     </span>
                   </span>
@@ -2381,7 +2385,7 @@ function DraftTab({ players, onSelect, pills }) {
                               <span className="text-[11px] text-slate-400 font-medium truncate">{p.college || "—"}</span>
                             </span>
                           </span>
-                          {TEAM_LOGOS[ab] ? <img src={TEAM_LOGOS[ab]} alt="" className="w-11 h-11 object-contain shrink-0" /> : <TeamPill team={ab} />}
+                          {TEAM_LOGOS[ab] ? <img src={TEAM_LOGOS[ab]} alt="" className="w-11 h-11 object-contain shrink-0" style={logoTrim(ab)} /> : <TeamPill team={ab} />}
                         </button>
                       );
                     })}
@@ -2522,7 +2526,7 @@ function TonightTab({ players, teams, onSelect, onSelectTeam }) {
               const tm = teamByAbbr(t.abbr);
               return (
                 <button onClick={tm && onSelectTeam ? () => onSelectTeam(tm) : undefined} className="w-full flex items-center gap-2.5 text-left">
-                  <img src={t.logo || TEAM_LOGOS[t.abbr] || ""} alt="" className="w-7 h-7 object-contain shrink-0" />
+                  <img src={t.logo || TEAM_LOGOS[t.abbr] || ""} alt="" className="w-7 h-7 object-contain shrink-0" style={logoTrim(t.abbr)} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline gap-1.5">
                       <span className={"text-[13px] font-extrabold tracking-wide " + (lost ? "text-slate-400" : "text-slate-900 dark:text-white")}>{t.abbr}</span>
