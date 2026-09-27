@@ -315,10 +315,11 @@ function injuryLine(p) {
 // Return: Airtable Return Date column, else a date inside the notes, else
 //         ESPN's estimate. Always shown as "Estimated Return Date: Oct 2".
 function effectiveStatus(p) {
-  const e = espnOf(p)?.injury;
+  const e = espnOf(p)?.injury || injOf(p)?.status;
   if (e && !/active|available/i.test(String(e))) return String(e);
   return p.status || "";
 }
+const injuryCommentOf = (p) => espnOf(p)?.injuryComment || injOf(p)?.comment || null;
 function splitNotes(raw) {
   const t = String(raw || "");
   const m = t.match(/\b(?:est(?:imated)?\.?\s*)?return(?:\s*date)?[:\s]*([A-Za-z]{3,9}\.?\s*\d{1,2}(?:,?\s*\d{4})?|\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)/i);
@@ -329,8 +330,8 @@ function splitNotes(raw) {
 const fmtRet = (v) => { if (!v) return null; const d = new Date(/\d{4}/.test(String(v)) ? v : v + " " + new Date().getFullYear()); return isNaN(d) ? String(v) : d.toLocaleDateString([], { month: "short", day: "numeric" }); };
 // "(right ankle sprain)" — Airtable notes first, else ESPN's write-up
 const tidyInjury = (t) => { const x = String(t || "").toLowerCase().replace(/[()]/g, "").trim(); return !x ? "" : /\s/.test(x) || /injur|sprain|strain|surgery|fracture|tear|soreness|illness|rest|contusion|bruise|concussion|tendin|manage/.test(x) ? x : x + " injury"; };
-const injuryDetailOf = (p) => tidyInjury(splitNotes(p.injuryNotes).note || espnOf(p)?.injuryDetail || "");
-const injuryReturnOf = (p) => fmtRet(p.returnDate) || fmtRet(splitNotes(p.injuryNotes).ret) || fmtRet(espnOf(p)?.injuryReturn);
+const injuryDetailOf = (p) => tidyInjury(splitNotes(p.injuryNotes).note || espnOf(p)?.injuryDetail || injOf(p)?.detail || "");
+const injuryReturnOf = (p) => fmtRet(p.returnDate) || fmtRet(splitNotes(p.injuryNotes).ret) || fmtRet(espnOf(p)?.injuryReturn) || fmtRet(injOf(p)?.returnDate);
 const isActiveStatus = (p) => { const st = String(effectiveStatus(p)).toLowerCase(); return !st || st.includes("active") || st.includes("available"); };
 const GENERIC_POS = new Set(["", "G", "F", "G-F", "F-G", "F-C", "C-F", "G/F", "F/C", "GUARD", "FORWARD", "WING", "BIG"]);
 // Court position: Airtable's exact label (PG/SG/SF/PF/C) if it has one,
@@ -545,13 +546,13 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
             </div>
             <div className="mt-1.5"><StatusBadge status={effectiveStatus(p)} /></div>
             {!isActiveStatus(p) && injuryDetailOf(p) && (
-              <div className="text-xs font-bold text-red-500 mt-1" style={{ textShadow: "0 0 4px rgba(255,255,255,0.7)" }}>({injuryDetailOf(p)})</div>
+              <div className="text-[11px] font-extrabold text-white mt-1.5">({injuryDetailOf(p)})</div>
             )}
             {!isActiveStatus(p) && injuryReturnOf(p) && (
-              <div className="text-xs font-semibold text-white mt-0.5">Estimated Return Date: {injuryReturnOf(p)}</div>
+              <div className="text-[11px] font-extrabold text-white mt-0.5">Estimated Return Date: {injuryReturnOf(p)}</div>
             )}
-            {!isActiveStatus(p) && espnOf(p)?.injuryComment && (
-              <div className="text-[11px] opacity-80 mt-1 leading-snug">{espnOf(p).injuryComment}</div>
+            {!isActiveStatus(p) && injuryCommentOf(p) && (
+              <div className="text-[11px] opacity-85 mt-1.5 leading-snug">{injuryCommentOf(p)}</div>
             )}
           </div>
         </div>
@@ -590,7 +591,7 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
           <>
             <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mt-6 mb-2 px-1">Stats</div>
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800">
-              {p.stats.map((st, i) => {
+              {p.stats.slice(0, 1).map((st, i) => {
                 const fmtPct = (v) => (v == null ? null : Number(v).toFixed(1) + "%");
                 return (
                   <div key={i} className="px-4 py-3">
@@ -713,13 +714,15 @@ function PlayersHub({ players, teams, onSelect, injury }) {
 const INJ_SEEN_KEY = "hrb_injury_seen_at";
 const readSeen = () => { try { return Number(localStorage.getItem(INJ_SEEN_KEY) || 0); } catch { return 0; } };
 const writeSeen = (t) => { try { localStorage.setItem(INJ_SEEN_KEY, String(t)); } catch {} };
+const INJ_BY_NAME = {}; // ESPN injury-feed record per player name (filled by useInjuryFeed)
+const injOf = (p) => (p ? INJ_BY_NAME[espnNrm(p.name)] || null : null);
 function useInjuryFeed(players) {
   const [feed, setFeed] = useState(null);
   const [seenAt, setSeenAt] = useState(readSeen);
   useEffect(() => {
     let alive = true;
     const load = () => fetch("/api/injuries").then((r) => r.json())
-      .then((d) => { if (alive) setFeed(d && d.records ? d : { records: [], error: d?.error || "unavailable" }); })
+      .then((d) => { if (!alive) return; for (const r of d?.records || []) { const k = espnNrm(r.name); if (!INJ_BY_NAME[k]) INJ_BY_NAME[k] = r; } setFeed(d && d.records ? d : { records: [], error: d?.error || "unavailable" }); })
       .catch(() => alive && setFeed({ records: [], error: "unreachable" }));
     load();
     const t = setInterval(load, 15 * 60 * 1000);
