@@ -374,7 +374,7 @@ function useSwipe(onLeft, onRight) {
 
 // ═══════════════ SHARED PIECES ═══════════════════════════════════
 function Avatar({ p, size }) {
-  const px = size === "lg" ? "w-20 h-20 text-2xl" : size === "md" ? "w-14 h-14 text-base" : "w-11 h-11 text-sm";
+  const px = size === "xl" ? "w-28 h-28 text-3xl ring-4 ring-white/80" : size === "lg" ? "w-20 h-20 text-2xl" : size === "md" ? "w-14 h-14 text-base" : "w-11 h-11 text-sm";
   const url = photoOf(p);
   if (url) {
     return <img src={url} alt={p.name} loading="lazy" className={px + " rounded-full object-cover object-top bg-slate-200 shrink-0"} onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />;
@@ -542,9 +542,9 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
       <div className="px-5 pb-6 text-white" style={{ backgroundColor: playerHeaderColor(p), paddingTop: "calc(env(safe-area-inset-top) + 1.25rem)" }}>
         <button onClick={onBack} className="text-sm font-semibold opacity-80 mb-4">‹ {backLabel}</button>
         <div className="flex items-center gap-4">
-          <Avatar p={p} size="lg" />
+          <Avatar p={p} size="xl" />
           <div className="min-w-0">
-            <div className="text-2xl font-extrabold leading-tight truncate">
+            <div className="text-2xl font-extrabold leading-tight">
               {p.name}
             </div>
             <div className="text-sm opacity-85 font-medium mt-0.5 leading-snug">
@@ -593,37 +593,39 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
           </>
         )}
 
-        {mode === "full" && p.stats && p.stats.length > 0 && (
-          <>
-            <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mt-6 mb-2 px-1">Stats</div>
-            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800">
-              {p.stats.slice(0, 1).map((st, i) => {
-                const fmtPct = (v) => (v == null ? null : Number(v).toFixed(1) + "%");
-                return (
-                  <div key={i} className="px-4 py-3">
-                    <div className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5">{st.season || "—"}</div>
-                    <div className="flex justify-between">
-                      {[["G", st.gp != null ? Math.round(st.gp) : null], ["PTS", fmt1(st.pts)], ["REB", fmt1(st.reb)], ["AST", fmt1(st.ast)], ["STL", fmt1(st.stl)], ["BLK", fmt1(st.blk)], ["TO", fmt1(st.tov)]].map(([lbl, v]) => (
-                        <span key={lbl} className="flex-1 text-center">
-                          <span className="block text-[8px] font-bold text-slate-400 uppercase">{lbl}</span>
-                          <span className="block text-xs font-extrabold text-slate-800 dark:text-slate-100 tabular-nums">{v ?? "—"}</span>
-                        </span>
-                      ))}
+        {mode === "full" && p.stats && p.stats.length > 0 && (() => {
+          const st = p.stats[0];
+          const c = playerHeaderColor(p);
+          const gp = st.gp != null ? Math.round(st.gp) : null;
+          const tot = (k) => (st[k] == null ? null : gp ? Math.round(st[k] * gp).toLocaleString() : fmt1(st[k]));
+          const pg = (k) => (st[k] == null ? null : fmt1(st[k]) + "/g");
+          const pct = (k) => (st[k] == null ? null : Number(st[k]).toFixed(1) + "%");
+          const tiles = [
+            ["PTS", tot("pts"), pg("pts")], ["REB", tot("reb"), pg("reb")], ["AST", tot("ast"), pg("ast")], ["STL", tot("stl"), pg("stl")],
+            ["BLK", tot("blk"), pg("blk")], ["TOV", tot("tov"), pg("tov")], ["MIN", tot("min"), pg("min")], ["FG%", pct("fg"), st.fgm != null && st.fga != null ? fmt1(st.fgm) + "/" + fmt1(st.fga) : null],
+            ["3PM", tot("p3m"), pg("p3m")], ["3P%", pct("p3"), null], ["FTM", tot("ftm"), pg("ftm")], ["FT%", pct("ft"), null],
+          ].filter(([, v]) => v != null);
+          return (
+            <>
+              <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mt-6 mb-2 px-1">
+                {seasonTick({ season: st.season }) || st.season} season{gp != null ? " · " + gp + " GP" : ""}
+              </div>
+              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-3">
+                <div className="grid grid-cols-4 gap-2">
+                  {tiles.map(([lbl, v, sub]) => (
+                    <div key={lbl} className="rounded-xl overflow-hidden border text-center" style={{ borderColor: c }}>
+                      <div className="text-[9px] font-extrabold text-white uppercase tracking-wider py-1" style={{ backgroundColor: c }}>{lbl}</div>
+                      <div className="bg-slate-50 dark:bg-slate-800 py-2">
+                        <div className="text-lg font-extrabold text-slate-900 dark:text-slate-100 tabular-nums leading-none">{v}</div>
+                        {sub && <div className="text-[10px] font-semibold text-slate-400 mt-1 tabular-nums">{sub}</div>}
+                      </div>
                     </div>
-                    <div className="flex justify-between mt-2">
-                      {[["FG%", fmtPct(st.fg)], ["FT%", fmtPct(st.ft)], ["3P%", fmtPct(st.p3)]].map(([lbl, v]) => (
-                        <span key={lbl} className="flex-1 text-center">
-                          <span className="block text-[8px] font-bold text-slate-400 uppercase">{lbl}</span>
-                          <span className="block text-xs font-extrabold text-slate-800 dark:text-slate-100 tabular-nums">{v ?? "—"}</span>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </>
-        )}
+                  ))}
+                </div>
+              </div>
+            </>
+          );
+        })()}
 
         {act && salaried(act).length > 0 && (
           <div className="mt-4"><ContractCard c={act} big /></div>
@@ -2044,7 +2046,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
               const as = rs.map((q) => Number(q.age)).filter((a) => a > 0);
               return as.length >= 5 ? as.reduce((a, b) => a + b, 0) / as.length : null;
             };
-            const ageRanked = (teams || []).map((t) => [t.id, teamAvg(t)]).filter(([, v]) => v != null).sort((a, b) => a[1] - b[1]);
+            const ageRanked = (teams || []).filter((t) => !isFaTeam(t)).map((t) => [t.id, teamAvg(t)]).filter(([, v]) => v != null).sort((a, b) => a[1] - b[1]);
             const ageRank = ageRanked.findIndex(([id]) => id === team.id) + 1;
             const ageCls = ageRank ? (ageRank <= 10 ? "text-green-600 dark:text-green-400" : ageRank <= 20 ? "text-yellow-600 dark:text-yellow-400" : "text-red-500 dark:text-red-400") : null;
             return (
