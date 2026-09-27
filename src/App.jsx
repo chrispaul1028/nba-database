@@ -306,11 +306,32 @@ function injuryLine(p) {
   const retTxt = ret && !isNaN(ret) ? "est. return " + ret.toLocaleDateString([], { month: "short", day: "numeric" }) : "";
   return [note, retTxt].filter(Boolean).join(" · ");
 }
+// ── Injury rules (one place) ─────────────────────────────────────────
+// Status: ESPN's live status wins whenever ESPN lists the player as hurt;
+//         otherwise Airtable's Status column. So Airtable "Active" + ESPN
+//         "Day-To-Day" shows Day-To-Day everywhere.
+// Note:   Airtable Injury Notes first (any "est. return …" inside it is
+//         split off into the return date), else ESPN's description.
+// Return: Airtable Return Date column, else a date inside the notes, else
+//         ESPN's estimate. Always shown as "Estimated Return Date: Oct 2".
+function effectiveStatus(p) {
+  const e = espnOf(p)?.injury;
+  if (e && !/active|available/i.test(String(e))) return String(e);
+  return p.status || "";
+}
+function splitNotes(raw) {
+  const t = String(raw || "");
+  const m = t.match(/\b(?:est(?:imated)?\.?\s*)?return(?:\s*date)?[:\s]*([A-Za-z]{3,9}\.?\s*\d{1,2}(?:,?\s*\d{4})?|\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)/i);
+  const ret = m ? m[1] : null;
+  const note = m ? t.replace(m[0], "").replace(/[·,;-]\s*$/, "").trim() : t;
+  return { note, ret };
+}
+const fmtRet = (v) => { if (!v) return null; const d = new Date(/\d{4}/.test(String(v)) ? v : v + " " + new Date().getFullYear()); return isNaN(d) ? String(v) : d.toLocaleDateString([], { month: "short", day: "numeric" }); };
 // "(right ankle sprain)" — Airtable notes first, else ESPN's write-up
 const tidyInjury = (t) => { const x = String(t || "").toLowerCase().replace(/[()]/g, "").trim(); return !x ? "" : /\s/.test(x) || /injur|sprain|strain|surgery|fracture|tear|soreness|illness|rest|contusion|bruise|concussion|tendin|manage/.test(x) ? x : x + " injury"; };
-const injuryDetailOf = (p) => tidyInjury(p.injuryNotes || espnOf(p)?.injuryDetail || "");
-const injuryReturnOf = (p) => { const r = espnOf(p)?.injuryReturn; const d = r ? new Date(r) : null; return d && !isNaN(d) ? d.toLocaleDateString([], { month: "short", day: "numeric" }) : null; };
-const isActiveStatus = (p) => { const st = String(p.status || "").toLowerCase(); return !st || st.includes("active") || st.includes("available"); };
+const injuryDetailOf = (p) => tidyInjury(splitNotes(p.injuryNotes).note || espnOf(p)?.injuryDetail || "");
+const injuryReturnOf = (p) => fmtRet(p.returnDate) || fmtRet(splitNotes(p.injuryNotes).ret) || fmtRet(espnOf(p)?.injuryReturn);
+const isActiveStatus = (p) => { const st = String(effectiveStatus(p)).toLowerCase(); return !st || st.includes("active") || st.includes("available"); };
 const GENERIC_POS = new Set(["", "G", "F", "G-F", "F-G", "F-C", "C-F", "G/F", "F/C", "GUARD", "FORWARD", "WING", "BIG"]);
 // Court position: Airtable's exact label (PG/SG/SF/PF/C) if it has one,
 // otherwise ESPN's, otherwise whatever Airtable said.
@@ -522,7 +543,7 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
             <div className="text-sm opacity-85 font-medium mt-0.5 leading-snug">
               {[fullTeamName(p, teams), cleanNo(p.no) ? "#" + cleanNo(p.no) : "", POS_WORD(p)].filter(Boolean).join(" · ")}
             </div>
-            <div className="mt-1.5"><StatusBadge status={p.status} /></div>
+            <div className="mt-1.5"><StatusBadge status={effectiveStatus(p)} /></div>
             {!isActiveStatus(p) && injuryDetailOf(p) && (
               <div className="text-xs font-bold text-red-500 mt-1" style={{ textShadow: "0 0 4px rgba(255,255,255,0.7)" }}>({injuryDetailOf(p)})</div>
             )}
@@ -555,6 +576,7 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
             <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mt-6 mb-2 px-1">Bio</div>
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800">
               <BioRow k="Height / Weight" v={[p.height ? String(p.height).replace(/^(\d)[-\s'](\d{1,2})"?$/, "$1'$2\"") : "", p.weight ? String(p.weight).replace(/\s*lbs?$/i, "") + " lbs" : ""].filter(Boolean).join(", ")} />
+              <BioRow k="Date of Birth" v={(() => { if (!p.dob) return null; const d = new Date(p.dob); return isNaN(d) ? String(p.dob) : d.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }); })()} />
               <BioRow k="Age" v={p.age} />
               <BioRow k="Draft" v={[p.draftYear, p.draft].filter(Boolean).join(": ")} />
               <BioRow k="Experience" v={experienceOf(p)} />
@@ -822,7 +844,7 @@ function PlayersTab({ players, onSelect, pills, forceInj }) {
                 </span>
                 {!isActiveStatus(p) && (
                   <span className="block mt-1.5">
-                    <StatusBadge status={p.status || "Injured"} />
+                    <StatusBadge status={effectiveStatus(p) || "Injured"} />
                     {injuryDetailOf(p) && <span className="block text-[11px] font-semibold text-red-500 mt-1">({injuryDetailOf(p)})</span>}
                     {injuryReturnOf(p) && <span className="block text-[11px] font-semibold text-slate-900 dark:text-white mt-0.5">Estimated Return Date: {injuryReturnOf(p)}</span>}
                   </span>
@@ -1224,7 +1246,7 @@ function posGroup(p) {
 }
 // "out" | "q" | "ok"  — from the Airtable Status field
 function healthOf(p) {
-  const s = String(p?.status || "").toLowerCase().trim();
+  const s = String(p ? effectiveStatus(p) : "").toLowerCase().trim();
   if (!s) return p?.injuryNotes ? "q" : "ok";
   if (s === "ir" || s.includes("injured reserve") || s.includes("out")) return "out";
   if (s.includes("active") || s.includes("available")) return p?.injuryNotes ? "q" : "ok";
@@ -2066,7 +2088,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
                         {cleanNo(p.no) && <span className="text-slate-400 font-semibold mr-1.5">#{cleanNo(p.no)}</span>}{p.name}
                       </span>
                       <span className="flex items-center gap-1.5 mt-0.5 min-w-0">
-                        {!isActiveStatus(p) && <StatusBadge status={/game\s*time|gtd/i.test(String(p.status)) ? "GTD" : p.status} />}
+                        {!isActiveStatus(p) && <StatusBadge status={/game\s*time|gtd/i.test(effectiveStatus(p)) ? "GTD" : effectiveStatus(p)} />}
                         <span className="flex-1" />
                         {(() => {
                           const st = latestStats(p), pv = prevStats(p);
