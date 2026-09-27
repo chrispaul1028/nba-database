@@ -540,8 +540,8 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
   return (
     <div className="min-h-screen bg-slate-100 dark:bg-slate-950 pb-24" {...swipe}>
       <div className="px-5 pb-6 text-white" style={{ backgroundColor: playerHeaderColor(p), paddingTop: "calc(env(safe-area-inset-top) + 1.25rem)" }}>
-        <button onClick={onBack} className="text-sm font-semibold opacity-80 mb-4">‹ {backLabel}</button>
-        <div className="flex items-center gap-4">
+        <button onClick={onBack} className="text-sm font-semibold opacity-80 mb-3">‹ {backLabel}</button>
+        <div className="flex items-start gap-4">
           <Avatar p={p} size="xl" />
           <div className="min-w-0">
             <div className="text-2xl font-extrabold leading-tight">
@@ -601,9 +601,9 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
           const pg = (k) => (st[k] == null ? null : fmt1(st[k]) + "/g");
           const pct = (k) => (st[k] == null ? null : Number(st[k]).toFixed(1) + "%");
           const tiles = [
-            ["PTS", tot("pts"), pg("pts")], ["REB", tot("reb"), pg("reb")], ["AST", tot("ast"), pg("ast")], ["STL", tot("stl"), pg("stl")],
-            ["BLK", tot("blk"), pg("blk")], ["TOV", tot("tov"), pg("tov")], ["MIN", tot("min"), pg("min")], ["FG%", pct("fg"), st.fgm != null && st.fga != null ? fmt1(st.fgm) + "/" + fmt1(st.fga) : null],
-            ["3PM", tot("p3m"), pg("p3m")], ["3P%", pct("p3"), null], ["FTM", tot("ftm"), pg("ftm")], ["FT%", pct("ft"), null],
+            ["PTS", tot("pts"), pg("pts"), "pts"], ["REB", tot("reb"), pg("reb"), "reb"], ["AST", tot("ast"), pg("ast"), "ast"], ["STL", tot("stl"), pg("stl"), "stl"],
+            ["BLK", tot("blk"), pg("blk"), "blk"], ["TOV", tot("tov"), pg("tov"), "tov"], ["MIN", tot("min"), pg("min"), "min"], ["FG%", pct("fg"), st.fgm != null && st.fga != null ? fmt1(st.fgm) + "/" + fmt1(st.fga) : null, "fg"],
+            ["3PM", tot("p3m"), pg("p3m"), "p3m"], ["3P%", pct("p3"), null, "p3"], ["FTM", tot("ftm"), pg("ftm"), "ftm"], ["FT%", pct("ft"), null, "ft"],
           ].filter(([, v]) => v != null);
           return (
             <>
@@ -612,14 +612,15 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
               </div>
               <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-3">
                 <div className="grid grid-cols-4 gap-2">
-                  {tiles.map(([lbl, v, sub]) => (
-                    <div key={lbl} className="rounded-xl overflow-hidden border text-center" style={{ borderColor: c }}>
+                  {tiles.map(([lbl, v, sub, key]) => (
+                    <button key={lbl} onClick={onJumpToStats ? () => onJumpToStats(p, key) : undefined}
+                      className="rounded-xl overflow-hidden border text-center active:opacity-80" style={{ borderColor: c }}>
                       <div className="text-[9px] font-extrabold text-white uppercase tracking-wider py-1" style={{ backgroundColor: c }}>{lbl}</div>
                       <div className="bg-slate-50 dark:bg-slate-800 py-2">
                         <div className="text-lg font-extrabold text-slate-900 dark:text-slate-100 tabular-nums leading-none">{v}</div>
                         {sub && <div className="text-[10px] font-semibold text-slate-400 mt-1 tabular-nums">{sub}</div>}
                       </div>
-                    </div>
+                    </button>
                   ))}
                 </div>
               </div>
