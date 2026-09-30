@@ -542,7 +542,9 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
       <div className="px-5 pb-6 text-white relative overflow-hidden" style={{ backgroundColor: playerHeaderColor(p), paddingTop: "calc(env(safe-area-inset-top) + 1.25rem)" }}>
         {TEAM_LOGOS[teamOfPlayer(p)] && (
           <img src={TEAM_LOGOS[teamOfPlayer(p)]} alt="" className="absolute pointer-events-none select-none"
-            style={{ right: "-8%", top: "8%", width: "52%", opacity: 0.12, filter: "grayscale(1) brightness(3)", ...logoTrim(teamOfPlayer(p)) }} />
+            style={{ right: "-14%", top: "-4%", width: "58%", opacity: 0.10,
+              WebkitMaskImage: "radial-gradient(circle at 50% 50%, #000 30%, transparent 70%)", maskImage: "radial-gradient(circle at 50% 50%, #000 30%, transparent 70%)",
+              ...logoTrim(teamOfPlayer(p)) }} />
         )}
         <button onClick={onBack} className="text-sm font-semibold opacity-80 mb-3 relative">‹ {backLabel}</button>
         <div className="flex items-start gap-4 relative">
@@ -1971,7 +1973,7 @@ function BioPanel({ roster, abbr, teams, players, color, onSelectPlayer }) {
 
 // Horizontal swipe detector. Fires only on a clear sideways flick so
 // vertical scrolling never triggers it.
-function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam, backLabel }) {
+function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam, backLabel, onJumpToTeamStats }) {
   // swipe right = back; swipe left = next team alphabetically
   const ordered = useMemo(() => (teams || []).filter((t) => !isFaTeam(t)).slice().sort((a, b) => String(a.name).localeCompare(String(b.name))), [teams]);
   const idx = ordered.findIndex((t) => t.id === team.id);
@@ -2065,8 +2067,8 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
           })() : (
             <>
               <Tile value={(team.wins ?? 0) + "-" + (team.losses ?? 0)} label="Record" />
-              <Tile value={team.ppg != null ? team.ppg.toFixed(1) : "—"} label="PPG" sub={rankOf(teams, team, "ppg", "desc")} />
-              <Tile value={team.oppPpg != null ? team.oppPpg.toFixed(1) : "—"} label="Opp PPG" sub={rankOf(teams, team, "oppPpg", "asc")} />
+              <Tile value={team.ppg != null ? team.ppg.toFixed(1) : "—"} label="PPG" sub={rankOf(teams, team, "ppg", "desc")} onClick={onJumpToTeamStats ? () => onJumpToTeamStats(team, "ppg") : undefined} />
+              <Tile value={team.oppPpg != null ? team.oppPpg.toFixed(1) : "—"} label="Opp PPG" sub={rankOf(teams, team, "oppPpg", "asc")} onClick={onJumpToTeamStats ? () => onJumpToTeamStats(team, "oppPpg") : undefined} />
             </>
           )}
         </div>
@@ -2159,7 +2161,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
           <>
             <div className="flex items-baseline justify-between mt-6 mb-2 px-1">
               <span className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase">{faOnly ? "Free Agent Eligible · " + (startYear(CURRENT_SEASON) + 1) : "Team Contracts"}</span>
-              <span className="text-[11px] font-bold text-slate-400">{(faOnly ? faEligible(roster) : roster).length} players</span>
+              <span className="text-[11px] font-extrabold tracking-widest uppercase text-slate-900 dark:text-white">{faOnly ? "Deadline" : (roster.length + " players")}</span>
             </div>
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
               {faOnly && faEligible(roster).length === 0 && <div className="text-center text-sm text-slate-400 py-10 px-6">Nobody expiring or holding an option next summer.</div>}
@@ -2177,15 +2179,12 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
                           {act ? <ContractLine c={act} /> : "No contract"}
                         </span>
                         {nextEvent(p) && (
-                          <span className="block mt-1"><EventPill ev={nextEvent(p)} withDate /></span>
+                          <span className="block mt-1"><EventPill ev={nextEvent(p)} withDate={!faOnly} /></span>
                         )}
                       </span>
                       <span className="text-right shrink-0">
                         {faOnly ? (() => { const ev = nextEvent(p); const dl = ev ? eventDeadline(ev) : null; return dl ? (
-                          <>
-                            <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">deadline</span>
-                            <span className="block text-xs font-extrabold text-slate-700 dark:text-slate-200 tabular-nums">{dl.label}</span>
-                          </>
+                          <span className="block text-xs font-extrabold text-slate-700 dark:text-slate-200 tabular-nums">{dl.label}</span>
                         ) : <span className="text-xs font-extrabold text-slate-400">—</span>; })()
                         : <span className="text-xs font-extrabold text-slate-700 dark:text-slate-200">{currentSalary(p) > 0 ? fmtM(currentSalary(p)) : "—"}</span>}
                       </span>
@@ -2251,6 +2250,7 @@ const STAT_GROUPS = [
   { key: "defense", label: "Defense", cats: [["stl", "STL"], ["blk", "BLK"]] },
   { key: "shooting", label: "Shooting", cats: [["fg", "FG%"], ["p3", "3P%"], ["ft", "FT%"]], pct: true },
   { key: "minutes", label: "Minutes", cats: [["min", "MIN"]] },
+  { key: "teams", label: "Teams", cats: [["ppg", "PPG"], ["oppPpg", "OPP PPG"], ["net", "NET"], ["winPct", "WIN %"]], team: true },
 ];
 function StatsTab({ players, teams, onSelect, focus, onBackToPlayer }) {
   const swipe = useSwipe(null, focus && onBackToPlayer ? onBackToPlayer : null);
@@ -2262,9 +2262,9 @@ function StatsTab({ players, teams, onSelect, focus, onBackToPlayer }) {
   // A jump from a player card lands on that stat and highlights the row
   useEffect(() => {
     if (!focus) return;
-    const g = STAT_GROUPS.find((g) => g.cats.some(([k]) => k === focus.cat));
+    const g = STAT_GROUPS.find((g) => (focus.teamId ? g.team : !g.team) && g.cats.some(([k]) => k === focus.cat));
     if (g) { setGroup(g.key); setCat(focus.cat); }
-    setTimeout(() => { const el = document.getElementById("stat-row-" + focus.id); if (el) el.scrollIntoView({ block: "center", behavior: "smooth" }); }, 120);
+    setTimeout(() => { const el = document.getElementById("stat-row-" + (focus.teamId || focus.id)); if (el) el.scrollIntoView({ block: "center", behavior: "smooth" }); }, 120);
   }, [focus?.n]);
   const grp = STAT_GROUPS.find((g) => g.key === group) || STAT_GROUPS[0];
   const pickGroup = (k) => { setGroup(k); setCat(STAT_GROUPS.find((g) => g.key === k).cats[0][0]); };
@@ -2300,6 +2300,35 @@ function StatsTab({ players, teams, onSelect, focus, onBackToPlayer }) {
           </div>
         )}
       </div>
+      {grp.team ? (() => {
+        const val = (t) => cat === "ppg" ? t.ppg : cat === "oppPpg" ? t.oppPpg : cat === "net" ? (t.ppg != null && t.oppPpg != null ? t.ppg - t.oppPpg : null) : winPct(t);
+        const trows = (teams || []).filter((t) => !isFaTeam(t)).map((t) => ({ t, v: val(t) })).filter((r) => r.v != null).sort((a, b) => cat === "oppPpg" ? a.v - b.v : b.v - a.v);
+        return (
+          <div className="px-4 pb-28 mt-4">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+              <div className="flex justify-between px-4 py-2 text-[10px] font-extrabold tracking-widest uppercase text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800">
+                <span>Team</span><span>{catLabel}</span>
+              </div>
+              <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                {trows.map(({ t, v }, i) => {
+                  const ab = t.abbr || toAbbr(t.name); const hot = focus && focus.teamId === t.id;
+                  return (
+                    <div key={t.id} id={"stat-row-" + t.id} className={"flex items-center gap-3 pr-4 py-3 " + (hot ? "bg-slate-100 dark:bg-slate-800 ring-2 ring-inset ring-slate-400" : "")} style={{ borderLeft: "4px solid " + teamColor(ab), paddingLeft: 12 }}>
+                      <span className="w-6 text-center text-sm font-extrabold shrink-0 tabular-nums text-slate-400">{i + 1}</span>
+                      {t.logo && <img src={t.logo} alt="" className="w-9 h-9 object-contain shrink-0" style={logoTrim(ab)} />}
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{t.name}</span>
+                        <span className="block text-[11px] text-slate-400 font-semibold">{t.wins ?? 0}-{t.losses ?? 0}</span>
+                      </span>
+                      <span className="text-lg font-extrabold text-slate-900 dark:text-slate-100 tabular-nums">{cat === "winPct" ? (v * 100).toFixed(1) + "%" : cat === "net" ? (v >= 0 ? "+" : "") + v.toFixed(1) : v.toFixed(1)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        );
+      })() : (
       <div className="px-4 pb-28 mt-4">
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
           <div className="flex justify-between px-4 py-2 text-[10px] font-extrabold tracking-widest uppercase text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800">
@@ -2333,6 +2362,7 @@ function StatsTab({ players, teams, onSelect, focus, onBackToPlayer }) {
           {rows.length === 0 && <div className="text-center text-sm text-slate-400 py-12 px-6">No {catLabel} entries for {season || "any season"} yet.</div>}
         </div>
       </div>
+      )}
     </div>
   );
 }
@@ -2695,11 +2725,12 @@ export default function App() {
           onBack={() => setSelTeam(null)}
           onSelectPlayer={setSel}
           onSelectTeam={setSelTeam}
+          onJumpToTeamStats={(t, cat) => { setStatsFocus({ teamId: t.id, cat, n: Date.now(), from: { tab, team: t } }); setSel(null); setSelTeam(null); setTab("stats"); }}
           backLabel={tab === "tonight" ? "Matchups" : "Teams"}
         />
       )}
       {players && tab === "players" && <PlayersHub players={players} teams={teams} onSelect={setSel} injury={injury} />}
-      {players && tab === "stats" && <StatsTab players={players} teams={teams} onSelect={setSel} focus={statsFocus} onBackToPlayer={() => { const pl = (players || []).find((x) => x.id === statsFocus?.id); if (pl) { setStatsFocus(null); if (statsFocus?.from) { setTab(statsFocus.from.tab); setSelTeam(statsFocus.from.team || null); } setSel(pl); } }} />}
+      {players && tab === "stats" && <StatsTab players={players} teams={teams} onSelect={setSel} focus={statsFocus} onBackToPlayer={() => { const f = statsFocus; if (!f) return; setStatsFocus(null); if (f.teamId) { const t = (teams || []).find((x) => x.id === f.teamId); setTab(f.from?.tab || "teams"); setSelTeam(t || null); return; } const pl = (players || []).find((x) => x.id === f.id); if (pl) { if (f.from) { setTab(f.from.tab); setSelTeam(f.from.team || null); } setSel(pl); } }} />}
 
       <div className="fixed bottom-0 inset-x-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex pb-[env(safe-area-inset-bottom)] z-20">
         {TABS.map((t) => (
