@@ -21,7 +21,7 @@ const BAR_COLORS = {
 };
 // Accent for the Total tile + featured contract border.
 const ACCENT_TEXT = "text-emerald-600";
-const ACCENT_BORDER = "border-emerald-200";
+const ACCENT_BORDER = "border-2 border-emerald-500";
 
 const TEAM_COLORS = {
   NY: "#1D428A", DAL: "#00538C", ATL: "#C8102E", OKC: "#007AC1",
@@ -203,7 +203,7 @@ function playerHeaderColor(p) {
 }
 
 const TYPE_LABEL = { G: "Guaranteed", PO: "Player Option", TO: "Team Option", NG: "Non-Guaranteed", PG: "Partially Gtd", UFA: "Free Agent", RFA: "Restricted FA" };
-const BADGE = { PO: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300", TO: "bg-red-100 text-red-600 dark:bg-red-900/50 dark:text-red-300", NG: "bg-slate-100 text-slate-500 dark:text-slate-400", PG: "bg-amber-50 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300", UFA: "bg-slate-100 text-blue-700", RFA: "bg-rose-100 text-rose-600 dark:bg-rose-900/50 dark:text-rose-300" };
+const BADGE = { ESTIMATE: "bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300", EST: "bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300", PO: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300", TO: "bg-red-100 text-red-600 dark:bg-red-900/50 dark:text-red-300", NG: "bg-slate-100 text-slate-500 dark:text-slate-400", PG: "bg-amber-50 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300", UFA: "bg-slate-100 text-blue-700", RFA: "bg-rose-100 text-rose-600 dark:bg-rose-900/50 dark:text-rose-300" };
 
 const fmtM = (v) => "$" + v.toFixed(1) + "M";
 const cleanNo = (no) => String(no || "").replace(/^#+/, "");
@@ -374,7 +374,7 @@ function useSwipe(onLeft, onRight) {
 
 // ═══════════════ SHARED PIECES ═══════════════════════════════════
 function Avatar({ p, size }) {
-  const px = size === "xl" ? "w-28 h-28 text-3xl ring-4 ring-white/80" : size === "lg" ? "w-20 h-20 text-2xl" : size === "md" ? "w-14 h-14 text-base" : "w-11 h-11 text-sm";
+  const px = size === "xl" ? "w-28 h-28 text-3xl ring-4 ring-white/80" : size === "lg" ? "w-20 h-20 text-2xl" : "w-14 h-14 text-base"; // every list view uses the same 56px photo
   const url = photoOf(p);
   if (url) {
     return <img src={url} alt={p.name} loading="lazy" className={px + " rounded-full object-cover object-top bg-slate-200 shrink-0"} onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />;
@@ -410,11 +410,11 @@ function ordinal(n) {
   return n + suffix;
 }
 
-function Tile({ value, label, sub, accent, valueClass, onClick, active, activeColor }) {
+function Tile({ value, label, sub, accent, valueClass, onClick, active, activeColor, borderColor }) {
   const Tag = onClick ? "button" : "div";
   return (
-    <Tag onClick={onClick} className={"relative bg-white dark:bg-slate-900 rounded-2xl border px-2 py-4 text-center shadow-sm flex flex-col items-center justify-center w-full " + (active ? "border-2" : "border-slate-200 dark:border-slate-800")}
-      style={active ? { borderColor: activeColor || "#2563eb" } : undefined}>
+    <Tag onClick={onClick} className={"relative bg-white dark:bg-slate-900 rounded-2xl border px-2 py-4 text-center shadow-sm flex flex-col items-center justify-center w-full " + (active || borderColor ? "border-2" : "border-slate-200 dark:border-slate-800")}
+      style={active ? { borderColor: activeColor || "#2563eb" } : borderColor ? { borderColor } : undefined}>
       {onClick && (
         <svg viewBox="0 0 12 12" className={"absolute top-2 right-2 w-3 h-3 transition-transform " + (active ? "rotate-180" : "")} style={{ color: active ? (activeColor || "#2563eb") : "#cbd5e1" }} aria-hidden="true">
           <path d="M2.5 4.5 L6 8 L9.5 4.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
@@ -486,7 +486,7 @@ function ContractCard({ c, big }) {
             return !(isFA && hasOption); // option chip covers it - FA chip is redundant
           })
           .map((y, i) => (
-          <span key={i} className={"text-[11px] font-semibold px-2 py-1 rounded-full " + (BADGE[y.type] || "bg-slate-100 text-slate-500 dark:text-slate-400")}>
+          <span key={i} className={"text-[11px] font-semibold px-2 py-1 rounded-full " + (BADGE[String(y.type || "").toUpperCase()] || "bg-slate-100 text-slate-500 dark:text-slate-400")}>
             {y.season || y.s} · {TYPE_LABEL[y.type] || y.type}
             {y.decision ? " · " + y.decision : ""}
             {y.gtd != null ? " (" + fmtM(y.gtd) + " gtd)" : ""}
@@ -539,9 +539,13 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
   const no = cleanNo(p.no);
   return (
     <div className="min-h-screen bg-slate-100 dark:bg-slate-950 pb-24" {...swipe}>
-      <div className="px-5 pb-6 text-white" style={{ backgroundColor: playerHeaderColor(p), paddingTop: "calc(env(safe-area-inset-top) + 1.25rem)" }}>
-        <button onClick={onBack} className="text-sm font-semibold opacity-80 mb-3">‹ {backLabel}</button>
-        <div className="flex items-start gap-4">
+      <div className="px-5 pb-6 text-white relative overflow-hidden" style={{ backgroundColor: playerHeaderColor(p), paddingTop: "calc(env(safe-area-inset-top) + 1.25rem)" }}>
+        {TEAM_LOGOS[teamOfPlayer(p)] && (
+          <img src={TEAM_LOGOS[teamOfPlayer(p)]} alt="" className="absolute pointer-events-none select-none"
+            style={{ right: "-8%", top: "8%", width: "52%", opacity: 0.12, filter: "grayscale(1) brightness(3)", ...logoTrim(teamOfPlayer(p)) }} />
+        )}
+        <button onClick={onBack} className="text-sm font-semibold opacity-80 mb-3 relative">‹ {backLabel}</button>
+        <div className="flex items-start gap-4 relative">
           <Avatar p={p} size="xl" />
           <div className="min-w-0">
             <div className="text-2xl font-extrabold leading-tight">
@@ -573,7 +577,8 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
             return (
               <Tile key={k} value={v != null ? fmt1(v) : "—"} label={lbl}
                 sub={r ? { label: r.label, cls } : (st ? "per game" : null)}
-                onClick={onJumpToStats && v != null ? () => onJumpToStats(p, k) : undefined} />
+                onClick={onJumpToStats && v != null ? () => onJumpToStats(p, k) : undefined}
+                borderColor={playerHeaderColor(p)} />
             );
           })}
         </div>
@@ -1777,10 +1782,10 @@ function bucketOf(y) {
   return "committed";
 }
 const BUCKETS = [
-  ["committed", "Guaranteed", "#0f172a"],
+  ["committed", "Guaranteed", "#2563eb"],
   ["nonGtd", "Non-guaranteed", "#94a3b8"],
-  ["playerOpt", "Player option", "#f59e0b"],
-  ["teamOpt", "Team option", "#38bdf8"],
+  ["playerOpt", "Player option", "#16a34a"],
+  ["teamOpt", "Team option", "#dc2626"],
 ];
 
 function CapOutlook({ roster, color, onSelectPlayer }) {
@@ -1926,7 +1931,7 @@ function BioPanel({ roster, abbr, teams, players, color, onSelectPlayer }) {
       <div className="grid grid-cols-3 gap-2">
         <Tile value={avgExp != null ? avgExp.toFixed(1) : "—"} label="Avg Exp" sub={expRank ? { label: ordinal(expRank.rank), cls: expRank.rank <= 10 ? "text-green-600 dark:text-green-400" : expRank.rank <= 20 ? "text-yellow-600 dark:text-yellow-400" : "text-red-500 dark:text-red-400" } : "seasons"} />
         <Tile value={rookies} label="Rookies" sub="first season" />
-        <Tile value={roster.length ? Math.round((drafted / roster.length) * 100) + "%" : "—"} label="Homegrown" sub={drafted + " drafted by " + abbr} />
+        <Tile value={roster.length ? Math.round((drafted / roster.length) * 100) + "%" : "—"} label="Drafted" sub={drafted + " drafted by " + abbr} />
       </div>
       <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mt-5 mb-1.5 px-1">Age profile</div>
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm px-4 py-3">
@@ -2175,8 +2180,14 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
                           <span className="block mt-1"><EventPill ev={nextEvent(p)} withDate /></span>
                         )}
                       </span>
-                      <span className="text-xs font-extrabold text-slate-700 dark:text-slate-200 shrink-0">
-                        {currentSalary(p) > 0 ? fmtM(currentSalary(p)) : "—"}
+                      <span className="text-right shrink-0">
+                        {faOnly ? (() => { const ev = nextEvent(p); const dl = ev ? eventDeadline(ev) : null; return dl ? (
+                          <>
+                            <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">deadline</span>
+                            <span className="block text-xs font-extrabold text-slate-700 dark:text-slate-200 tabular-nums">{dl.label}</span>
+                          </>
+                        ) : <span className="text-xs font-extrabold text-slate-400">—</span>; })()
+                        : <span className="text-xs font-extrabold text-slate-700 dark:text-slate-200">{currentSalary(p) > 0 ? fmtM(currentSalary(p)) : "—"}</span>}
                       </span>
                     </button>
                   );
@@ -2241,7 +2252,8 @@ const STAT_GROUPS = [
   { key: "shooting", label: "Shooting", cats: [["fg", "FG%"], ["p3", "3P%"], ["ft", "FT%"]], pct: true },
   { key: "minutes", label: "Minutes", cats: [["min", "MIN"]] },
 ];
-function StatsTab({ players, teams, onSelect, focus }) {
+function StatsTab({ players, teams, onSelect, focus, onBackToPlayer }) {
+  const swipe = useSwipe(null, focus && onBackToPlayer ? onBackToPlayer : null);
   const seasons = Array.from(new Set(players.flatMap((p) => (p.stats || []).map((s) => s.season)).filter(Boolean))).sort((a, b) => String(b).localeCompare(String(a)));
   const [selSeason, setSelSeason] = useState(null);
   const season = selSeason && seasons.includes(selSeason) ? selSeason : (seasons.includes(CURRENT_SEASON) ? CURRENT_SEASON : seasons[0]);
@@ -2262,7 +2274,7 @@ function StatsTab({ players, teams, onSelect, focus }) {
   const catLabel = grp.cats.find(([k]) => k === cat)?.[1] || "";
   const abbrOf = (p) => teamOfPlayer(p) || toAbbr(p.teamName) || "";
   return (
-    <div>
+    <div {...swipe}>
       <div className="bg-blue-600 pb-4 px-4" style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.75rem)" }}>
         <div className="flex items-baseline gap-2 mb-3">
           <h1 className="text-3xl font-extrabold text-white">Leaders</h1>
@@ -2656,7 +2668,7 @@ export default function App() {
         onBack={() => setSel(null)}
         backLabel={selTeam ? selTeam.name : tab === "teams" ? "Teams" : tab === "tonight" ? "Matchups" : "Players"}
         mode="full"
-        onJumpToStats={(pl, cat) => { setStatsFocus({ id: pl.id, cat, n: Date.now() }); setSel(null); setSelTeam(null); setTab("stats"); }}
+        onJumpToStats={(pl, cat) => { setStatsFocus({ id: pl.id, cat, n: Date.now(), from: { tab, team: selTeam } }); setSel(null); setSelTeam(null); setTab("stats"); }}
       />
     );
   }
@@ -2687,7 +2699,7 @@ export default function App() {
         />
       )}
       {players && tab === "players" && <PlayersHub players={players} teams={teams} onSelect={setSel} injury={injury} />}
-      {players && tab === "stats" && <StatsTab players={players} teams={teams} onSelect={setSel} focus={statsFocus} />}
+      {players && tab === "stats" && <StatsTab players={players} teams={teams} onSelect={setSel} focus={statsFocus} onBackToPlayer={() => { const pl = (players || []).find((x) => x.id === statsFocus?.id); if (pl) { setStatsFocus(null); if (statsFocus?.from) { setTab(statsFocus.from.tab); setSelTeam(statsFocus.from.team || null); } setSel(pl); } }} />}
 
       <div className="fixed bottom-0 inset-x-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex pb-[env(safe-area-inset-bottom)] z-20">
         {TABS.map((t) => (
