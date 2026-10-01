@@ -85,7 +85,7 @@ const FIELDS = {
   sFTA: ["FTA"],
   ySalary: ["Salary", "Amount", "Cap Hit"],
   yType: ["Type", "Year Type", "Guarantee"],
-  yDecision: ["Decision", "Option Decision"],
+  yDecision: ["Result", "Decision", "Option Decision", "Option Result"],
   yDeadline: ["Deadline", "Decision Deadline", "Option Deadline", "Due Date"],
   yGuaranteed: ["Guaranteed $", "Guaranteed", "Guaranteed Amount", "Gtd"],
 };
@@ -403,7 +403,7 @@ export default async function handler(req, res) {
       .sort((a, b) => a.name.localeCompare(b.name));
 
     res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
-    return res.status(200).json({ apiVersion: "v31.0", players: out, teams: teamsOut });
+    return res.status(200).json({ apiVersion: "v32.0", players: out, teams: teamsOut });
   } catch (e) {
     return res.status(500).json({ error: String(e.message || e) });
   }
