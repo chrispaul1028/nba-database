@@ -1790,6 +1790,15 @@ const BUCKETS = [
   ["teamOpt", "Team option", "#dc2626"],
 ];
 
+// Payroll bars in the team's own colors: guaranteed = primary, player option =
+// primary lightened, team option = primary blended toward the secondary,
+// non-guaranteed stays neutral gray.
+function bucketColor(b, color, fallback) {
+  if (b === "committed") return color;
+  if (b === "playerOpt") return mixHex(color, "#ffffff", 0.45);
+  if (b === "teamOpt") return mixHex(color, "#000000", 0.35);
+  return fallback;
+}
 function CapOutlook({ roster, color, onSelectPlayer }) {
   const y0 = startYear(CURRENT_SEASON);
   const years = [y0, y0 + 1, y0 + 2, y0 + 3];
@@ -1845,7 +1854,7 @@ function CapOutlook({ roster, color, onSelectPlayer }) {
                 {BUCKETS.map(([b, , c]) => {
                   const v = d.byBucket[b] || 0; if (!v) return null;
                   const y1 = yOf(acc + v), h = yOf(acc) - yOf(acc + v); acc += v;
-                  return <rect key={b} x={x} y={y1} width={bw} height={h} fill={b === "committed" ? color : c} rx={1.5}
+                  return <rect key={b} x={x} y={y1} width={bw} height={h} fill={bucketColor(b, color, c)} rx={1.5}
                     opacity={on ? 1 : 0.55} style={{ transformOrigin: `${x}px ${H - padB}px`, animation: `capRise .5s ease-out ${i * 80}ms both` }} />;
                 })}
                 <text x={x + bw / 2} y={yOf(d.total) - 4} textAnchor="middle" fontSize="9" fontWeight="800" fill="currentColor" className="text-slate-800 dark:text-slate-100">{d.total ? "$" + Math.round(d.total) + "M" : ""}</text>
@@ -1858,7 +1867,7 @@ function CapOutlook({ roster, color, onSelectPlayer }) {
         <div className="flex flex-wrap gap-x-3 gap-y-1 px-1 mt-1">
           {BUCKETS.map(([b, lbl, c]) => (
             <span key={b} className="flex items-center gap-1 text-[9px] font-semibold text-slate-500 dark:text-slate-400">
-              <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: b === "committed" ? color : c }} />{lbl}
+              <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: bucketColor(b, color, c) }} />{lbl}
             </span>
           ))}
         </div>
@@ -2060,7 +2069,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
             return (
               <>
                 <Tile value={payroll ? fmtM(payroll) : "—"} label="Payroll" sub={roster.length + " players"} onClick={() => toggleC("cap")} active={cView === "cap"} activeColor={teamColor(abbr)} />
-                <Tile value={fa} label="Free Agents" sub={"summer " + (startYear(CURRENT_SEASON) + 1)} onClick={() => toggleC("fa")} active={faOnly} activeColor={teamColor(abbr)} />
+                <Tile value={fa} label="Free Agents" sub={"(Summer " + (startYear(CURRENT_SEASON) + 1) + ")"} onClick={() => toggleC("fa")} active={faOnly} activeColor={teamColor(abbr)} />
                 <Tile value={avgAge != null ? avgAge.toFixed(1) : "—"} label="Avg Age" sub={ageRank ? { label: ordinal(ageRank) + (ageRank <= 3 ? " youngest" : ageRank >= ageRanked.length - 2 ? " oldest" : ""), cls: ageCls } : null} onClick={() => toggleC("bio")} active={cView === "bio"} activeColor={teamColor(abbr)} />
               </>
             );
@@ -2159,19 +2168,23 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
         {seg === "contracts" && cView === "bio" && <BioPanel roster={roster} abbr={abbr} teams={teams} players={players} color={teamColor(abbr)} onSelectPlayer={onSelectPlayer} />}
         {seg === "contracts" && (cView === "list" || cView === "fa") && (
           <>
-            <div className="flex items-baseline justify-between mt-6 mb-2 px-1">
-              <span className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase">{faOnly ? "Free Agent Eligible · " + (startYear(CURRENT_SEASON) + 1) : "Team Contracts"}</span>
-              <span className="text-[11px] font-extrabold tracking-widest uppercase text-slate-900 dark:text-white">{faOnly ? "Deadline" : (roster.length + " players")}</span>
+            <div className="flex items-baseline justify-between mt-6 mb-2 pl-1 pr-4">
+              <span className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase">{faOnly ? "Free Agents · " + (startYear(CURRENT_SEASON) + 1) : "Team Contracts"}</span>
+              {faOnly
+                ? <span className="w-24 text-center text-[10px] font-bold tracking-widest uppercase text-slate-400">Deadline</span>
+                : <span className="text-[11px] font-bold text-slate-400">{roster.length} players</span>}
             </div>
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
-              {faOnly && faEligible(roster).length === 0 && <div className="text-center text-sm text-slate-400 py-10 px-6">Nobody expiring or holding an option next summer.</div>}
-              {(faOnly ? faEligible(roster) : roster)
-                .slice()
-                .sort((a, b) => currentSalary(b) - currentSalary(a) || a.name.localeCompare(b.name))
+              {(() => { const fe = new Set(faEligible(roster).map((x) => x.id)); const dlT = (p) => { const ev = nextEvent(p); const d = ev ? eventDeadline(ev) : null; return d && d.date ? d.date.getTime() : Infinity; };
+                return roster.slice().sort((a, b) => faOnly
+                  ? (fe.has(b.id) - fe.has(a.id)) || (dlT(a) - dlT(b)) || currentSalary(b) - currentSalary(a)
+                  : currentSalary(b) - currentSalary(a) || a.name.localeCompare(b.name)); })()
                 .map((p) => {
                   const act = activeOf(p);
+                  const hot = faOnly && faEligible(roster).some((x) => x.id === p.id);   // free agent this coming summer
                   return (
-                    <button key={p.id} onClick={() => onSelectPlayer(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
+                    <button key={p.id} onClick={() => onSelectPlayer(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800"
+                      style={hot ? { borderLeft: "4px solid " + teamColor(abbr), paddingLeft: 12, backgroundColor: teamColor(abbr) + "14" } : undefined}>
                       <Avatar p={p} />
                       <span className="flex-1 min-w-0">
                         <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
@@ -2182,9 +2195,9 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
                           <span className="block mt-1"><EventPill ev={nextEvent(p)} withDate={!faOnly} /></span>
                         )}
                       </span>
-                      <span className="text-right shrink-0">
+                      <span className={faOnly ? "w-24 text-center shrink-0" : "text-right shrink-0"}>
                         {faOnly ? (() => { const ev = nextEvent(p); const dl = ev ? eventDeadline(ev) : null; return dl ? (
-                          <span className="block text-xs font-extrabold text-slate-700 dark:text-slate-200 tabular-nums">{dl.label}</span>
+                          <span className={"block text-xs font-extrabold tabular-nums " + (hot ? "text-slate-900 dark:text-white" : "text-slate-400")}>{dl.label}</span>
                         ) : <span className="text-xs font-extrabold text-slate-400">—</span>; })()
                         : <span className="text-xs font-extrabold text-slate-700 dark:text-slate-200">{currentSalary(p) > 0 ? fmtM(currentSalary(p)) : "—"}</span>}
                       </span>
