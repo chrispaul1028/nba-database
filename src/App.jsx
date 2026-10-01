@@ -940,8 +940,13 @@ function nextEvent(p) {
       if (startYear(y.season) != null && startYear(y.season) < startYear(CURRENT_SEASON)) continue;
       const t = String(y.type || "").toUpperCase();
       let kind = null;
-      if ((t === "PO" || t === "TO") && !y.decision) kind = t;
-      else if (t === "UFA" || t === "RFA") kind = t;
+      if (t === "PO" || t === "TO") {
+        // Settled options are history, not the next event: a Result/Decision is
+        // filled in, the option year is already this season, or its deadline passed.
+        const settled = !!y.decision || startYear(y.season) <= startYear(CURRENT_SEASON)
+          || (() => { const d = eventDeadline({ kind: t, season: y.season, deadline: y.deadline || null }); return d && d.date && d.date < new Date(); })();
+        if (!settled) kind = t;
+      } else if (t === "UFA" || t === "RFA") kind = t;
       if (!kind) continue;
       if (!best || String(y.season) < String(best.season)) best = { kind, season: y.season, deadline: y.deadline || null };
     }
@@ -979,7 +984,7 @@ function eventDeadline(ev) {
   const d = ev.kind === "PO" || ev.kind === "TO" ? new Date(yr, 5, 29) : new Date(yr, 5, 30);
   return { label: mdy(d), date: d, standard: true };
 }
-function EventPill({ ev, withDate }) {
+function EventPill({ ev, withDate, noYear }) {
   if (!ev) return null;
   const cls = EVENT_COLORS[ev.kind] || EVENT_COLORS.UFA;
   const dl = withDate && (ev.kind === "PO" || ev.kind === "TO") ? eventDeadline(ev) : null; // deadlines are for options only
@@ -987,7 +992,7 @@ function EventPill({ ev, withDate }) {
     <span className="inline-flex items-center gap-1.5 min-w-0">
       <span className={"inline-flex shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wide " + cls}>
         {ev.kind === "UFA"
-          ? <>Free Agent {startYear(ev.season) ?? seasonTick({ season: ev.season })}</>
+          ? <>Free Agent{noYear ? "" : " " + (startYear(ev.season) ?? seasonTick({ season: ev.season }))}</>
           : <>{EVENT_WORDS[ev.kind] || ev.kind} {seasonTick({ season: ev.season })}</>}
       </span>
       {dl && <span className="text-[9px] font-semibold text-slate-400 truncate">(deadline {dl.label})</span>}
@@ -1941,7 +1946,7 @@ function BioPanel({ roster, abbr, teams, players, color, onSelectPlayer }) {
     <div className="mt-4">
       <div className="grid grid-cols-3 gap-2">
         <Tile value={avgExp != null ? avgExp.toFixed(1) : "—"} label="Avg Exp" sub={expRank ? { label: ordinal(expRank.rank), cls: expRank.rank <= 10 ? "text-green-600 dark:text-green-400" : expRank.rank <= 20 ? "text-yellow-600 dark:text-yellow-400" : "text-red-500 dark:text-red-400" } : "seasons"} />
-        <Tile value={rookies} label="Rookies" sub="first season" />
+        <Tile value={rookies} label="Rookies" />
         <Tile value={roster.length ? Math.round((drafted / roster.length) * 100) + "%" : "—"} label="Drafted" sub={drafted + " drafted by " + abbr} />
       </div>
       <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mt-5 mb-1.5 px-1">Age profile</div>
@@ -2192,7 +2197,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
                           {act ? <ContractLine c={act} /> : "No contract"}
                         </span>
                         {nextEvent(p) && (
-                          <span className="block mt-1"><EventPill ev={nextEvent(p)} withDate={!faOnly} /></span>
+                          <span className="block mt-1"><EventPill ev={nextEvent(p)} withDate={!faOnly} noYear={faOnly} /></span>
                         )}
                       </span>
                       <span className={faOnly ? "w-24 text-center shrink-0" : "text-right shrink-0"}>
