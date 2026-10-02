@@ -707,7 +707,7 @@ function PlayersHub({ players, teams, onSelect, injury }) {
   const [view, setView] = useState("players");
   const pills = (
     <div className="flex gap-2 mt-3 overflow-x-auto pt-1.5" style={{ scrollbarWidth: "none" }}>
-      {[["players", "Players"], ["injury", "🏥 Injury Report"], ["contracts", "Contracts"], ["draft", "Draft"]].map(([k, lbl]) => (
+      {[["players", "Active"], ["injury", "🏥 Injury Report"], ["contracts", "Contracts"], ["draft", "Draft"], ["retired", "Retired"]].map(([k, lbl]) => (
         <button key={k} onClick={() => setView(k)}
           className={"relative shrink-0 px-3.5 py-1.5 rounded-full text-[11px] font-extrabold " + (view === k ? "bg-white text-blue-700" : "bg-blue-500/60 text-blue-100 active:bg-blue-500")}>
           {lbl}
@@ -719,7 +719,123 @@ function PlayersHub({ players, teams, onSelect, injury }) {
   if (view === "contracts") return <ContractsTab players={players} onSelect={onSelect} pills={pills} />;
   if (view === "draft") return <DraftTab players={players} onSelect={onSelect} pills={pills} />;
   if (view === "injury") return <InjuryFeed players={players} teams={teams} onSelect={onSelect} pills={pills} feed={injury.feed} markSeen={injury.markSeen} />;
-  return <PlayersTab players={players} onSelect={onSelect} pills={pills} key={view} />;
+  if (view === "retired") return <PlayersTab players={players.filter(isRetired)} onSelect={onSelect} pills={pills} title="Retired" key={view} />;
+  return <PlayersTab players={players.filter((p) => !isRetired(p))} onSelect={onSelect} pills={pills} title="Active Players" key={view} />;
+}
+
+// ═══════════════ GAME VIEW (live) ════════════════════════════════
+// Opened from a matchup card. Polls /api/game every 30s while the game is
+// live: score + clock, scoring by quarter, each team's leaders, latest plays.
+function GameView({ game, teams, players, onBack, onSelectTeam }) {
+  const [d, setD] = useState(null);
+  const swipe = useSwipe(null, onBack);
+  useEffect(() => {
+    let alive = true;
+    const load = () => fetch("/api/game?id=" + game.id).then((r) => r.json()).then((x) => alive && setD(x)).catch(() => {});
+    load();
+    const t = setInterval(() => { if (!d || d.state === "in" || game.state === "in") load(); }, 30000);
+    return () => { alive = false; clearInterval(t); };
+  }, [game.id]);
+  const g = d && !d.error ? d : null;
+  const away = g?.away || game.away, home = g?.home || game.home;
+  const ca = teamColor(away.abbr), ch = teamColor(home.abbr);
+  const state = g?.state || game.state;
+  const isLive = state === "in", isFinal = state === "post";
+  const tip = new Date(game.date).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const qs = Math.max(4, away.linescores?.length || 0, home.linescores?.length || 0);
+  const qLabel = (i) => (i < 4 ? ["1ST", "2ND", "3RD", "4TH"][i] : "OT" + (i - 3 > 1 ? i - 3 : ""));
+  const teamByAbbr = (ab) => (teams || []).find((t) => (t.abbr || toAbbr(t.name)) === ab);
+  const Side = ({ t, color, right }) => (
+    <button onClick={() => { const tm = teamByAbbr(t.abbr); if (tm && onSelectTeam) onSelectTeam(tm); }} className={"flex flex-col items-center w-28 " + (right ? "items-end" : "items-start")}>
+      <img src={t.logo || TEAM_LOGOS[t.abbr] || ""} alt="" className="w-24 h-24 object-contain" style={{ filter: "drop-shadow(0 3px 6px rgba(0,0,0,0.45))", ...logoTrim(t.abbr) }} />
+      <div className="mt-1 text-xl font-extrabold text-white tracking-wide">{t.abbr}</div>
+      <div className="text-xs font-semibold text-white/75 tabular-nums">{t.record || ""}</div>
+    </button>
+  );
+  return (
+    <div className="min-h-screen bg-slate-100 dark:bg-slate-950 pb-24" {...swipe}>
+      <div className="px-5 pb-6 text-white" style={{ background: `linear-gradient(100deg, ${ca} 0%, ${ca} 42%, ${ch} 58%, ${ch} 100%)`, paddingTop: "calc(env(safe-area-inset-top) + 1.25rem)" }}>
+        <button onClick={onBack} className="text-sm font-semibold opacity-85 mb-4">‹ Matchups</button>
+        <div className="flex items-center justify-between gap-2">
+          <Side t={away} color={ca} />
+          <div className="flex-1 text-center">
+            {state === "pre" ? (
+              <>
+                <div className="text-3xl font-extrabold tabular-nums">{tip}</div>
+                {(g?.broadcast || game.broadcast) && <div className="text-xs font-semibold opacity-85 mt-1">{g?.broadcast || game.broadcast}</div>}
+                {game.odds && (game.odds.details || game.odds.overUnder != null) && <div className="text-[11px] font-semibold opacity-80 mt-1">{game.odds.details}{game.odds.overUnder != null ? ` · O/U ${game.odds.overUnder}` : ""}</div>}
+              </>
+            ) : (
+              <>
+                <div className="text-4xl font-extrabold tabular-nums leading-none whitespace-nowrap">
+                  <span className={isFinal && !away.winner ? "opacity-60" : ""}>{away.score ?? 0}</span>
+                  <span className="opacity-50 text-2xl mx-1.5">–</span>
+                  <span className={isFinal && !home.winner ? "opacity-60" : ""}>{home.score ?? 0}</span>
+                </div>
+                <div className={"text-xs font-extrabold uppercase mt-2 tracking-widest " + (isLive ? "text-rose-200" : "opacity-90")}>{isLive ? (g?.detail || game.detail) : "Final"}</div>
+              </>
+            )}
+          </div>
+          <Side t={home} color={ch} right />
+        </div>
+        {(g?.venue || game.venue) && <div className="text-center text-[11px] opacity-75 mt-3">{g?.venue || game.venue}</div>}
+      </div>
+      <div className="px-4 mt-4 space-y-4">
+        {state !== "pre" && (
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+            <div className="flex items-center px-4 py-2 text-[10px] font-extrabold tracking-widest uppercase text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800">
+              <span className="flex-1">Scoring by quarter</span>
+              {Array.from({ length: qs }).map((_, i) => <span key={i} className="w-10 text-center">{qLabel(i)}</span>)}
+              <span className="w-10 text-center">T</span>
+            </div>
+            {[away, home].map((t) => (
+              <div key={t.abbr} className="flex items-center px-4 py-2.5 border-b last:border-0 border-slate-100 dark:border-slate-800">
+                <span className="flex-1 flex items-center gap-2 min-w-0"><img src={t.logo || TEAM_LOGOS[t.abbr] || ""} alt="" className="w-6 h-6 object-contain" style={logoTrim(t.abbr)} /><span className="text-sm font-extrabold text-slate-900 dark:text-white">{t.abbr}</span></span>
+                {Array.from({ length: qs }).map((_, i) => <span key={i} className="w-10 text-center text-sm font-semibold text-slate-700 dark:text-slate-200 tabular-nums">{t.linescores?.[i] ?? "—"}</span>)}
+                <span className="w-10 text-center text-base font-extrabold text-slate-900 dark:text-white tabular-nums">{t.score ?? 0}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {g && Object.keys(g.leaders || {}).length > 0 && (
+          <div>
+            <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mb-2 px-1">Leaders</div>
+            <div className="grid grid-cols-2 gap-2">
+              {[away, home].map((t) => (
+                <div key={t.abbr} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-3" style={{ borderTop: "4px solid " + teamColor(t.abbr) }}>
+                  <div className="text-[10px] font-extrabold tracking-widest uppercase text-slate-400 mb-1.5">{t.abbr}</div>
+                  {(g.leaders[t.abbr] || []).slice(0, 3).map((l) => (
+                    <div key={l.cat} className="flex items-center gap-2 py-1">
+                      {l.headshot ? <img src={l.headshot} alt="" className="w-7 h-7 rounded-full object-cover object-top bg-slate-200" /> : <span className="w-7 h-7 rounded-full bg-slate-200" />}
+                      <span className="flex-1 min-w-0"><span className="block text-[11px] font-bold text-slate-900 dark:text-white truncate">{l.name}</span><span className="block text-[9px] text-slate-400 uppercase">{l.cat}</span></span>
+                      <span className="text-sm font-extrabold text-slate-900 dark:text-white tabular-nums">{l.value}</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {g && (g.plays || []).length > 0 && (
+          <div>
+            <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mb-2 px-1">{isLive ? "Latest plays" : "Final plays"}</div>
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
+              {g.plays.slice(0, 15).map((pl) => (
+                <div key={pl.id} className="flex items-start gap-3 px-4 py-2.5" style={{ borderLeft: "3px solid " + (pl.team ? teamColor(pl.team) : "transparent") }}>
+                  <span className="flex-1 min-w-0">
+                    <span className={"block text-[12px] leading-snug " + (pl.scoring ? "font-bold text-slate-900 dark:text-white" : "text-slate-600 dark:text-slate-300")}>{pl.text}</span>
+                    <span className="block text-[10px] text-slate-400 mt-0.5">{pl.period ? "Q" + pl.period + " " : ""}{pl.clock}</span>
+                  </span>
+                  {pl.scoring && pl.away != null && <span className="text-[12px] font-extrabold text-slate-700 dark:text-slate-200 tabular-nums shrink-0">{pl.away}–{pl.home}</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {!g && <div className="text-center text-xs text-slate-400 py-8">Loading game…</div>}
+      </div>
+    </div>
+  );
 }
 
 // ═══════════════ INJURY FEED STORE + UNSEEN BADGE ════════════════
@@ -843,7 +959,10 @@ const isHurt = (p) => {
   return (s && !s.includes("active") && !s.includes("available")) || !!p.injuryNotes;
 };
 
-function PlayersTab({ players, onSelect, pills, forceInj }) {
+// Retired = Status column says Retired (or Role does). Retired players keep
+// their full profile; they just leave every roster, lineup, and leaderboard.
+const isRetired = (p) => /retire/i.test(String(p.status || "")) || /retire/i.test(String(p.role || ""));
+function PlayersTab({ players, onSelect, pills, forceInj, title }) {
   const [q, setQ] = useState("");
   const list = useMemo(() => {
     const base = players.filter((p) => matchesQuery(p, q));
@@ -854,7 +973,7 @@ function PlayersTab({ players, onSelect, pills, forceInj }) {
   }, [players, q, forceInj]);
   return (
     <div>
-      <ListHeader title={forceInj ? "Injury Report" : "Players"} q={q} setQ={setQ} pills={pills} />
+      <ListHeader title={forceInj ? "Injury Report" : (title || "Players")} q={q} setQ={setQ} pills={pills} />
       <div className="px-4 pb-28 mt-4">
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
           {list.map((p) => (
@@ -1380,8 +1499,12 @@ function lineupOf(roster, abbr) {
   const r = pickStartingFive(roster, abbr);
   const notFive = roster.filter((p) => !r.used.has(p.id)).sort(byMinutes);
   // one Bench group: Bench + Reserves by minutes, two-way players at the end
-  const ordered = [...notFive.filter((p) => !isTwoWay(p)), ...notFive.filter(isTwoWay)];
-  const benchGroups = ordered.length ? [["Bench", ordered]] : [];
+  // Standard contracts fill the Bench; Exhibit 9/10 camp invites and two-way
+  // players go in their own group so the 15-man roster stays readable.
+  const isCamp = (p) => /exhibit/i.test(String(activeOf(p)?.kind || "")) || /exhibit|camp/i.test(String(p.role || ""));
+  const bench = notFive.filter((p) => !isTwoWay(p) && !isCamp(p));
+  const camp = [...notFive.filter((p) => isCamp(p) && !isTwoWay(p)), ...notFive.filter(isTwoWay)];
+  const benchGroups = [["Bench", bench], ["Camp & Two-Way", camp]].filter(([, l]) => l.length);
   return { ...r, benchGroups, bench: notFive, starters: COURT_SLOTS.map((s, i) => ({ slot: s.lbl, p: r.assigned[i] })).filter((x) => x.p) };
 }
 
@@ -2502,7 +2625,7 @@ function dayLabel(d, today) {
   return d.toLocaleDateString([], { weekday: "short" });
 }
 
-function TonightTab({ players, teams, onSelect, onSelectTeam }) {
+function TonightTab({ players, teams, onSelect, onSelectTeam, onOpenGame }) {
   const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
   const [dayOff, setDayOff] = useState(0);           // days from today
   const [sb, setSb] = useState(null);
@@ -2604,46 +2727,56 @@ function TonightTab({ players, teams, onSelect, onSelectTeam }) {
                 </button>
               );
             };
-            return (
-              <div key={g.id} className="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm px-3 py-2 flex items-center gap-2"
-                style={{ animation: `hrbRise .3s ease-out ${gi * 40}ms both` }}>
-                <div className="flex-1 min-w-0 space-y-1.5">
-                  <Row t={g.away} />
-                  <Row t={g.home} />
-                </div>
-                <div className="w-20 shrink-0 text-center border-l border-slate-100 dark:border-slate-800 pl-2">
-                  {isLive ? (
-                    <>
-                      <div className="text-xs font-extrabold text-rose-500 uppercase flex items-center justify-center gap-1">
-                        <span className="relative flex w-2 h-2">
-                          <span className="absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" style={{ animation: "hrbPing 1.4s cubic-bezier(0,0,.2,1) infinite" }} />
-                          <span className="relative inline-flex rounded-full w-2 h-2 bg-rose-500" />
-                        </span>
-                        {g.detail}
-                      </div>
-                      {g.lastPlay && <div className="text-[9px] text-slate-400 mt-0.5 line-clamp-2 leading-tight">{g.lastPlay}</div>}
-                    </>
-                  ) : isFinal ? (
-                    <div className="text-xs font-extrabold text-slate-500 dark:text-slate-300">{g.detail || "Final"}</div>
-                  ) : (
-                    <>
-                      <div className="text-xs font-extrabold text-slate-900 dark:text-white tabular-nums">{tip}</div>
-                      {g.broadcast && <div className="text-[9px] font-semibold text-slate-400">{g.broadcast}</div>}
-                    </>
-                  )}
-                  {g.note && <div className="text-[9px] font-bold text-blue-500 mt-0.5 truncate">{g.note}</div>}
-                  {g.odds && (g.odds.details || g.odds.overUnder != null) && !isFinal && (
-                    <div className="text-[9px] font-semibold text-slate-400 mt-0.5 tabular-nums">
-                      {g.odds.details}{g.odds.overUnder != null ? ` · O/U ${g.odds.overUnder}` : ""}
-                    </div>
-                  )}
-                </div>
+            const ca = teamColor(g.away.abbr), ch = teamColor(g.home.abbr);
+            const hurtA = hurtOn(g.away.abbr).length, hurtH = hurtOn(g.home.abbr).length;
+            const Side = ({ t, hurt, right }) => (
+              <div className={"flex flex-col items-center w-24 shrink-0 " + (right ? "items-end" : "items-start")}>
+                <img src={t.logo || TEAM_LOGOS[t.abbr] || ""} alt="" className="w-16 h-16 object-contain" style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.4))", ...logoTrim(t.abbr) }} />
+                <div className="mt-1 text-sm font-extrabold text-white tracking-wide">{t.abbr}</div>
+                <div className="text-[11px] font-semibold text-white/75 tabular-nums">{t.record || ""}</div>
+                {hurt > 0 && <div className="text-[9px] font-extrabold text-red-200">{hurt} on report</div>}
               </div>
+            );
+            return (
+              <button key={g.id} onClick={() => onOpenGame && onOpenGame(g)}
+                className="w-full rounded-2xl shadow-sm overflow-hidden text-left active:opacity-90"
+                style={{ background: `linear-gradient(100deg, ${ca} 0%, ${ca} 42%, ${ch} 58%, ${ch} 100%)`, animation: `hrbRise .3s ease-out ${gi * 40}ms both` }}>
+                <div className="px-4 py-4 flex items-center justify-between gap-2" style={{ background: "linear-gradient(180deg,rgba(255,255,255,0.08),rgba(0,0,0,0.18))" }}>
+                  <Side t={g.away} hurt={hurtA} />
+                  <div className="flex-1 min-w-0 text-center text-white">
+                    {isLive ? (
+                      <>
+                        <div className="text-2xl font-extrabold tabular-nums leading-none">{g.away.score ?? 0} <span className="opacity-60">–</span> {g.home.score ?? 0}</div>
+                        <div className="text-xs font-extrabold text-rose-200 uppercase mt-1 flex items-center justify-center gap-1">
+                          <span className="relative flex w-2 h-2"><span className="absolute inline-flex h-full w-full rounded-full bg-rose-300 opacity-75" style={{ animation: "hrbPing 1.4s cubic-bezier(0,0,.2,1) infinite" }} /><span className="relative inline-flex rounded-full w-2 h-2 bg-rose-400" /></span>
+                          {g.detail}
+                        </div>
+                      </>
+                    ) : isFinal ? (
+                      <>
+                        <div className="text-2xl font-extrabold tabular-nums leading-none"><span className={g.away.winner ? "" : "opacity-60"}>{g.away.score ?? 0}</span> <span className="opacity-60">–</span> <span className={g.home.winner ? "" : "opacity-60"}>{g.home.score ?? 0}</span></div>
+                        <div className="text-xs font-extrabold uppercase mt-1 opacity-90">{g.detail || "Final"}</div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-2xl font-extrabold tabular-nums leading-none">{tip}</div>
+                        {g.broadcast && <div className="text-xs font-semibold opacity-85 mt-1">{g.broadcast}</div>}
+                      </>
+                    )}
+                    {g.odds && (g.odds.details || g.odds.overUnder != null) && !isFinal && (
+                      <div className="text-[11px] font-semibold opacity-80 mt-1 tabular-nums">{g.odds.details}{g.odds.overUnder != null ? ` · O/U ${g.odds.overUnder}` : ""}</div>
+                    )}
+                    {g.note && <div className="text-[10px] font-bold opacity-80 mt-0.5 truncate">{g.note}</div>}
+                    {isLive && g.lastPlay && <div className="text-[10px] opacity-80 mt-1 line-clamp-2 leading-tight">{g.lastPlay}</div>}
+                  </div>
+                  <Side t={g.home} hurt={hurtH} right />
+                </div>
+              </button>
             );
           })}
         </div>
         {games.length > 0 && (
-          <div className="text-[9px] text-slate-400 mt-3 px-1">Tap a team to open its court. "On report" counts your Airtable players who aren't Active.</div>
+          <div className="text-[9px] text-slate-400 mt-3 px-1">Tap a game for live scoring, leaders, and the latest plays.</div>
         )}
       </div>
     </div>
@@ -2688,6 +2821,7 @@ export default function App() {
     m.content = "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover";
   }, []);
   const [statsFocus, setStatsFocus] = useState(null); // { id, cat } — highlight a player on the Stats tab
+  const [selGame, setSelGame] = useState(null);       // matchup opened from the Matchups tab
   useEffect(() => {
     // Headshots + positions for anyone Airtable is missing them for.
     fetch("/api/lineups").then((r) => r.json())
@@ -2730,8 +2864,11 @@ export default function App() {
       )}
       {!players && !error && <LoadingScreen />}
 
-      {players && tab === "tonight" && !selTeam && (
-        <TonightTab players={players} teams={teams} onSelect={setSel} onSelectTeam={setSelTeam} />
+      {players && tab === "tonight" && !selTeam && !selGame && (
+        <TonightTab players={players} teams={teams} onSelect={setSel} onSelectTeam={setSelTeam} onOpenGame={setSelGame} />
+      )}
+      {players && tab === "tonight" && selGame && !selTeam && (
+        <GameView game={selGame} teams={teams} players={players} onBack={() => setSelGame(null)} onSelectTeam={setSelTeam} />
       )}
       {players && tab === "teams" && !selTeam && (
         <TeamsTab teams={teams} players={players} onSelect={(t) => { SWIPE_DEPTH.n = 0; setSelTeam(t); }} />
@@ -2754,7 +2891,7 @@ export default function App() {
         {TABS.map((t) => (
           <button
             key={t.id}
-            onClick={() => { if (t.id !== "stats") setStatsFocus(null); setTab(t.id); setSel(null); setSelTeam(null); }}
+            onClick={() => { if (t.id !== "stats") setStatsFocus(null); setTab(t.id); setSel(null); setSelTeam(null); setSelGame(null); }}
             className={"flex-1 py-2.5 text-center " + (tab === t.id ? "text-blue-600" : "text-slate-400")}
           >
             <div className="text-lg leading-none relative inline-block">{t.icon}{t.id === "players" && <Badge n={injury.unseen} />}</div>
