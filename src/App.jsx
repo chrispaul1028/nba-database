@@ -339,6 +339,8 @@ const tidyInjury = (t) => { const x = String(t || "").toLowerCase().replace(/[()
 const injuryDetailOf = (p) => tidyInjury(splitNotes(p.injuryNotes).note || espnOf(p)?.injuryDetail || injOf(p)?.detail || "");
 const injuryReturnOf = (p) => fmtRet(p.returnDate) || fmtRet(splitNotes(p.injuryNotes).ret) || fmtRet(espnOf(p)?.injuryReturn) || fmtRet(injOf(p)?.returnDate);
 const isActiveStatus = (p) => { const st = String(effectiveStatus(p)).toLowerCase(); return !st || st.includes("active") || st.includes("available"); };
+// Retired / Overseas aren't injuries: no notes, no return date, just the tag
+const isSidelined = (p) => !isActiveStatus(p) && !isRetired(p);
 const GENERIC_POS = new Set(["", "G", "F", "G-F", "F-G", "F-C", "C-F", "G/F", "F/C", "GUARD", "FORWARD", "WING", "BIG"]);
 // Court position: Airtable's exact label (PG/SG/SF/PF/C) if it has one,
 // otherwise ESPN's, otherwise whatever Airtable said.
@@ -685,6 +687,7 @@ function ListHeader({ title, q, setQ, placeholder, pills, noSearch }) {
 // Populated once data loads: abbr -> logo URL
 const TEAM_LOGOS = {};
 const TEAM_NAMES = {}; // abbr → full name, filled once teams load
+const STANDINGS_PHASE = { v: "regular" }; // "preseason" until opening night
 
 function TeamPill({ team }) {
   const abbr = toAbbr(team) || team;
@@ -707,7 +710,7 @@ function PlayersHub({ players, teams, onSelect, injury }) {
   const [view, setView] = useState("players");
   const pills = (
     <div className="flex gap-2 mt-3 overflow-x-auto pt-1.5" style={{ scrollbarWidth: "none" }}>
-      {[["players", "Active"], ["injury", "🏥 Injury Report"], ["contracts", "Contracts"], ["draft", "Draft"], ["retired", "Retired"]].map(([k, lbl]) => (
+      {[["players", "Active"], ["injury", "🏥 Injury Report"], ["contracts", "Contracts"], ["draft", "Draft"], ["retired", "Retired / Overseas"]].map(([k, lbl]) => (
         <button key={k} onClick={() => setView(k)}
           className={"relative shrink-0 px-3.5 py-1.5 rounded-full text-[11px] font-extrabold " + (view === k ? "bg-white text-blue-700" : "bg-blue-500/60 text-blue-100 active:bg-blue-500")}>
           {lbl}
@@ -719,7 +722,7 @@ function PlayersHub({ players, teams, onSelect, injury }) {
   if (view === "contracts") return <ContractsTab players={players} onSelect={onSelect} pills={pills} />;
   if (view === "draft") return <DraftTab players={players} onSelect={onSelect} pills={pills} />;
   if (view === "injury") return <InjuryFeed players={players} teams={teams} onSelect={onSelect} pills={pills} feed={injury.feed} markSeen={injury.markSeen} />;
-  if (view === "retired") return <PlayersTab players={players.filter(isRetired)} onSelect={onSelect} pills={pills} title="Retired" key={view} />;
+  if (view === "retired") return <PlayersTab players={players.filter(isRetired)} onSelect={onSelect} pills={pills} title="Retired / Overseas" key={view} />;
   return <PlayersTab players={players.filter((p) => !isRetired(p))} onSelect={onSelect} pills={pills} title="Active Players" key={view} />;
 }
 
@@ -961,7 +964,8 @@ const isHurt = (p) => {
 
 // Retired = Status column says Retired (or Role does). Retired players keep
 // their full profile; they just leave every roster, lineup, and leaderboard.
-const isRetired = (p) => /retire/i.test(String(p.status || "")) || /retire/i.test(String(p.role || ""));
+const isOverseas = (p) => /overseas|abroad|euro|international/i.test(String(p.status || "")) || /overseas/i.test(String(p.role || ""));
+const isRetired = (p) => /retire/i.test(String(p.status || "")) || /retire/i.test(String(p.role || "")) || isOverseas(p);
 function PlayersTab({ players, onSelect, pills, forceInj, title }) {
   const [q, setQ] = useState("");
   const list = useMemo(() => {
@@ -994,7 +998,7 @@ function PlayersTab({ players, onSelect, pills, forceInj, title }) {
                 {!isActiveStatus(p) && (
                   <span className="block mt-1.5">
                     <StatusBadge status={effectiveStatus(p) || "Injured"} />
-                    {injuryDetailOf(p) && <span className="block text-[11px] font-semibold text-red-500 mt-1">({injuryDetailOf(p)})</span>}
+                    {isSidelined(p) && injuryDetailOf(p) && <span className="block text-[11px] font-semibold text-red-500 mt-1">({injuryDetailOf(p)})</span>}
                     {injuryReturnOf(p) && <span className="block text-[11px] font-semibold text-slate-900 dark:text-white mt-0.5">Estimated Return Date: {injuryReturnOf(p)}</span>}
                   </span>
                 )}
@@ -1222,6 +1226,17 @@ function winPct(t) {
 }
 
 // The "Free Agents" row in the Teams table isn't a team: no court, no tiles.
+// Everyone on a team's roster: the Airtable link first, name match as backup.
+// Retired / overseas players never appear on a roster.
+function rosterOf(team, players) {
+  const abbr = team.abbr || toAbbr(team.name);
+  return (players || []).filter((p) => {
+    if (isRetired(p)) return false;
+    if (p.teamId && p.teamId === team.id) return true;
+    const t = teamOfPlayer(p);
+    return t && (t === abbr || String(p.teamName).toLowerCase() === String(team.name).toLowerCase());
+  });
+}
 const isFaTeam = (t) => !!t && (/free\s*agent/i.test(String(t.name || "")) || String(t.abbr || "").toUpperCase() === "FA");
 
 function TeamsTab({ teams, players, onSelect }) {
@@ -1342,6 +1357,7 @@ function StatusBadge({ status }) {
   let cls = "bg-slate-100 text-slate-500 dark:text-slate-400";
   if (s === "ir" || s.includes("injured reserve") || s.includes("out") || s.includes("suspend")) cls = "bg-red-600 text-white";
   else if (s.includes("active") || s.includes("available")) cls = "bg-green-600 text-white";
+  else if (/overseas|abroad|retire/.test(s)) cls = "bg-slate-700 text-white";
   else if (s.includes("game time") || s === "gtd" || s.includes("injur") || s.includes("day") || s.includes("question") || s.includes("doubt") || s.includes("probable")) cls = "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300";
   return (
     <span className={"shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wide " + cls}>
@@ -1791,6 +1807,59 @@ const STAT_SETS = {
   volume:   { label: "Volume",   cols: [["min", "MIN"], ["fga", "FGA"], ["p3a", "3PA"], ["fta", "FTA"], ["tov", "TOV"]] },
   shooting: { label: "Shooting", cols: [["fg", "FG%"], ["p3", "3P%"], ["ft", "FT%"], ["fga", "FGA"], ["p3a", "3PA"], ["fta", "FTA"]], pct: ["fg", "p3", "ft"], gate: { fg: ["fga", 3], p3: ["p3a", 1.5], ft: ["fta", 1.5] } },
 };
+// ── Team Profile: each stat as a league-wide dot plot, this team highlighted ──
+// Team per-game numbers are the roster's per-game stats added up; percentages
+// are weighted by attempts. Shows rank AND distance from the pack.
+const PROFILE_STATS = [["pts", "PTS"], ["reb", "REB"], ["ast", "AST"], ["stl", "STL"], ["blk", "BLK"], ["tov", "TOV", true], ["fg", "FG%", false, "pct"], ["p3", "3P%", false, "pct"], ["ft", "FT%", false, "pct"]];
+function teamStatLine(roster, key, pct) {
+  const rows = roster.map(latestStats).filter((s) => s && (s.gp ?? 0) > 0);
+  if (!rows.length) return null;
+  if (pct) {
+    const att = { fg: ["fgm", "fga"], p3: ["p3m", "p3a"], ft: ["ftm", "fta"] }[key];
+    const m = rows.reduce((a, s) => a + (s[att[0]] ?? 0) * (s.gp ?? 0), 0), t = rows.reduce((a, s) => a + (s[att[1]] ?? 0) * (s.gp ?? 0), 0);
+    return t ? (m / t) * 100 : null;
+  }
+  // roster per-game sum, scaled to a team game (minutes ÷ 240)
+  const mins = rows.reduce((a, s) => a + (s.min ?? 0), 0) || 240;
+  return rows.reduce((a, s) => a + (s[key] ?? 0), 0) * (240 / Math.max(mins, 240));
+}
+function TeamProfile({ roster, abbr, teams, players }) {
+  const league = useMemo(() => (teams || []).filter((t) => !isFaTeam(t)).map((t) => {
+    const ab = t.abbr || toAbbr(t.name); const r = rosterOf(t, players);
+    const o = { abbr: ab }; for (const [k, , , kind] of PROFILE_STATS) o[k] = teamStatLine(r, k, kind === "pct"); return o;
+  }), [teams, players]);
+  const color = teamColor(abbr);
+  const W = 300, padL = 8, padR = 8;
+  return (
+    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm px-4 py-3">
+      <div className="text-[10px] font-semibold text-slate-400 mb-2">Each dot is a team · {abbr} in color · gray band = middle half of the league</div>
+      {PROFILE_STATS.map(([k, lbl, lowerBetter, kind]) => {
+        const vals = league.map((t) => t[k]).filter((v) => v != null).sort((a, b) => a - b);
+        const mine = league.find((t) => t.abbr === abbr)?.[k];
+        if (!vals.length || mine == null) return null;
+        const lo = vals[0], hi = vals[vals.length - 1], span = hi - lo || 1;
+        const x = (v) => padL + ((v - lo) / span) * (W - padL - padR);
+        const q1 = vals[Math.floor(vals.length * 0.25)], q3 = vals[Math.floor(vals.length * 0.75)];
+        const better = lowerBetter ? vals.filter((v) => v < mine).length : vals.filter((v) => v > mine).length;
+        const rank = better + 1;
+        const tone = rank <= 10 ? "#16a34a" : rank <= 20 ? "#d97706" : "#dc2626";
+        return (
+          <div key={k} className="flex items-center gap-3 py-2 border-t first:border-0 border-slate-100 dark:border-slate-800">
+            <div className="w-10 shrink-0"><div className="text-[11px] font-extrabold text-slate-900 dark:text-white">{lbl}</div><div className="text-[10px] font-bold" style={{ color: tone }}>{ordinal(rank)}</div></div>
+            <svg viewBox={`0 0 ${W} 22`} className="flex-1 h-6">
+              <rect x={x(q1)} y="7" width={Math.max(2, x(q3) - x(q1))} height="8" rx="4" fill="currentColor" className="text-slate-200 dark:text-slate-700" />
+              <line x1={padL} y1="11" x2={W - padR} y2="11" stroke="currentColor" strokeWidth="1" className="text-slate-300 dark:text-slate-600" />
+              {vals.map((v, i) => <circle key={i} cx={x(v)} cy="11" r="3" fill="currentColor" className="text-slate-400/70 dark:text-slate-500/70" />)}
+              <circle cx={x(mine)} cy="11" r="6" fill={color} stroke="white" strokeWidth="2" />
+            </svg>
+            <div className="w-12 shrink-0 text-right text-sm font-extrabold text-slate-900 dark:text-white tabular-nums">{kind === "pct" ? mine.toFixed(1) + "%" : mine.toFixed(1)}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function TeamStatsPanel({ roster, abbr, mode, setMode, onSelectPlayer }) {
   const set = STAT_SETS[mode] || STAT_SETS.leaders;
   const [sortKey, setSortKey] = useState(set.cols[0][0]);
@@ -2127,15 +2196,12 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
   const [seg, setSeg] = useState("roster");
   const [rosterView, setRosterView] = useState("court"); // court | list
   const [statMode, setStatMode] = useState("leaders");
+  const [statsLayout, setStatsLayout] = useState("table");
   const [cView, setCView] = useState("list"); // list | cap | fa | bio  (which tile is pressed)
   const faOnly = cView === "fa";
   const toggleC = (k) => setCView((v) => (v === k ? "list" : k));
   const faTeam = isFaTeam(team);
-  const roster = players.filter((p) => {
-    if (p.teamId && p.teamId === team.id) return true; // exact Airtable link - no naming needed
-    const t = teamOfPlayer(p);
-    return t && (t === abbr || String(p.teamName).toLowerCase() === String(team.name).toLowerCase());
-  });
+  const roster = rosterOf(team, players);
   const payroll = roster.reduce((a, p) => a + currentSalary(p), 0);
 
   const groups = {};
@@ -2204,8 +2270,8 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
           })() : (
             <>
               <Tile value={(team.wins ?? 0) + "-" + (team.losses ?? 0)} label="Record" />
-              <Tile value={team.ppg != null ? team.ppg.toFixed(1) : "—"} label="PPG" sub={rankOf(teams, team, "ppg", "desc")} onClick={onJumpToTeamStats ? () => onJumpToTeamStats(team, "ppg") : undefined} />
-              <Tile value={team.oppPpg != null ? team.oppPpg.toFixed(1) : "—"} label="Opp PPG" sub={rankOf(teams, team, "oppPpg", "asc")} onClick={onJumpToTeamStats ? () => onJumpToTeamStats(team, "oppPpg") : undefined} />
+              <Tile value={team.ppg != null ? team.ppg.toFixed(1) : "—"} label={STANDINGS_PHASE.v === "preseason" ? "PPG · Pre" : "PPG"} sub={rankOf(teams, team, "ppg", "desc")} onClick={onJumpToTeamStats ? () => onJumpToTeamStats(team, "ppg") : undefined} />
+              <Tile value={team.oppPpg != null ? team.oppPpg.toFixed(1) : "—"} label={STANDINGS_PHASE.v === "preseason" ? "Opp PPG · Pre" : "Opp PPG"} sub={rankOf(teams, team, "oppPpg", "asc")} onClick={onJumpToTeamStats ? () => onJumpToTeamStats(team, "oppPpg") : undefined} />
             </>
           )}
         </div>
@@ -2239,7 +2305,18 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
           <CourtView roster={roster} abbr={abbr} team={team} teams={teams} onSelectPlayer={onSelectPlayer} />
         )}
         {seg === "stats" && (
-          <TeamStatsPanel roster={roster} abbr={abbr} mode={statMode} setMode={setStatMode} onSelectPlayer={onSelectPlayer} />
+          <>
+            <div className="flex gap-2 mt-4 mb-3">
+              {[["table", "Table"], ["profile", "Profile"]].map(([k, lbl]) => (
+                <button key={k} onClick={() => setStatsLayout(k)}
+                  className={"flex-1 py-2 rounded-full text-sm font-bold border " + (statsLayout === k ? "text-white border-transparent" : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-800")}
+                  style={statsLayout === k ? { backgroundColor: teamColor(abbr) } : undefined}>{lbl}</button>
+              ))}
+            </div>
+            {statsLayout === "profile"
+              ? <TeamProfile roster={roster} abbr={abbr} teams={teams} players={players} />
+              : <TeamStatsPanel roster={roster} abbr={abbr} mode={statMode} setMode={setStatMode} onSelectPlayer={onSelectPlayer} />}
+          </>
         )}
         {seg === "roster" && (rosterView === "list" || faTeam) && listGroups.map(([role, members]) => (
           <div key={role}>
@@ -2531,7 +2608,7 @@ function DraftTab({ players, onSelect, pills }) {
             <span className="relative">
               <select value={yr || ""} onChange={(e) => setSelYear(Number(e.target.value))}
                 className="appearance-none bg-blue-600 text-white text-sm font-bold rounded-full pl-4 pr-8 py-2 outline-none">
-                {years.map((y) => <option key={y} value={y}>{y} class</option>)}
+                {years.map((y) => <option key={y} value={y}>{y} Class</option>)}
               </select>
               <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-white text-xs">▼</span>
             </span>
@@ -2837,6 +2914,14 @@ export default function App() {
       .then((d) => { if (d.error) setError(d.error); else {
         for (const t of d.teams || []) { const a = t.abbr || toAbbr(t.name); if (a && t.logo) TEAM_LOGOS[a] = t.logo; if (a) TEAM_NAMES[a] = t.name; }
         setPlayers(d.players); setTeams(d.teams || []);
+        // Live standings (ESPN) replace the hand-entered Wins / Losses / PPG /
+        // Opp PPG. Airtable's numbers stay as the fallback if ESPN is down.
+        fetch("/api/standings").then((r) => r.json()).then((sd) => {
+          if (!sd || !sd.teams || !sd.teams.length) return;
+          const by = {}; for (const t of sd.teams) by[t.abbr] = t;
+          STANDINGS_PHASE.v = sd.phase || "regular";
+          setTeams((prev) => prev.map((t) => { const a = t.abbr || toAbbr(t.name); const e = by[a]; return e ? { ...t, wins: e.wins ?? t.wins, losses: e.losses ?? t.losses, ppg: e.ppg ?? t.ppg, oppPpg: e.oppPpg ?? t.oppPpg, streak: e.streak || null, live: true } : t; }));
+        }).catch(() => {});
       } })
       .catch((e) => setError(String(e)));
   }, []);
