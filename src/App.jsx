@@ -731,6 +731,7 @@ function PlayersHub({ players, teams, onSelect, injury }) {
 // live: score + clock, scoring by quarter, each team's leaders, latest plays.
 function GameView({ game, teams, players, onBack, onSelectTeam }) {
   const [d, setD] = useState(null);
+  const [boxTeam, setBoxTeam] = useState(game.away.abbr);
   const swipe = useSwipe(null, onBack);
   useEffect(() => {
     let alive = true;
@@ -819,6 +820,53 @@ function GameView({ game, teams, players, onBack, onSelectTeam }) {
             </div>
           </div>
         )}
+        {g && g.box && (g.box[away.abbr] || g.box[home.abbr]) && (() => {
+          const t = boxTeam === home.abbr ? home : away;
+          const bx = g.box[t.abbr] || { cols: [], rows: [] };
+          const want = ["MIN", "PTS", "REB", "AST", "STL", "BLK", "TO", "FG", "3PT", "FT", "+/-"];
+          const idx = want.map((w) => bx.cols.indexOf(w));
+          const c = teamColor(t.abbr);
+          const rows = bx.rows.filter((r) => !r.dnp);
+          const dnp = bx.rows.filter((r) => r.dnp);
+          return (
+            <div>
+              <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mb-2 px-1">Box score · tap a team to switch</div>
+              <div className="flex gap-2 mb-2">
+                {[away, home].map((x) => (
+                  <button key={x.abbr} onClick={() => setBoxTeam(x.abbr)}
+                    className={"flex-1 py-2 rounded-full text-sm font-extrabold border flex items-center justify-center gap-2 " + (boxTeam === x.abbr ? "text-white border-transparent" : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-800")}
+                    style={boxTeam === x.abbr ? { backgroundColor: teamColor(x.abbr) } : undefined}>
+                    <img src={x.logo || TEAM_LOGOS[x.abbr] || ""} alt="" className="w-5 h-5 object-contain" style={logoTrim(x.abbr)} />{x.abbr}
+                  </button>
+                ))}
+              </div>
+              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-[11px] tabular-nums">
+                    <thead>
+                      <tr className="text-white" style={{ backgroundColor: c }}>
+                        <th className="text-left font-extrabold px-3 py-2 sticky left-0" style={{ backgroundColor: c }}>PLAYER</th>
+                        {want.map((w) => <th key={w} className="font-extrabold px-2 py-2 text-center">{w}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {rows.map((r, i) => (
+                        <tr key={r.id || i} className={r.starter ? "" : "text-slate-500 dark:text-slate-400"}>
+                          <td className="px-3 py-2 sticky left-0 bg-white dark:bg-slate-900 whitespace-nowrap">
+                            <span className="font-bold text-slate-900 dark:text-white">{r.name}</span>
+                            <span className="ml-1 text-[9px] font-semibold text-slate-400">{r.pos}{r.starter ? " · S" : ""}</span>
+                          </td>
+                          {idx.map((k, j) => <td key={j} className={"px-2 py-2 text-center " + (want[j] === "PTS" ? "font-extrabold text-slate-900 dark:text-white" : "")}>{k >= 0 ? (r.stats[k] ?? "—") : "—"}</td>)}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {dnp.length > 0 && <div className="px-3 py-2 text-[10px] text-slate-400 border-t border-slate-100 dark:border-slate-800">DNP: {dnp.map((r) => r.name + (r.reason ? " (" + r.reason + ")" : "")).join(" · ")}</div>}
+              </div>
+            </div>
+          );
+        })()}
         {g && (g.plays || []).length > 0 && (
           <div>
             <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mb-2 px-1">{isLive ? "Latest plays" : "Final plays"}</div>
