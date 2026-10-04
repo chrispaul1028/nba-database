@@ -52,12 +52,26 @@ export default async function handler(req, res) {
       scoring: !!p.scoringPlay, away: p.awayScore ?? null, home: p.homeScore ?? null, scoreValue: p.scoreValue ?? 0,
     }));
 
+    // box score: one block per team — column labels + a row per player
+    const box = {};
+    for (const tb of d.boxscore?.players || []) {
+      const ab = ABBR_FIX[String(tb.team?.abbreviation || "").toUpperCase()] || String(tb.team?.abbreviation || "").toUpperCase();
+      const grp = (tb.statistics || [])[0] || {};
+      box[ab] = {
+        cols: grp.names || grp.labels || [],
+        rows: (grp.athletes || []).map((a) => ({
+          id: a.athlete?.id, name: a.athlete?.shortName || a.athlete?.displayName || "", pos: a.athlete?.position?.abbreviation || "",
+          starter: !!a.starter, dnp: !!a.didNotPlay, reason: a.reason || null, stats: a.stats || [],
+        })),
+      };
+    }
+
     const info = d.gameInfo || {};
     res.setHeader("Cache-Control", "s-maxage=30, stale-while-revalidate=60");
     return res.status(200).json({
       id, state: type.state || "pre", detail: type.shortDetail || type.detail || "", completed: !!type.completed,
       period: st.period ?? null, clock: st.displayClock ?? null, date: comp.date || d.header?.competitions?.[0]?.date || null,
-      home, away, leaders, plays,
+      home, away, leaders, plays, box,
       venue: info.venue?.fullName || null, attendance: info.attendance ?? null,
       broadcast: ((comp.broadcasts || [])[0]?.media?.shortName) || null,
       updatedAt: new Date().toISOString(),
