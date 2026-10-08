@@ -851,12 +851,12 @@ function GameView({ game, teams, players, onBack, onSelectTeam }) {
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                       {rows.map((r, i) => (
-                        <tr key={r.id || i} className={r.starter ? "" : "text-slate-500 dark:text-slate-400"}>
+                        <tr key={r.id || i} className={r.starter ? "text-slate-900 dark:text-white font-semibold" : "text-slate-500 dark:text-slate-400"}>
                           <td className="px-3 py-2 sticky left-0 bg-white dark:bg-slate-900 whitespace-nowrap">
                             <span className="font-bold text-slate-900 dark:text-white">{r.name}</span>
                             <span className="ml-1 text-[9px] font-semibold text-slate-400">{r.pos}{r.starter ? " · S" : ""}</span>
                           </td>
-                          {idx.map((k, j) => <td key={j} className={"px-2 py-2 text-center " + (want[j] === "PTS" ? "font-extrabold text-slate-900 dark:text-white" : "")}>{k >= 0 ? (r.stats[k] ?? "—") : "—"}</td>)}
+                          {idx.map((k, j) => <td key={j} className={"px-2 py-2 text-center whitespace-nowrap " + (want[j] === "PTS" ? "font-extrabold text-slate-900 dark:text-white" : "")}>{k >= 0 ? (r.stats[k] ?? "—") : "—"}</td>)}
                         </tr>
                       ))}
                     </tbody>
