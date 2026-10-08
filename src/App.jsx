@@ -560,7 +560,7 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
             </div>
             <div className="mt-1.5"><StatusBadge status={effectiveStatus(p)} /></div>
             {!isActiveStatus(p) && injuryDetailOf(p) && (
-              <div className="text-[11px] font-extrabold text-white mt-1.5">({injuryDetailOf(p)})</div>
+              <div className="text-[11px] font-extrabold text-red-500 mt-1.5" style={{ textShadow: "0 0 3px rgba(255,255,255,0.9), 0 0 6px rgba(255,255,255,0.6)" }}>({injuryDetailOf(p)})</div>
             )}
             {!isActiveStatus(p) && injuryReturnOf(p) && (
               <div className="text-[11px] font-extrabold text-white mt-0.5">Estimated Return Date: {injuryReturnOf(p)}</div>
@@ -1516,10 +1516,23 @@ function pickStartingFive(roster, abbr) {
   if (espnFive) {
     // Confirmed lineup from ESPN's last box score: slot by position number,
     // then by position label, then wherever is open.
-    const pool = espnFive.slice().sort(byMinutes);
-    for (const p of pool) { const i = slotIdx(slotOfPlayer(p)); if (i >= 0 && !assigned[i]) take(i, p); }
-    for (const p of pool) { if (used.has(p.id)) continue; const i = COURT_SLOTS.findIndex((s, k) => !assigned[k] && POS_ALIASES[s.lbl].includes(courtPos(p))); if (i >= 0) take(i, p); }
-    for (const p of pool) { if (used.has(p.id)) continue; const i = assigned.findIndex((x) => !x); if (i >= 0) take(i, p); }
+    // ESPN's box score lists each starter as G / F / C. That is the position
+    // he actually played, so it beats the Airtable label: the C goes to C,
+    // forwards to SF/PF, guards to PG/SG. Ties inside a group break on the
+    // Airtable number, then height (taller → PF / C).
+    const lu = LINEUPS[String(abbr || "").toUpperCase()];
+    const espnPos = (p) => { const hit = (lu?.starters || []).find((a) => espnNrm(a.name) === espnNrm(p.name) || espnNrm(a.name).split(" ").pop() === espnNrm(p.name).split(" ").pop()); return String(hit?.pos || "").toUpperCase(); };
+    const rankIn = (p) => (Number(p.sort) || 99) * 1000 - heightIn(p);
+    const grp = { C: [], F: [], G: [] };
+    for (const p of espnFive) { const e = espnPos(p); const k = e.startsWith("C") ? "C" : e.startsWith("F") ? "F" : e.startsWith("G") ? "G" : (POS_ALIASES.C.includes(courtPos(p)) ? "C" : /F/.test(courtPos(p)) ? "F" : "G"); grp[k].push(p); }
+    // more than one C → the taller stays at C, the other plays PF; more than two of a kind spill to the neighbor group
+    grp.C.sort((a, b) => heightIn(b) - heightIn(a)); while (grp.C.length > 1) grp.F.unshift(grp.C.pop());
+    grp.F.sort((a, b) => rankIn(a) - rankIn(b)); while (grp.F.length > 2) { const x = grp.F.pop(); if (!grp.C.length) grp.C.push(x); else grp.G.push(x); }
+    grp.G.sort((a, b) => rankIn(a) - rankIn(b)); while (grp.G.length > 2) grp.F.push(grp.G.pop());
+    if (!grp.C.length && grp.F.length) grp.C.push(grp.F.pop());            // no center listed → the bigger forward is the 5
+    const plan = [["C", grp.C[0]], ["SF", grp.F[0]], ["PF", grp.F[1]], ["PG", grp.G[0]], ["SG", grp.G[1]]];
+    for (const [lbl, p] of plan) { if (!p) continue; const i = slotIdx(lbl); if (i >= 0 && !assigned[i]) take(i, p); }
+    for (const p of espnFive) { if (used.has(p.id)) continue; const i = assigned.findIndex((x) => !x); if (i >= 0) take(i, p); }
   } else {
     // Airtable: Role = Starter, slot = Sort Priority
     const starters = roster.filter((p) => roleOf(p) === "Starter").sort(byMinutes);
@@ -1724,9 +1737,9 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
         ))}
         {/* availability tag, top-left, same frosted style as the NFL personnel tag */}
         {/* where the five came from — last game's actual starters, or Airtable */}
-        <span className={"absolute right-2 top-2 rounded-md bg-black/40 backdrop-blur-sm px-2 py-1 text-[9px] font-extrabold shadow-sm " + (automated ? "text-emerald-300" : "text-amber-300")}>
+        <span className={"absolute right-2 top-2 rounded-md bg-black/40 backdrop-blur-sm px-2 py-1 text-[9px] font-extrabold shadow-sm text-right leading-tight " + (automated ? "text-emerald-300" : "text-amber-300")}>
           {automated && lineup
-            ? "Confirmed lineup · " + (lineup.home ? "vs " : "@ ") + lineup.opp + " · " + new Date(lineup.date).toLocaleDateString([], { month: "numeric", day: "numeric" })
+            ? <><span className="block">Confirmed lineup · {(lineup.home ? "vs " : "@ ") + lineup.opp}</span><span className="block text-[8px] font-bold opacity-80">{new Date(lineup.date).toLocaleDateString([], { month: "numeric", day: "numeric" })}</span></>
             : "Projected lineup"}
         </span>
         {(outCount > 0 || gtdCount > 0) && (
