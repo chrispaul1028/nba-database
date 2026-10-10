@@ -271,6 +271,12 @@ function seasonStarted() {
 }
 function seasonsPlayed(p) {
   if (!p.draftYear) return null;
+  // Retired: count through his Last Season column; if it's blank, through the
+  // latest season he has stats for.
+  if (isRetired(p)) {
+    const last = Number(String(p.lastSeason || "").match(/\d{4}/)?.[0]) || (p.stats && p.stats.length ? startYear(p.stats[0].season) : null);
+    return last ? Math.max(0, last - p.draftYear + 1) : null;
+  }
   const nowYear = parseInt(String(CURRENT_SEASON).slice(0, 4), 10);
   const n = nowYear - p.draftYear + (seasonStarted() ? 1 : 0);   // "5 seasons" in Sept, "6 seasons" once the season starts
   return isNaN(n) ? null : Math.max(0, n);
@@ -395,7 +401,8 @@ function Avatar({ p, size }) {
   const url = photoOf(p);
   const [broken, setBroken] = useState(false);
   if (url && !broken) {
-    return <img src={url} alt={p.name} loading="lazy" className={px + " rounded-full object-cover object-top bg-slate-200 shrink-0"} onError={() => setBroken(true)} />;
+    return <img src={url} alt={p.name} loading="lazy" className={px + " rounded-full object-cover object-top bg-slate-200 shrink-0"} onError={() => setBroken(true)}
+      onLoad={(e) => { const im = e.currentTarget; if (im.naturalWidth < 40 || /nophoto|silhouette|placeholder/i.test(im.src)) setBroken(true); }} />;
   }
   const no = cleanNo(p.no);
   const label = no ? "#" + no : p.name.split(" ").map((w) => w[0]).slice(0, 2).join("");
@@ -504,7 +511,9 @@ function ContractCard({ c, big }) {
             return !(isFA && hasOption); // option chip covers it - FA chip is redundant
           })
           .map((y, i) => (
-          <span key={i} className={"text-[11px] font-semibold px-2 py-1 rounded-full " + (BADGE[String(y.type || "").toUpperCase()] || "bg-slate-100 text-slate-500 dark:text-slate-400")}>
+          <span key={i} className={"text-[11px] font-semibold px-2 py-1 rounded-full " + (y.decision && /^(PO|TO)$/i.test(String(y.type || ""))
+              ? (String(y.type).toUpperCase() === "PO" ? "bg-white dark:bg-slate-900 text-green-600 border border-green-500" : "bg-white dark:bg-slate-900 text-red-600 border border-red-500")
+              : (BADGE[String(y.type || "").toUpperCase()] || "bg-slate-100 text-slate-500 dark:text-slate-400"))}>
             {y.season || y.s} · {TYPE_LABEL[y.type] || y.type}
             {y.decision ? " · " + y.decision : ""}
             {y.gtd != null ? " (" + fmtM(y.gtd) + " gtd)" : ""}
@@ -572,7 +581,7 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
               {p.name}
             </div>
             <div className="text-sm opacity-85 font-medium mt-0.5 leading-snug">
-              {[fullTeamName(p, teams), cleanNo(p.no) ? "#" + cleanNo(p.no) : "", POS_WORD(p)].filter(Boolean).join(" · ")}
+              {[isRetired(p) ? (isOverseas(p) ? "Overseas" : "Retired") : fullTeamName(p, teams), cleanNo(p.no) ? "#" + cleanNo(p.no) : "", POS_WORD(p)].filter(Boolean).join(" · ")}
             </div>
             <div className="mt-1.5"><StatusBadge status={effectiveStatus(p)} /></div>
             {!isActiveStatus(p) && injuryDetailOf(p) && (
@@ -589,7 +598,7 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
       </div>
 
       <div className="px-4 -mt-3">
-        <div className="grid grid-cols-3 gap-2">
+        {latestStats(p) && <div className="grid grid-cols-3 gap-2">
           {[["pts", "PTS"], ["reb", "REB"], ["ast", "AST"]].map(([k, lbl]) => {
             const st = latestStats(p); const v = st?.[k];
             const r = players ? leagueRank(players, p, k) : null;
@@ -601,7 +610,7 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
                 borderColor={playerHeaderColor(p)} />
             );
           })}
-        </div>
+        </div>}
 
         {mode === "full" && (p.height || p.weight || p.age || p.draft || p.birthplace || p.draftYear) && (
           <>
