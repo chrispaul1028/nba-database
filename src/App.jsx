@@ -448,9 +448,9 @@ function seasonTick(y) {
 function SalaryBars({ years }) {
   const max = Math.max(...years.map((y) => y.salary ?? 0), 1);
   return (
-    <div className="flex items-end gap-2 h-32 mt-2">
+    <div className="flex items-end justify-around gap-3 h-32 mt-2">
       {years.map((y, i) => (
-        <div key={i} className="flex-1 flex flex-col items-center justify-end h-full">
+        <div key={i} className="flex-1 max-w-[52px] flex flex-col items-center justify-end h-full">
           <div className="text-[11px] font-bold text-slate-700 dark:text-slate-200 mb-1">
             {y.salary == null ? y.type : fmtM(y.salary)}
           </div>
@@ -830,7 +830,9 @@ function GameView({ game, teams, players, onBack, onSelectTeam }) {
           const want = ["MIN", "PTS", "REB", "AST", "STL", "BLK", "TO", "FG", "3PT", "FT", "+/-"];
           const idx = want.map((w) => bx.cols.indexOf(w));
           const c = teamColor(t.abbr);
-          const rows = bx.rows.filter((r) => !r.dnp);
+          const minIdx = bx.cols.indexOf("MIN");
+          const mins = (r) => { const v = String(r.stats[minIdx] ?? "0"); const [m, sec] = v.split(":"); return Number(m) + (sec ? Number(sec) / 60 : 0); };
+          const rows = bx.rows.filter((r) => !r.dnp).sort((a, b) => (b.starter - a.starter) || (mins(b) - mins(a)));
           const dnp = bx.rows.filter((r) => r.dnp);
           return (
             <div>
@@ -1033,7 +1035,7 @@ function PlayersTab({ players, onSelect, pills, forceInj, title }) {
       <div className="px-4 pb-28 mt-4">
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
           {list.map((p) => (
-            <button key={p.id} onClick={() => onSelect(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
+            <button key={p.id} onClick={() => onSelect(p)} className="w-full flex items-start gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
               {(() => { const ab = teamOfPlayer(p) || toAbbr(p.teamName) || toAbbr(activeOf(p)?.team); return (
                 <span className="w-12 shrink-0 text-center text-[11px] font-extrabold text-white rounded-md py-1 tabular-nums" style={{ backgroundColor: ab ? teamColor(ab) : "#64748b" }}>
                   {cleanNo(p.no) ? "#" + cleanNo(p.no) : "—"}
@@ -1164,13 +1166,13 @@ function EventPill({ ev, withDate, noYear }) {
   const cls = EVENT_COLORS[ev.kind] || EVENT_COLORS.UFA;
   const dl = withDate && (ev.kind === "PO" || ev.kind === "TO") ? eventDeadline(ev) : null; // deadlines are for options only
   return (
-    <span className="inline-flex items-center gap-1.5 min-w-0">
+    <span className="inline-flex flex-wrap items-center gap-1.5 min-w-0">
       <span className={"inline-flex shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wide " + cls}>
         {ev.kind === "UFA"
           ? <>Free Agent{noYear ? "" : " " + (startYear(ev.season) ?? seasonTick({ season: ev.season }))}</>
           : <>{EVENT_WORDS[ev.kind] || ev.kind} {seasonTick({ season: ev.season })}</>}
       </span>
-      {dl && <span className="text-[9px] font-semibold text-slate-400 truncate">(deadline {dl.label})</span>}
+      {dl && <span className="text-[9px] font-semibold text-slate-400 whitespace-nowrap">(deadline {dl.label})</span>}
     </span>
   );
 }
@@ -1530,11 +1532,14 @@ function pickStartingFive(roster, abbr) {
     const grp = { C: [], F: [], G: [] };
     for (const p of espnFive) { const e = espnPos(p); const k = e.startsWith("C") ? "C" : e.startsWith("F") ? "F" : e.startsWith("G") ? "G" : (POS_ALIASES.C.includes(courtPos(p)) ? "C" : /F/.test(courtPos(p)) ? "F" : "G"); grp[k].push(p); }
     // more than one C → the taller stays at C, the other plays PF; more than two of a kind spill to the neighbor group
-    grp.C.sort((a, b) => heightIn(b) - heightIn(a)); while (grp.C.length > 1) grp.F.unshift(grp.C.pop());
-    grp.F.sort((a, b) => rankIn(a) - rankIn(b)); while (grp.F.length > 2) { const x = grp.F.pop(); if (!grp.C.length) grp.C.push(x); else grp.G.push(x); }
-    grp.G.sort((a, b) => rankIn(a) - rankIn(b)); while (grp.G.length > 2) grp.F.push(grp.G.pop());
-    grp.F.sort((a, b) => rankIn(a) - rankIn(b));                            // a guard who spilled to F still goes by his Airtable number
-    if (!grp.C.length && grp.F.length) grp.C.push(grp.F.pop());            // no center listed → the bigger forward is the 5
+    const tall = (a, b) => heightIn(b) - heightIn(a);                       // tallest first
+    grp.C.sort(tall); while (grp.C.length > 1) grp.F.push(grp.C.pop());     // extra C → plays PF
+    grp.F.sort(tall); while (grp.F.length > 2) { const x = grp.F.pop(); if (!grp.C.length) grp.C.push(grp.F.shift()), grp.F.push(x); else grp.G.push(x); }   // 3 forwards: tallest to C if none, else shortest to G
+    grp.G.sort(tall); while (grp.G.length > 2) grp.F.push(grp.G.shift());   // 3 guards: the TALLEST moves to forward
+    if (!grp.C.length && grp.F.length) { grp.F.sort(tall); grp.C.push(grp.F.shift()); }   // no center listed → tallest forward is the 5
+    while (grp.F.length < 2 && grp.G.length > 2) grp.F.push(grp.G.shift());
+    grp.F.sort((a, b) => heightIn(a) - heightIn(b));                        // SF = shorter forward, PF = taller
+    grp.G.sort((a, b) => rankIn(a) - rankIn(b) || heightIn(a) - heightIn(b)); // PG = lower Airtable number, else shorter
     const plan = [["C", grp.C[0]], ["SF", grp.F[0]], ["PF", grp.F[1]], ["PG", grp.G[0]], ["SG", grp.G[1]]];
     for (const [lbl, p] of plan) { if (!p) continue; const i = slotIdx(lbl); if (i >= 0 && !assigned[i]) take(i, p); }
     for (const p of espnFive) { if (used.has(p.id)) continue; const i = assigned.findIndex((x) => !x); if (i >= 0) take(i, p); }
@@ -1770,9 +1775,9 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
               style={{ left: s.x + "%", top: s.y + "%", transform: "translate(-50%, -50%)", animation: `hrbPop .35s ease-out ${i * 45}ms both` }}>
               <span className="relative">
                 {p && photoOf(p) ? (
-                  <img src={photoOf(p)} alt="" loading="lazy" className={"w-14 h-14 rounded-full object-cover object-top bg-white border-[3px] shadow-md " + ringCls(p)} />
+                  <img src={photoOf(p)} alt="" loading="lazy" className={"w-16 h-16 rounded-full object-cover object-top bg-white border-[3px] shadow-md " + ringCls(p)} />
                 ) : (
-                  <span className={"w-14 h-14 rounded-full flex items-center justify-center text-[11px] font-extrabold shadow-md border-[3px] " + ringCls(p) + (p ? " bg-white/90 text-slate-700" : " bg-white/20 text-white/70 border-dashed")}>
+                  <span className={"w-16 h-16 rounded-full flex items-center justify-center text-[11px] font-extrabold shadow-md border-[3px] " + ringCls(p) + (p ? " bg-white/90 text-slate-700" : " bg-white/20 text-white/70 border-dashed")}>
                     {p ? lastNameOf(p).slice(0, 3).toUpperCase() : s.lbl}
                   </span>
                 )}
@@ -1814,9 +1819,9 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
                 <span className="relative">
                   {photoOf(p) ? (
                     <img src={photoOf(p)} alt="" loading="lazy"
-                      className={"w-12 h-12 rounded-full object-cover object-top bg-white border-[3px] " + ringCls(p).replace("border-white", "border-slate-200 dark:border-slate-700")} />
+                      className={"w-[60px] h-[60px] rounded-full object-cover object-top bg-white border-[3px] " + ringCls(p).replace("border-white", "border-slate-200 dark:border-slate-700")} />
                   ) : (
-                    <span className={"w-12 h-12 rounded-full flex items-center justify-center text-[9px] font-extrabold bg-slate-100 dark:bg-slate-800 text-slate-500 border-[3px] " + ringCls(p).replace("border-white", "border-slate-200 dark:border-slate-700")}>
+                    <span className={"w-[60px] h-[60px] rounded-full flex items-center justify-center text-[9px] font-extrabold bg-slate-100 dark:bg-slate-800 text-slate-500 border-[3px] " + ringCls(p).replace("border-white", "border-slate-200 dark:border-slate-700")}>
                       {lastNameOf(p).slice(0, 3).toUpperCase()}
                     </span>
                   )}
