@@ -216,16 +216,16 @@ const total = (c) => salaried(c).reduce((a, y) => a + y.salary, 0);
 const terms = (c) => salaried(c).length + " yrs / " + fmtM(total(c));
 const displayLine = (c) => terms(c) + (c.team ? " (" + c.team + ")" : "") + " · " + c.kind;
 // Same line, but the signing team shows as a small logo instead of "(ATL)".
-function ContractLine({ c }) {
+function ContractLine({ c, noTerms }) {
   const abbr = toAbbr(c.team) || String(c.team || "").toUpperCase();
   const logo = abbr ? TEAM_LOGOS[abbr] : null;
   return (
     <span className="inline-flex items-center gap-1 min-w-0">
-      <span className="shrink-0">{terms(c)}</span>
+      {!noTerms && <span className="shrink-0">{terms(c)}</span>}
       {abbr && (logo
         ? <img src={logo} alt={abbr} title={c.team} className="w-4 h-4 object-contain shrink-0" style={logoTrim(abbr)} />
         : <span className="text-[9px] font-extrabold text-slate-400 shrink-0">{abbr}</span>)}
-      <span className="truncate">· {c.kind}</span>
+      <span className="truncate">{noTerms ? "" : "· "}{c.kind}</span>
     </span>
   );
 }
@@ -1533,6 +1533,7 @@ function pickStartingFive(roster, abbr) {
     grp.C.sort((a, b) => heightIn(b) - heightIn(a)); while (grp.C.length > 1) grp.F.unshift(grp.C.pop());
     grp.F.sort((a, b) => rankIn(a) - rankIn(b)); while (grp.F.length > 2) { const x = grp.F.pop(); if (!grp.C.length) grp.C.push(x); else grp.G.push(x); }
     grp.G.sort((a, b) => rankIn(a) - rankIn(b)); while (grp.G.length > 2) grp.F.push(grp.G.pop());
+    grp.F.sort((a, b) => rankIn(a) - rankIn(b));                            // a guard who spilled to F still goes by his Airtable number
     if (!grp.C.length && grp.F.length) grp.C.push(grp.F.pop());            // no center listed → the bigger forward is the 5
     const plan = [["C", grp.C[0]], ["SF", grp.F[0]], ["PF", grp.F[1]], ["PG", grp.G[0]], ["SG", grp.G[1]]];
     for (const [lbl, p] of plan) { if (!p) continue; const i = slotIdx(lbl); if (i >= 0 && !assigned[i]) take(i, p); }
@@ -2446,9 +2447,11 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
             </div>
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
               {(() => { const fe = new Set(faEligible(roster).map((x) => x.id)); const dlT = (p) => { const ev = nextEvent(p); const d = ev ? eventDeadline(ev) : null; return d && d.date ? d.date.getTime() : Infinity; };
+                const lu = lineupOf(roster, abbr); const slot = {}; lu.starters.forEach((x, i) => { slot[x.p.id] = i; });
+                const starterOrder = (a, b) => ((slot[a.id] ?? 9) - (slot[b.id] ?? 9)) || (mpgOf(b) - mpgOf(a)) || a.name.localeCompare(b.name);
                 return roster.slice().sort((a, b) => faOnly
-                  ? (fe.has(b.id) - fe.has(a.id)) || (dlT(a) - dlT(b)) || currentSalary(b) - currentSalary(a)
-                  : currentSalary(b) - currentSalary(a) || a.name.localeCompare(b.name)); })()
+                  ? (fe.has(b.id) - fe.has(a.id)) || (dlT(a) - dlT(b)) || starterOrder(a, b)
+                  : starterOrder(a, b)); })()
                 .map((p) => {
                   const act = activeOf(p);
                   const hot = faOnly && faEligible(roster).some((x) => x.id === p.id);   // free agent this coming summer
@@ -2459,7 +2462,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
                       <span className="flex-1 min-w-0">
                         <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{p.name}</span>
                         <span className="block text-[11px] text-slate-400 font-medium truncate">
-                          {act ? <ContractLine c={act} /> : "No contract"}
+                          {act ? <ContractLine c={act} noTerms /> : "No contract"}
                         </span>
                         {nextEvent(p) && (
                           <span className="block mt-1"><EventPill ev={nextEvent(p)} withDate={!faOnly} noYear={faOnly} /></span>
@@ -2469,7 +2472,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
                         {faOnly ? (() => { const ev = nextEvent(p); const dl = ev ? eventDeadline(ev) : null; return dl ? (
                           <span className={"block text-xs font-extrabold tabular-nums " + (hot ? "text-slate-900 dark:text-white" : "text-slate-400")}>{dl.label}</span>
                         ) : <span className="text-xs font-extrabold text-slate-400">—</span>; })()
-                        : <span className="text-xs font-extrabold text-slate-700 dark:text-slate-200">{currentSalary(p) > 0 ? fmtM(currentSalary(p)) : "—"}</span>}
+                        : <span className="text-xs font-extrabold text-slate-700 dark:text-slate-200 whitespace-nowrap">{act ? terms(act) : "—"}</span>}
                       </span>
                     </button>
                   );
@@ -2876,7 +2879,7 @@ function TonightTab({ players, teams, onSelect, onSelectTeam, onOpenGame }) {
                 <img src={t.logo || TEAM_LOGOS[t.abbr] || ""} alt="" className="w-16 h-16 object-contain" style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.4))", ...logoOnColor(t.abbr) }} />
                 <div className="mt-1 text-sm font-extrabold text-white tracking-wide">{t.abbr}</div>
                 <div className="text-[11px] font-semibold text-white/75 tabular-nums">{t.record || ""}</div>
-                {hurt > 0 && <div className="text-[9px] font-extrabold text-red-200">{hurt} on report</div>}
+
               </div>
             );
             return (
