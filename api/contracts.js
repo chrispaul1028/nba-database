@@ -41,6 +41,7 @@ const FIELDS = {
   playerDraftPick: ["Draft Pick", "Pick", "Pick No", "Pick Number"],
   playerBirthplace: ["Birthplace", "Birth Place", "Born", "Hometown"],
   playerDob: ["DOB", "Date of Birth", "Birthdate", "Birth Date", "Birthday"],
+  playerLastSeason: ["Last Season", "Retired", "Retired Year", "Final Season", "Retirement Year"],
   playerReturnDate: ["Return Date", "Est Return", "Estimated Return", "Estimated Return Date"],
   playerCollege: ["College", "School", "College/Country"],
   playerAwards: ["Awards", "Accolades", "Honors"],
@@ -378,6 +379,7 @@ export default async function handler(req, res) {
         injuryNotes: asText(getField(p.fields, FIELDS.playerInjury)),
         returnDate: asText(getField(p.fields, FIELDS.playerReturnDate)),
         dob: asText(getField(p.fields, FIELDS.playerDob)),
+        lastSeason: asText(getField(p.fields, FIELDS.playerLastSeason)),
         photo: photoUrl(getField(p.fields, FIELDS.playerPhoto)) || findAnyPhoto(p.fields),
         height: asText(getField(p.fields, FIELDS.playerHeight)),
         weight: asText(getField(p.fields, FIELDS.playerWeight)),
@@ -403,7 +405,7 @@ export default async function handler(req, res) {
       .sort((a, b) => a.name.localeCompare(b.name));
 
     res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
-    return res.status(200).json({ apiVersion: "v32.0", players: out, teams: teamsOut });
+    return res.status(200).json({ apiVersion: "v33.0", players: out, teams: teamsOut });
   } catch (e) {
     return res.status(500).json({ error: String(e.message || e) });
   }
