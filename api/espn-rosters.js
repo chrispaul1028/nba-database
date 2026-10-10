@@ -19,15 +19,19 @@ const nrm = (s) => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, 
 // ESPN keeps every player's last headshot, found by searching the name.
 async function lookupHeadshots(names) {
   const out = {};
+  const norm = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z ]/g, "").replace(/\s+/g, " ").trim();
   await Promise.all(names.slice(0, 40).map(async (n) => {
     try {
-      const r = await fetch(`https://site.web.api.espn.com/apis/common/v3/search?query=${encodeURIComponent(n)}&limit=5&type=player&sport=basketball`, { headers: { accept: "application/json" } });
+      const r = await fetch(`https://site.web.api.espn.com/apis/search/v2?query=${encodeURIComponent(n)}&limit=10`, { headers: { accept: "application/json" } });
       if (!r.ok) return;
       const d = await r.json();
-      const hits = (d.items || d.results || []).flatMap((x) => x.contents || x.items || [x]);
-      const hit = hits.find((h) => /nba/i.test(JSON.stringify(h.defaultLeagueSlug || h.sport || h.league || "")) ) || hits[0];
-      const id = hit?.id || (hit?.uid || "").split(":").pop();
-      if (id) out[n] = `https://a.espncdn.com/i/headshots/nba/players/full/${id}.png`;
+      const players = (d.results || []).filter((x) => x.type === "player").flatMap((x) => x.contents || []);
+      // NBA players only (league id 46), best name match first
+      const nba = players.filter((c) => /l:46\b/.test(String(c.uid || "")) || /nba/i.test(String(c.defaultLeagueSlug || "")));
+      const exact = nba.find((c) => norm(c.displayName) === norm(n)) || nba[0];
+      if (!exact) return;
+      const id = String(exact.uid || "").split("a:").pop() || exact.id;
+      out[n] = exact.image?.default || (id ? `https://a.espncdn.com/i/headshots/nba/players/full/${id}.png` : null);
     } catch {}
   }));
   return out;
