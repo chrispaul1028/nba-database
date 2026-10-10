@@ -193,6 +193,10 @@ const teamColor = (abbr) => TEAM_COLORS[String(abbr).toUpperCase()] || "#334155"
 // the inner circle so only the ball shows. Spread onto any logo <img>.
 const LOGO_TRIM = { ORL: { clipPath: "circle(38% at 50% 50%)", transform: "scale(1.3)" } };
 const logoTrim = (abbr) => LOGO_TRIM[String(abbr || "").toUpperCase()] || {};
+// Logos drawn on top of their own team color: Houston's red mark vanishes on
+// red, so it renders white there. Everything else is unchanged.
+const ON_OWN_COLOR_WHITE = new Set(["HOU"]);
+const logoOnColor = (abbr) => ({ ...logoTrim(abbr), ...(ON_OWN_COLOR_WHITE.has(String(abbr || "").toUpperCase()) ? { filter: "brightness(0) invert(1) drop-shadow(0 2px 4px rgba(0,0,0,0.4))" } : {}) });
 // Current-team color first; falls back to the contract team if no current team.
 function playerHeaderColor(p) {
   if (HEADER_COLOR !== "team") return HEADER_COLOR;
@@ -751,7 +755,7 @@ function GameView({ game, teams, players, onBack, onSelectTeam }) {
   const teamByAbbr = (ab) => (teams || []).find((t) => (t.abbr || toAbbr(t.name)) === ab);
   const Side = ({ t, color, right }) => (
     <button onClick={() => { const tm = teamByAbbr(t.abbr); if (tm && onSelectTeam) onSelectTeam(tm); }} className={"flex flex-col items-center w-28 " + (right ? "items-end" : "items-start")}>
-      <img src={t.logo || TEAM_LOGOS[t.abbr] || ""} alt="" className="w-24 h-24 object-contain" style={{ filter: "drop-shadow(0 3px 6px rgba(0,0,0,0.45))", ...logoTrim(t.abbr) }} />
+      <img src={t.logo || TEAM_LOGOS[t.abbr] || ""} alt="" className="w-24 h-24 object-contain" style={{ filter: "drop-shadow(0 3px 6px rgba(0,0,0,0.45))", ...logoOnColor(t.abbr) }} />
       <div className="mt-1 text-xl font-extrabold text-white tracking-wide">{t.abbr}</div>
       <div className="text-xs font-semibold text-white/75 tabular-nums">{t.record || ""}</div>
     </button>
@@ -836,7 +840,7 @@ function GameView({ game, teams, players, onBack, onSelectTeam }) {
                   <button key={x.abbr} onClick={() => setBoxTeam(x.abbr)}
                     className={"flex-1 py-2 rounded-full text-sm font-extrabold border flex items-center justify-center gap-2 " + (boxTeam === x.abbr ? "text-white border-transparent" : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-800")}
                     style={boxTeam === x.abbr ? { backgroundColor: teamColor(x.abbr) } : undefined}>
-                    <img src={x.logo || TEAM_LOGOS[x.abbr] || ""} alt="" className="w-5 h-5 object-contain" style={logoTrim(x.abbr)} />{x.abbr}
+                    <img src={x.logo || TEAM_LOGOS[x.abbr] || ""} alt="" className="w-5 h-5 object-contain" style={boxTeam === x.abbr ? logoOnColor(x.abbr) : logoTrim(x.abbr)} />{x.abbr}
                   </button>
                 ))}
               </div>
@@ -851,7 +855,7 @@ function GameView({ game, teams, players, onBack, onSelectTeam }) {
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                       {rows.map((r, i) => (
-                        <tr key={r.id || i} className={r.starter ? "text-slate-900 dark:text-white font-semibold" : "text-slate-500 dark:text-slate-400"}>
+                        <tr key={r.id || i} className={"text-slate-900 dark:text-white " + (r.starter ? "font-bold" : "font-medium")}>
                           <td className="px-3 py-2 sticky left-0 bg-white dark:bg-slate-900 whitespace-nowrap">
                             <span className="font-bold text-slate-900 dark:text-white">{r.name}</span>
                             <span className="ml-1 text-[9px] font-semibold text-slate-400">{r.pos}{r.starter ? " · S" : ""}</span>
@@ -874,7 +878,7 @@ function GameView({ game, teams, players, onBack, onSelectTeam }) {
               {g.plays.slice(0, 15).map((pl) => (
                 <div key={pl.id} className="flex items-start gap-3 px-4 py-2.5" style={{ borderLeft: "3px solid " + (pl.team ? teamColor(pl.team) : "transparent") }}>
                   <span className="flex-1 min-w-0">
-                    <span className={"block text-[12px] leading-snug " + (pl.scoring ? "font-bold text-slate-900 dark:text-white" : "text-slate-600 dark:text-slate-300")}>{pl.text}</span>
+                    <span className={"block text-[12px] leading-snug text-slate-900 dark:text-white " + (pl.scoring ? "font-bold" : "font-normal")}>{pl.text}</span>
                     <span className="block text-[10px] text-slate-400 mt-0.5">{pl.period ? "Q" + pl.period + " " : ""}{pl.clock}</span>
                   </span>
                   {pl.scoring && pl.away != null && <span className="text-[12px] font-extrabold text-slate-700 dark:text-slate-200 tabular-nums shrink-0">{pl.away}–{pl.home}</span>}
@@ -2869,7 +2873,7 @@ function TonightTab({ players, teams, onSelect, onSelectTeam, onOpenGame }) {
             const hurtA = hurtOn(g.away.abbr).length, hurtH = hurtOn(g.home.abbr).length;
             const Side = ({ t, hurt, right }) => (
               <div className={"flex flex-col items-center w-24 shrink-0 " + (right ? "items-end" : "items-start")}>
-                <img src={t.logo || TEAM_LOGOS[t.abbr] || ""} alt="" className="w-16 h-16 object-contain" style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.4))", ...logoTrim(t.abbr) }} />
+                <img src={t.logo || TEAM_LOGOS[t.abbr] || ""} alt="" className="w-16 h-16 object-contain" style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.4))", ...logoOnColor(t.abbr) }} />
                 <div className="mt-1 text-sm font-extrabold text-white tracking-wide">{t.abbr}</div>
                 <div className="text-[11px] font-semibold text-white/75 tabular-nums">{t.record || ""}</div>
                 {hurt > 0 && <div className="text-[9px] font-extrabold text-red-200">{hurt} on report</div>}
