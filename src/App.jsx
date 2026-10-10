@@ -188,7 +188,18 @@ function toAbbr(team) {
   if (TEAM_COLORS[t.toUpperCase()]) return t.toUpperCase();
   return NAME_TO_ABBR[t.toLowerCase()] || "";
 }
-const teamColor = (abbr) => TEAM_COLORS[String(abbr).toUpperCase()] || "#334155";
+// Franchises that moved or renamed: draft-team codes map to today's logo and colors
+const HIST_ABBR = { VAN: "MEM", NJ: "BKN", NJN: "BKN", SEA: "OKC", NOH: "NOP", NOK: "NOP", CHH: "CHA", WSB: "WSH", KCK: "SAC", SDC: "LAC", BUF: "LAC", SAN: "SAS", NOJ: "UTAH" };
+const modernAbbr = (abbr) => { const u = String(abbr || "").toUpperCase(); return HIST_ABBR[u] || u; };
+// Same team, different spellings (ESPN vs Airtable vs Basketball-Reference)
+const ABBR_VARIANTS = { BKN: ["BKN", "BRK", "NJN", "NJ"], GSW: ["GSW", "GS"], NOP: ["NOP", "NO", "NOH", "NOK"], SAS: ["SAS", "SA"], UTAH: ["UTAH", "UTA"], WSH: ["WSH", "WAS"], PHX: ["PHX", "PHO"], NY: ["NY", "NYK"], CHA: ["CHA", "CHO", "CHH"], MEM: ["MEM", "VAN"], OKC: ["OKC", "SEA"], LAC: ["LAC", "SDC"], SAC: ["SAC", "KCK"] };
+function logoFor(abbr) {
+  const m = modernAbbr(abbr);
+  const tries = [String(abbr || "").toUpperCase(), m, ...(ABBR_VARIANTS[m] || []), ...Object.entries(ABBR_VARIANTS).filter(([, v]) => v.includes(m)).flatMap(([k, v]) => [k, ...v])];
+  for (const t of tries) if (TEAM_LOGOS[t]) return TEAM_LOGOS[t];
+  return null;
+}
+const teamColor = (abbr) => TEAM_COLORS[modernAbbr(abbr)] || "#334155";
 // Per-team logo trims. Orlando's artwork carries a heavy black ring; clip to
 // the inner circle so only the ball shows. Spread onto any logo <img>.
 const LOGO_TRIM = { ORL: { clipPath: "circle(38% at 50% 50%)", transform: "scale(1.3)" } };
@@ -382,8 +393,9 @@ function useSwipe(onLeft, onRight) {
 function Avatar({ p, size }) {
   const px = size === "xl" ? "w-28 h-28 text-3xl ring-4 ring-white/80" : size === "lg" ? "w-20 h-20 text-2xl" : "w-14 h-14 text-base"; // every list view uses the same 56px photo
   const url = photoOf(p);
-  if (url) {
-    return <img src={url} alt={p.name} loading="lazy" className={px + " rounded-full object-cover object-top bg-slate-200 shrink-0"} onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />;
+  const [broken, setBroken] = useState(false);
+  if (url && !broken) {
+    return <img src={url} alt={p.name} loading="lazy" className={px + " rounded-full object-cover object-top bg-slate-200 shrink-0"} onError={() => setBroken(true)} />;
   }
   const no = cleanNo(p.no);
   const label = no ? "#" + no : p.name.split(" ").map((w) => w[0]).slice(0, 2).join("");
@@ -696,7 +708,7 @@ const STANDINGS_PHASE = { v: "regular" }; // "preseason" until opening night
 function TeamPill({ team }) {
   const abbr = toAbbr(team) || team;
   if (!abbr) return null;
-  const logo = TEAM_LOGOS[abbr];
+  const logo = logoFor(abbr);
   if (logo) {
     return <img src={logo} alt={abbr} className="w-11 h-11 object-contain shrink-0" style={logoTrim(abbr)} />;
   }
@@ -1602,20 +1614,30 @@ function pickStartingFive(roster, abbr) {
     // Airtable number, then height (taller → PF / C).
     const lu = LINEUPS[String(abbr || "").toUpperCase()];
     const espnPos = (p) => { const hit = (lu?.starters || []).find((a) => espnNrm(a.name) === espnNrm(p.name) || espnNrm(a.name).split(" ").pop() === espnNrm(p.name).split(" ").pop()); return String(hit?.pos || "").toUpperCase(); };
-    const rankIn = (p) => (Number(p.sort) || 99) * 1000 - heightIn(p);
+    // Position score: Sort Priority (1 PG … 5 C) if set, else the Airtable
+    // label, else height. Luka is a 1 no matter how tall he is.
+    const LBL_SCORE = { PG: 1, G: 1.5, SG: 2, "G-F": 2.5, SF: 3, F: 3.5, "F-G": 3, PF: 4, "F-C": 4.5, "C-F": 4.5, C: 5 };
+    const posScore = (p) => Number(p.sort) || LBL_SCORE[courtPos(p)] || (heightIn(p) >= 82 ? 4.5 : heightIn(p) >= 79 ? 3.5 : 2);
+    const rankIn = (p) => posScore(p) * 1000 + heightIn(p);
     const grp = { C: [], F: [], G: [] };
     for (const p of espnFive) { const e = espnPos(p); const k = e.startsWith("C") ? "C" : e.startsWith("F") ? "F" : e.startsWith("G") ? "G" : (POS_ALIASES.C.includes(courtPos(p)) ? "C" : /F/.test(courtPos(p)) ? "F" : "G"); grp[k].push(p); }
     // more than one C → the taller stays at C, the other plays PF; more than two of a kind spill to the neighbor group
-    const tall = (a, b) => heightIn(b) - heightIn(a);                       // tallest first
-    grp.C.sort(tall); while (grp.C.length > 1) grp.F.push(grp.C.pop());     // extra C → plays PF
-    grp.F.sort(tall); while (grp.F.length > 2) { const x = grp.F.pop(); if (!grp.C.length) grp.C.push(grp.F.shift()), grp.F.push(x); else grp.G.push(x); }   // 3 forwards: tallest to C if none, else shortest to G
-    grp.G.sort(tall); while (grp.G.length > 2) grp.F.push(grp.G.shift());   // 3 guards: the TALLEST moves to forward
-    if (!grp.C.length && grp.F.length) { grp.F.sort(tall); grp.C.push(grp.F.shift()); }   // no center listed → tallest forward is the 5
-    while (grp.F.length < 2 && grp.G.length > 2) grp.F.push(grp.G.shift());
-    grp.F.sort((a, b) => heightIn(a) - heightIn(b));                        // SF = shorter forward, PF = taller
-    grp.G.sort((a, b) => rankIn(a) - rankIn(b) || heightIn(a) - heightIn(b)); // PG = lower Airtable number, else shorter
+    const byScore = (a, b) => rankIn(a) - rankIn(b);                        // most guard-like first
+    grp.C.sort(byScore); while (grp.C.length > 1) grp.F.push(grp.C.shift()); // extra C → the more forward-like one plays PF
+    grp.F.sort(byScore); while (grp.F.length > 2) { if (!grp.C.length) grp.C.push(grp.F.pop()); else grp.G.push(grp.F.shift()); }   // 3 forwards: most center-like to C if empty, else most guard-like to G
+    grp.G.sort(byScore); while (grp.G.length > 2) grp.F.unshift(grp.G.pop()); // 3 guards: the most forward-like one (highest number) moves up
+    if (!grp.C.length && grp.F.length) { grp.F.sort(byScore); grp.C.push(grp.F.pop()); }   // no center listed → most center-like forward is the 5
+    while (grp.F.length < 2 && grp.G.length > 2) grp.F.unshift(grp.G.pop());
+    grp.F.sort(byScore);                                                    // SF = lower number, PF = higher
+    grp.G.sort(byScore);                                                    // PG = lower number (1), SG = 2
+    // Your Airtable number wins first: a 1 is the point guard no matter how
+    // tall he is (Dončić, Conley). Only the leftover starters go by ESPN's
+    // G/F/C and height.
+    for (const p of espnFive) { const lbl = SLOT_OF_SORT[Number(p.sort)]; const i = lbl ? slotIdx(lbl) : -1; if (i >= 0 && !assigned[i]) take(i, p); }
     const plan = [["C", grp.C[0]], ["SF", grp.F[0]], ["PF", grp.F[1]], ["PG", grp.G[0]], ["SG", grp.G[1]]];
-    for (const [lbl, p] of plan) { if (!p) continue; const i = slotIdx(lbl); if (i >= 0 && !assigned[i]) take(i, p); }
+    for (const [lbl, p] of plan) { if (!p || used.has(p.id)) continue; const i = slotIdx(lbl); if (i >= 0 && !assigned[i]) take(i, p); }
+    // anyone still standing: nearest open slot by position, else any open slot
+    for (const p of espnFive) { if (used.has(p.id)) continue; const i = COURT_SLOTS.findIndex((s, k) => !assigned[k] && POS_ALIASES[s.lbl].includes(courtPos(p))); if (i >= 0) take(i, p); }
     for (const p of espnFive) { if (used.has(p.id)) continue; const i = assigned.findIndex((x) => !x); if (i >= 0) take(i, p); }
   } else {
     // Airtable: Role = Starter, slot = Sort Priority
@@ -2472,7 +2494,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
               {(faTeam ? members.slice().sort((a, b) => currentSalary(b) - currentSalary(a)) : members)
                 .map((p) => (
                   <button key={p.id} onClick={() => onSelectPlayer(p)} className="w-full flex items-start gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
-                    <span className="w-7 text-center text-[12px] font-extrabold uppercase shrink-0 text-slate-900 dark:text-white">{p._slot || courtPos(p) || "—"}</span>
+                    <span className="w-7 text-center text-[12px] font-extrabold uppercase shrink-0 text-slate-900 dark:text-white self-center">{p._slot || courtPos(p) || "—"}</span>
                     <Avatar p={p} size="md" />
                     <span className="flex-1 min-w-0">
                       <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
@@ -2797,7 +2819,9 @@ function DraftTab({ players, onSelect, pills }) {
                               <span className="text-[11px] text-slate-400 font-medium truncate">{p.college || "—"}</span>
                             </span>
                           </span>
-                          {TEAM_LOGOS[ab] ? <img src={TEAM_LOGOS[ab]} alt="" className="w-11 h-11 object-contain shrink-0" style={logoTrim(ab)} /> : <TeamPill team={ab} />}
+                          {logoFor(ab)
+                            ? <span className="flex flex-col items-center shrink-0 w-12"><img src={logoFor(ab)} alt="" className="w-11 h-11 object-contain" style={logoTrim(modernAbbr(ab))} />{modernAbbr(ab) !== String(ab).toUpperCase() && <span className="text-[9px] font-bold text-slate-400 leading-none mt-0.5">{ab}</span>}</span>
+                            : <TeamPill team={ab} />}
                         </button>
                       );
                     })}
