@@ -712,9 +712,10 @@ function TeamPill({ team }) {
 // same hub the NFL app uses, so the bottom nav stays at four buttons.
 function PlayersHub({ players, teams, onSelect, injury }) {
   const [view, setView] = useState("players");
+  const [newsView, setNewsView] = useState("report");
   const pills = (
     <div className="flex gap-2 mt-3 overflow-x-auto pt-1.5" style={{ scrollbarWidth: "none" }}>
-      {[["players", "Active"], ["injury", "🏥 News"], ["transactions", "Transactions"], ["contracts", "Contracts"], ["draft", "Draft"], ["retired", "Retired / Overseas"]].map(([k, lbl]) => (
+      {[["players", "Active"], ["injury", "🏥 News"], ["contracts", "Contracts"], ["draft", "Draft"], ["retired", "Retired / Overseas"]].map(([k, lbl]) => (
         <button key={k} onClick={() => setView(k)}
           className={"relative shrink-0 px-3.5 py-1.5 rounded-full text-[11px] font-extrabold " + (view === k ? "bg-white text-blue-700" : "bg-blue-500/60 text-blue-100 active:bg-blue-500")}>
           {lbl}
@@ -725,9 +726,25 @@ function PlayersHub({ players, teams, onSelect, injury }) {
   );
   if (view === "contracts") return <ContractsTab players={players} onSelect={onSelect} pills={pills} />;
   if (view === "draft") return <DraftTab players={players} onSelect={onSelect} pills={pills} />;
-  if (view === "injury") return <InjuryFeed players={players} teams={teams} onSelect={onSelect} pills={pills} feed={injury.feed} markSeen={injury.markSeen} />;
+  if (view === "injury") {
+    const sub = (
+      <>
+        {pills}
+        <div className="flex gap-2 mt-2">
+          {[["report", "Injury Report"], ["transactions", "Transactions"]].map(([k, lbl]) => (
+            <button key={k} onClick={() => setNewsView(k)}
+              className={"relative shrink-0 px-3.5 py-1.5 rounded-full text-[11px] font-extrabold " + (newsView === k ? "bg-white text-blue-700" : "bg-blue-500/60 text-blue-100 active:bg-blue-500")}>
+              {lbl}{k === "report" && <Badge n={injury.unseen} />}
+            </button>
+          ))}
+        </div>
+      </>
+    );
+    return newsView === "transactions"
+      ? <TransactionsFeed players={players} teams={teams} onSelect={onSelect} pills={sub} />
+      : <InjuryFeed players={players} teams={teams} onSelect={onSelect} pills={sub} feed={injury.feed} markSeen={injury.markSeen} />;
+  }
   if (view === "retired") return <PlayersTab players={players.filter(isRetired)} onSelect={onSelect} pills={pills} title="Retired / Overseas" key={view} />;
-  if (view === "transactions") return <TransactionsFeed players={players} teams={teams} onSelect={onSelect} pills={pills} />;
   return <PlayersTab players={players.filter((p) => !isRetired(p))} onSelect={onSelect} pills={pills} title="Active Players" key={view} />;
 }
 
@@ -1223,7 +1240,7 @@ function EventPill({ ev, withDate, noYear }) {
   const cls = EVENT_COLORS[ev.kind] || EVENT_COLORS.UFA;
   const dl = withDate && (ev.kind === "PO" || ev.kind === "TO") ? eventDeadline(ev) : null; // deadlines are for options only
   return (
-    <span className="inline-flex flex-wrap items-center gap-1.5 min-w-0">
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
       <span className={"inline-flex shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wide " + cls}>
         {ev.kind === "UFA"
           ? <>Free Agent{noYear ? "" : " " + (startYear(ev.season) ?? seasonTick({ season: ev.season }))}</>
@@ -1649,7 +1666,9 @@ function lineupOf(roster, abbr) {
   const bench = notFive.filter((p) => !isTwoWay(p) && !isCamp(p));
   const camp = [...notFive.filter((p) => isCamp(p) && !isTwoWay(p)), ...notFive.filter(isTwoWay)];
   const benchGroups = [["Bench", bench], ["Camp & Two-Way", camp]].filter(([, l]) => l.length);
-  return { ...r, benchGroups, bench: notFive, starters: COURT_SLOTS.map((s, i) => ({ slot: s.lbl, p: r.assigned[i] })).filter((x) => x.p) };
+  const LIST_ORDER = ["PG", "SG", "SF", "PF", "C"];
+  const starters = COURT_SLOTS.map((s, i) => ({ slot: s.lbl, p: r.assigned[i] })).filter((x) => x.p).sort((a, b) => LIST_ORDER.indexOf(a.slot) - LIST_ORDER.indexOf(b.slot));
+  return { ...r, benchGroups, bench: notFive, starters };
 }
 
 function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
@@ -2452,7 +2471,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
               {(faTeam ? members.slice().sort((a, b) => currentSalary(b) - currentSalary(a)) : members)
                 .map((p) => (
-                  <button key={p.id} onClick={() => onSelectPlayer(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
+                  <button key={p.id} onClick={() => onSelectPlayer(p)} className="w-full flex items-start gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
                     <span className="w-7 text-center text-[12px] font-extrabold uppercase shrink-0 text-slate-900 dark:text-white">{p._slot || courtPos(p) || "—"}</span>
                     <Avatar p={p} size="md" />
                     <span className="flex-1 min-w-0">
@@ -2518,7 +2537,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
                   const act = activeOf(p);
                   const hot = faOnly && faEligible(roster).some((x) => x.id === p.id);   // free agent this coming summer
                   return (
-                    <button key={p.id} onClick={() => onSelectPlayer(p)} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800"
+                    <button key={p.id} onClick={() => onSelectPlayer(p)} className="w-full flex items-start gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800"
                       style={hot ? { borderLeft: "4px solid " + teamColor(abbr), paddingLeft: 12, backgroundColor: teamColor(abbr) + "14" } : undefined}>
                       <Avatar p={p} />
                       <span className="flex-1 min-w-0">
