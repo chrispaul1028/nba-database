@@ -564,7 +564,7 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
             </div>
             <div className="mt-1.5"><StatusBadge status={effectiveStatus(p)} /></div>
             {!isActiveStatus(p) && injuryDetailOf(p) && (
-              <div className="text-[11px] font-extrabold text-red-500 mt-1.5" style={{ textShadow: "0 0 3px rgba(255,255,255,0.9), 0 0 6px rgba(255,255,255,0.6)" }}>({injuryDetailOf(p)})</div>
+              <div className="mt-1.5"><span className="inline-block text-[11px] font-extrabold text-red-600 bg-white/95 rounded-md px-1.5 py-0.5">({injuryDetailOf(p)})</span></div>
             )}
             {!isActiveStatus(p) && injuryReturnOf(p) && (
               <div className="text-[11px] font-extrabold text-white mt-0.5">Estimated Return Date: {injuryReturnOf(p)}</div>
@@ -714,7 +714,7 @@ function PlayersHub({ players, teams, onSelect, injury }) {
   const [view, setView] = useState("players");
   const pills = (
     <div className="flex gap-2 mt-3 overflow-x-auto pt-1.5" style={{ scrollbarWidth: "none" }}>
-      {[["players", "Active"], ["injury", "🏥 Injury Report"], ["contracts", "Contracts"], ["draft", "Draft"], ["retired", "Retired / Overseas"]].map(([k, lbl]) => (
+      {[["players", "Active"], ["injury", "🏥 News"], ["transactions", "Transactions"], ["contracts", "Contracts"], ["draft", "Draft"], ["retired", "Retired / Overseas"]].map(([k, lbl]) => (
         <button key={k} onClick={() => setView(k)}
           className={"relative shrink-0 px-3.5 py-1.5 rounded-full text-[11px] font-extrabold " + (view === k ? "bg-white text-blue-700" : "bg-blue-500/60 text-blue-100 active:bg-blue-500")}>
           {lbl}
@@ -727,6 +727,7 @@ function PlayersHub({ players, teams, onSelect, injury }) {
   if (view === "draft") return <DraftTab players={players} onSelect={onSelect} pills={pills} />;
   if (view === "injury") return <InjuryFeed players={players} teams={teams} onSelect={onSelect} pills={pills} feed={injury.feed} markSeen={injury.markSeen} />;
   if (view === "retired") return <PlayersTab players={players.filter(isRetired)} onSelect={onSelect} pills={pills} title="Retired / Overseas" key={view} />;
+  if (view === "transactions") return <TransactionsFeed players={players} teams={teams} onSelect={onSelect} pills={pills} />;
   return <PlayersTab players={players.filter((p) => !isRetired(p))} onSelect={onSelect} pills={pills} title="Active Players" key={view} />;
 }
 
@@ -941,6 +942,62 @@ function Badge({ n }) {
   return <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-white text-[9px] font-extrabold flex items-center justify-center leading-none shadow">{n > 99 ? "99+" : n}</span>;
 }
 
+// ═══════════════ TRANSACTIONS (ESPN feed, newest first) ══════════
+function TransactionsFeed({ players, teams, onSelect, pills }) {
+  const [q, setQ] = useState("");
+  const [feed, setFeed] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/transactions").then((r) => r.json()).then((d) => alive && setFeed(d && d.records ? d : { records: [], error: d?.error || "unavailable" })).catch(() => alive && setFeed({ records: [], error: "unreachable" }));
+    return () => { alive = false; };
+  }, []);
+  const KIND_CLS = { "Signing": "bg-green-600 text-white", "Option exercised": "bg-green-600 text-white", "Option declined": "bg-red-600 text-white", "Waived": "bg-red-600 text-white", "Trade": "bg-blue-600 text-white", "Two-way": "bg-purple-600 text-white", "G League": "bg-slate-500 text-white", "Transaction": "bg-slate-500 text-white" };
+  const s0 = q.toLowerCase().trim();
+  const recs = (feed?.records || []).filter((r) => !s0 || r.text.toLowerCase().includes(s0) || r.teamName.toLowerCase().includes(s0) || r.team.toLowerCase().includes(s0));
+  const groups = [];
+  for (const r of recs) {
+    const d = r.date ? new Date(r.date) : null;
+    const key = d && !isNaN(d) ? d.toLocaleDateString([], { month: "short", day: "numeric" }).toUpperCase() : "UNDATED";
+    let g = groups[groups.length - 1]; if (!g || g.key !== key) { g = { key, items: [] }; groups.push(g); }
+    g.items.push(r);
+  }
+  // tap a transaction → open the player it names, if he's in your database
+  const playerIn = (text) => players.find((p) => text.includes(p.name)) || players.find((p) => { const last = p.name.split(" ").pop(); return last.length > 3 && new RegExp("\\b" + last + "\\b").test(text); });
+  return (
+    <div>
+      <ListHeader title="Transactions" q={q} setQ={setQ} pills={pills} placeholder="Search players or teams…" />
+      <div className="px-4 pb-28 mt-4">
+        {!feed && <div className="text-center text-xs text-slate-400 py-10">Loading ESPN feed…</div>}
+        {feed && feed.error && <div className="text-center text-xs text-slate-400 py-10">Couldn't reach ESPN's transactions feed. Try again in a minute.</div>}
+        {feed && !feed.error && <div className="text-[11px] font-semibold text-slate-400 mb-3">ESPN feed · {recs.length} transactions · newest first</div>}
+        {groups.map((g) => (
+          <div key={g.key}>
+            <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mb-2 px-1">{g.key}</div>
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden mb-4">
+              {g.items.map((r) => {
+                const p = playerIn(r.text);
+                return (
+                  <button key={r.id} onClick={p ? () => onSelect(p) : undefined} className="w-full flex items-start gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800" style={{ borderLeft: "3px solid " + teamColor(r.team) }}>
+                    {TEAM_LOGOS[r.team] ? <img src={TEAM_LOGOS[r.team]} alt="" className="w-9 h-9 object-contain shrink-0 mt-0.5" style={logoTrim(r.team)} /> : <span className="w-9 h-9 rounded-full shrink-0" style={{ backgroundColor: teamColor(r.team) }} />}
+                    <span className="flex-1 min-w-0">
+                      <span className="flex items-center gap-2 mb-1">
+                        <span className={"px-1.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wide " + (KIND_CLS[r.kind] || KIND_CLS.Transaction)}>{r.kind}</span>
+                        <span className="text-[11px] font-semibold text-slate-400">{r.team}</span>
+                      </span>
+                      <span className="block text-[12px] text-slate-900 dark:text-white leading-snug">{r.text}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+        {feed && !feed.error && recs.length === 0 && <div className="text-center text-sm text-slate-400 py-12">No transactions{q ? ` matching "${q}"` : ""}.</div>}
+      </div>
+    </div>
+  );
+}
+
 // ═══════════════ INJURY REPORT (ESPN feed, newest first) ═════════
 function InjuryFeed({ players, teams, onSelect, pills, feed, markSeen }) {
   const [q, setQ] = useState("");
@@ -961,7 +1018,7 @@ function InjuryFeed({ players, teams, onSelect, pills, feed, markSeen }) {
   const stamp = feed?.updatedAt ? new Date(feed.updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : null;
   return (
     <div>
-      <ListHeader title="Injury Report" q={q} setQ={setQ} pills={pills} placeholder="Search players or teams…" />
+      <ListHeader title="News" q={q} setQ={setQ} pills={pills} placeholder="Search players or teams…" />
       <div className="px-4 pb-28 mt-4">
         {!feed && <div className="text-center text-xs text-slate-400 py-10">Loading ESPN feed…</div>}
         {feed && feed.error && <div className="text-center text-xs text-slate-400 py-10">Couldn't reach ESPN's injury feed. Try again in a minute.</div>}
@@ -2964,6 +3021,16 @@ export default function App() {
 
   const [, setEspnTick] = useState(0);
   const injury = useInjuryFeed(players || []);
+  // Retired / overseas players aren't on any ESPN roster — look their headshots up by name once
+  useEffect(() => {
+    const need = (players || []).filter((p) => isRetired(p) && !p.photo && !espnOf(p)?.headshot).map((p) => p.name);
+    if (!need.length) return;
+    fetch("/api/espn-rosters?lookup=" + encodeURIComponent(need.slice(0, 40).join("|"))).then((r) => r.json()).then((d) => {
+      if (!d || !d.headshots) return;
+      for (const [n, url] of Object.entries(d.headshots)) ESPN_BY_NAME[espnNrm(n)] = { ...(ESPN_BY_NAME[espnNrm(n)] || {}), headshot: url };
+      setEspnTick((t) => t + 1);
+    }).catch(() => {});
+  }, [players]);
   // Lock pinch/focus zoom app-wide (Safari zooms into any input smaller than 16px)
   useEffect(() => {
     let m = document.querySelector('meta[name="viewport"]');
