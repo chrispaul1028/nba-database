@@ -31,7 +31,13 @@ export default async function handler(req, res) {
     const url = team && TEAM_IDS[team]
       ? `https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/${TEAM_IDS[team]}/transactions?limit=500`
       : "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/transactions?limit=1000";
-    const d = await getJson(url);
+    let d = await getJson(url).catch(() => ({ transactions: [] }));
+    if (team && !(d.transactions || []).length) {
+      // ESPN's per-team feed is sometimes empty — fall back to the league feed filtered to this team
+      const all = await getJson("https://site.api.espn.com/apis/site/v2/sports/basketball/nba/transactions?limit=1000").catch(() => ({ transactions: [] }));
+      const id = TEAM_IDS[team];
+      d = { transactions: (all.transactions || []).filter((t) => String(t.team?.id) === String(id) || String(t.team?.abbreviation || "").toUpperCase() === team) };
+    }
     // ESPN bundles a team's moves for the day into one description
     // ("Signed X. Waived Y. Converted Z…"). Split into one record per move so
     // each gets the right tag.

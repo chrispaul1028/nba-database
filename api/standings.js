@@ -41,8 +41,11 @@ export default async function handler(req, res) {
     const base = `https://site.api.espn.com/apis/v2/sports/basketball/nba/standings?season=${year}`;
     let phase = "regular";
     let teams = parse(await getJson(base + "&seasontype=2"));
+    // Preseason numbers only until opening night (3rd week of October). Once the
+    // regular season has started, 0-0 is the truth even before the first final.
+    const opened = new Date() >= new Date(year - 1, 9, 15);
     const played = teams.some((t) => (t.wins || 0) + (t.losses || 0) > 0);
-    if (!played) {
+    if (!played && !opened) {
       try { const pre = parse(await getJson(base + "&seasontype=1")); if (pre.length) { teams = pre; phase = "preseason"; } } catch {}
     }
     res.setHeader("Cache-Control", "s-maxage=600, stale-while-revalidate=1200");
