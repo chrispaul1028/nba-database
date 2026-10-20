@@ -21,15 +21,23 @@ const kindOf = (t) => {
   return "Transaction";
 };
 
+// ESPN team ids, for the per-team feed (?team=NY) which goes back much
+// further than the league-wide list.
+const TEAM_IDS = { ATL: 1, BOS: 2, NOP: 3, NO: 3, CHI: 4, CLE: 5, DAL: 6, DEN: 7, DET: 8, GSW: 9, GS: 9, HOU: 10, IND: 11, LAC: 12, LAL: 13, MIA: 14, MIL: 15, MIN: 16, BKN: 17, BRK: 17, NY: 18, NYK: 18, ORL: 19, PHI: 20, PHX: 21, PHO: 21, POR: 22, SAC: 23, SAS: 24, SA: 24, OKC: 25, UTAH: 26, UTA: 26, WSH: 27, WAS: 27, TOR: 28, MEM: 29, CHA: 30, CHO: 30 };
+
 export default async function handler(req, res) {
   try {
-    const d = await getJson("https://site.api.espn.com/apis/site/v2/sports/basketball/nba/transactions?limit=200");
+    const team = String(req.query?.team || "").toUpperCase();
+    const url = team && TEAM_IDS[team]
+      ? `https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/${TEAM_IDS[team]}/transactions?limit=500`
+      : "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/transactions?limit=1000";
+    const d = await getJson(url);
     // ESPN bundles a team's moves for the day into one description
     // ("Signed X. Waived Y. Converted Z…"). Split into one record per move so
     // each gets the right tag.
     const out = [];
     for (const [i, t] of (d.transactions || []).entries()) {
-      const raw = String(t.team?.abbreviation || "").toUpperCase();
+      const raw = String(t.team?.abbreviation || team || "").toUpperCase();
       const sentences = String(t.description || "").split(/(?<=\.)\s+(?=[A-Z])/).map((x) => x.trim()).filter(Boolean);
       for (const [j, text] of (sentences.length ? sentences : [t.description || ""]).entries()) {
         out.push({
