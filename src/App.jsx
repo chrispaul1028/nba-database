@@ -396,6 +396,17 @@ function useSwipe(onLeft, onRight) {
 }
 
 // ═══════════════ SHARED PIECES ═══════════════════════════════════
+// A little jersey in the team's colors with the number on the chest
+function Jersey({ no, color, trim }) {
+  return (
+    <span className="self-center shrink-0 relative w-12 h-12 flex items-center justify-center">
+      <svg viewBox="0 0 48 48" className="absolute inset-0 w-full h-full">
+        <path d="M14 4 L20 2 Q24 8 28 2 L34 4 L46 12 L41 21 L36 18 L36 46 L12 46 L12 18 L7 21 L2 12 Z" fill={color} stroke={trim} strokeWidth="2" strokeLinejoin="round" />
+      </svg>
+      <span className="relative text-[13px] font-extrabold text-white tabular-nums leading-none mt-2" style={{ textShadow: "0 1px 2px rgba(0,0,0,0.45)" }}>{no || "—"}</span>
+    </span>
+  );
+}
 function Avatar({ p, size }) {
   const px = size === "xl" ? "w-28 h-28 text-3xl ring-4 ring-white/80" : size === "lg" ? "w-20 h-20 text-2xl" : "w-14 h-14 text-base"; // every list view uses the same 56px photo
   const url = photoOf(p);
@@ -981,7 +992,7 @@ function Badge({ n }) {
 }
 
 // ═══════════════ TRANSACTIONS (ESPN feed, newest first) ══════════
-function TransactionsFeed({ players, teams, onSelect, pills }) {
+function TransactionsFeed({ players, teams, onSelect, pills, onlyTeam, embedded }) {
   const [q, setQ] = useState("");
   const [feed, setFeed] = useState(null);
   useEffect(() => {
@@ -991,7 +1002,8 @@ function TransactionsFeed({ players, teams, onSelect, pills }) {
   }, []);
   const KIND_CLS = { "Signing": "bg-green-600 text-white", "Option exercised": "bg-green-600 text-white", "Option declined": "bg-red-600 text-white", "Waived": "bg-red-600 text-white", "Trade": "bg-blue-600 text-white", "Two-way": "bg-purple-600 text-white", "G League": "bg-slate-500 text-white", "Transaction": "bg-slate-500 text-white" };
   const s0 = q.toLowerCase().trim();
-  const recs = (feed?.records || []).filter((r) => !s0 || r.text.toLowerCase().includes(s0) || r.teamName.toLowerCase().includes(s0) || r.team.toLowerCase().includes(s0));
+  const same = (a, b) => modernAbbr(a) === modernAbbr(b) || (ABBR_VARIANTS[modernAbbr(a)] || []).includes(String(b).toUpperCase()) || (ABBR_VARIANTS[modernAbbr(b)] || []).includes(String(a).toUpperCase());
+  const recs = (feed?.records || []).filter((r) => (!onlyTeam || same(r.team, onlyTeam)) && (!s0 || r.text.toLowerCase().includes(s0) || r.teamName.toLowerCase().includes(s0) || r.team.toLowerCase().includes(s0)));
   const groups = [];
   for (const r of recs) {
     const d = r.date ? new Date(r.date) : null;
@@ -1003,8 +1015,8 @@ function TransactionsFeed({ players, teams, onSelect, pills }) {
   const playerIn = (text) => players.find((p) => text.includes(p.name)) || players.find((p) => { const last = p.name.split(" ").pop(); return last.length > 3 && new RegExp("\\b" + last + "\\b").test(text); });
   return (
     <div>
-      <ListHeader title="Transactions" q={q} setQ={setQ} pills={pills} placeholder="Search players or teams…" />
-      <div className="px-4 pb-28 mt-4">
+      {!embedded && <ListHeader title="Transactions" q={q} setQ={setQ} pills={pills} placeholder="Search players or teams…" />}
+      <div className={embedded ? "px-4 pb-6 mt-4" : "px-4 pb-28 mt-4"}>
         {!feed && <div className="text-center text-xs text-slate-400 py-10">Loading ESPN feed…</div>}
         {feed && feed.error && <div className="text-center text-xs text-slate-400 py-10">Couldn't reach ESPN's transactions feed. Try again in a minute.</div>}
         {feed && !feed.error && <div className="text-[11px] font-semibold text-slate-400 mb-3">ESPN feed · {recs.length} transactions · newest first</div>}
@@ -1030,7 +1042,7 @@ function TransactionsFeed({ players, teams, onSelect, pills }) {
             </div>
           </div>
         ))}
-        {feed && !feed.error && recs.length === 0 && <div className="text-center text-sm text-slate-400 py-12">No transactions{q ? ` matching "${q}"` : ""}.</div>}
+        {feed && !feed.error && recs.length === 0 && <div className="text-center text-sm text-slate-400 py-12">No {onlyTeam ? onlyTeam + " " : ""}transactions{q ? ` matching "${q}"` : ""} in ESPN's recent feed.</div>}
       </div>
     </div>
   );
@@ -1077,7 +1089,7 @@ function InjuryFeed({ players, teams, onSelect, pills, feed, markSeen }) {
                   <button key={r.id} onClick={p ? () => onSelect(p) : undefined} className="w-full flex items-start gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800"
                     style={{ borderLeft: "3px solid " + teamColor(ab) }}>
                     <span className="w-12 shrink-0 text-center text-[11px] font-extrabold text-white rounded-md py-1 tabular-nums mt-1" style={{ backgroundColor: teamColor(ab) }}>
-                      {r.jersey ? "#" + r.jersey : "—"}
+                      {(() => { const no = r.jersey || (p && cleanNo(p.no)) || (p && espnOf(p)?.jersey); return no ? "#" + no : "—"; })()}
                     </span>
                     {photo ? <img src={photo} alt="" className="w-11 h-11 rounded-full object-cover object-top bg-slate-200 shrink-0" /> : <span className="w-11 h-11 rounded-full bg-slate-200 shrink-0" />}
                     <span className="flex-1 min-w-0">
@@ -1131,11 +1143,7 @@ function PlayersTab({ players, onSelect, pills, forceInj, title }) {
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
           {list.map((p) => (
             <button key={p.id} onClick={() => onSelect(p)} className="w-full flex items-start gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
-              {(() => { const ab = teamOfPlayer(p) || toAbbr(p.teamName) || toAbbr(activeOf(p)?.team); return (
-                <span className="w-12 shrink-0 text-center text-[11px] font-extrabold text-white rounded-md py-1 tabular-nums" style={{ backgroundColor: ab ? teamColor(ab) : "#64748b" }}>
-                  {cleanNo(p.no) ? "#" + cleanNo(p.no) : "—"}
-                </span>
-              ); })()}
+              {(() => { const ab = teamOfPlayer(p) || toAbbr(p.teamName) || toAbbr(activeOf(p)?.team); return <Jersey no={cleanNo(p.no)} color={ab ? teamColor(ab) : "#64748b"} trim={ab ? teamColor2(ab) : "#ffffff"} />; })()}
               <Avatar p={p} />
               <span className="flex-1 min-w-0">
                 <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
@@ -1152,7 +1160,7 @@ function PlayersTab({ players, onSelect, pills, forceInj, title }) {
                   </span>
                 )}
               </span>
-              <TeamPill team={teamOfPlayer(p) || p.teamName || activeOf(p)?.team} />
+              <span className="self-center shrink-0"><TeamPill team={teamOfPlayer(p) || p.teamName || activeOf(p)?.team} /></span>
             </button>
           ))}
           {list.length === 0 && forceInj && <div className="text-center text-sm text-slate-400 py-12 px-6">Nobody on the injury report{q ? ` matching "${q}"` : ""}. Everyone's Active.</div>}
@@ -2455,7 +2463,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
         </div>
 
         <div className="flex gap-2 mt-4">
-          {[["roster", "Roster"], ["contracts", "Contracts"], ["stats", "Stats"]].map(([k, lbl]) => (
+          {[["roster", "Roster"], ["contracts", "Contracts"], ["stats", "Stats"], ["moves", "Moves"]].map(([k, lbl]) => (
             <button key={k} onClick={() => setSeg(k)}
               className={"flex-1 py-2 rounded-full text-xs font-bold transition-colors " + (seg === k
                 ? "text-white"
@@ -2549,6 +2557,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
         ))}
         {seg === "contracts" && cView === "cap" && <CapOutlook roster={roster} color={teamColor(abbr)} onSelectPlayer={onSelectPlayer} />}
         {seg === "contracts" && cView === "bio" && <BioPanel roster={roster} abbr={abbr} teams={teams} players={players} color={teamColor(abbr)} onSelectPlayer={onSelectPlayer} />}
+        {seg === "moves" && <div className="-mx-4"><TransactionsFeed players={players} teams={teams} onSelect={onSelectPlayer} onlyTeam={abbr} embedded /></div>}
         {seg === "contracts" && (cView === "list" || cView === "fa") && (
           <>
             <div className="flex items-baseline justify-between mt-6 mb-2 pl-1 pr-4">
@@ -2563,7 +2572,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
                 const starterOrder = (a, b) => ((slot[a.id] ?? 9) - (slot[b.id] ?? 9)) || (mpgOf(b) - mpgOf(a)) || a.name.localeCompare(b.name);
                 return roster.slice().sort((a, b) => faOnly
                   ? (fe.has(b.id) - fe.has(a.id)) || (dlT(a) - dlT(b)) || starterOrder(a, b)
-                  : starterOrder(a, b)); })()
+                  : (currentSalary(b) - currentSalary(a)) || starterOrder(a, b)); })()
                 .map((p) => {
                   const act = activeOf(p);
                   const hot = faOnly && faEligible(roster).some((x) => x.id === p.id);   // free agent this coming summer
