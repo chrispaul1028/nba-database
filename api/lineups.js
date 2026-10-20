@@ -27,7 +27,8 @@ export default async function handler(req, res) {
     ));
     const lastGame = {};
     teams.forEach((t, i) => {
-      const evs = (schedules[i]?.events || []).filter((e) => e.competitions?.[0]?.status?.type?.completed);
+      // completed games, plus tonight's game once it has tipped off (starters are known at tip)
+      const evs = (schedules[i]?.events || []).filter((e) => { const st = e.competitions?.[0]?.status?.type || {}; return st.completed || st.state === "in"; });
       evs.sort((a, b) => new Date(b.date) - new Date(a.date));
       if (evs[0]) lastGame[fix(t.abbreviation)] = evs[0];
     });
@@ -66,7 +67,7 @@ export default async function handler(req, res) {
       };
     }
 
-    res.setHeader("Cache-Control", "s-maxage=21600, stale-while-revalidate=43200");
+    res.setHeader("Cache-Control", "s-maxage=900, stale-while-revalidate=1800"); // 15 min — tonight's starters show up during the game
     return res.status(200).json({ count: Object.keys(lineups).length, lineups, updatedAt: new Date().toISOString() });
   } catch (e) {
     return res.status(502).json({ error: String(e.message || e) });
