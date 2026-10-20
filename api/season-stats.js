@@ -49,7 +49,8 @@ export default async function handler(req, res) {
     // 1) Season averages for everyone. ESPN puts the column names on the
     //    top-level categories and only the values on each athlete.
     let tot = {};   // name → { gp, min_t, pts_t, … } running totals
-    let page = 1, more = true;
+    const young = maxTeamGP <= 25;        // early season: box scores only, don't even ask ESPN's table
+    let page = 1, more = !young;
     while (more && page <= 3) {
       const d = await getJson(base + `&page=${page}`);
       const catNames = {};
@@ -78,13 +79,22 @@ export default async function handler(req, res) {
     // table can still point at last spring's playoffs), nobody's GP would fit
     // the standings. In that case rebuild from this season's box scores.
     const stale = Object.values(tot).some((r) => r.gp > maxTeamGP + 1) || (maxTeamGP > 0 && !Object.values(tot).some((r) => r.gp > 0));
-    const fromBox = stale || maxTeamGP <= 25;   // early season: box scores are the ground truth anyway
+    const fromBox = stale || young;             // early season: box scores are the ground truth anyway
+    let gamesUsed = 0, gamesSeen = 0;
     if (fromBox) {
       tot = {};
       const start = new Date(season - 1, 9, 14), end = new Date();
       const ymd = (d) => d.toISOString().slice(0, 10).replace(/-/g, "");
-      const sb = await getJson(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${ymd(start)}-${ymd(end)}&limit=1000`).catch(() => ({ events: [] }));
-      const done = (sb.events || []).filter((e) => e.season?.type === 2 && e.competitions?.[0]?.status?.type?.completed);
+      let events = [];
+      try { events = (await getJson(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${ymd(start)}-${ymd(end)}&limit=1000`)).events || []; } catch {}
+      if (!events.length) {   // some ESPN edges reject a range: walk day by day (capped)
+        for (let d = new Date(start), n = 0; d <= end && n < 60; d.setDate(d.getDate() + 1), n++) {
+          try { events.push(...((await getJson(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${ymd(d)}`)).events || [])); } catch {}
+        }
+      }
+      gamesSeen = events.length;
+      const done = events.filter((e) => (e.season?.type == null || e.season.type === 2) && e.competitions?.[0]?.status?.type?.completed);
+      gamesUsed = done.length;
       const addGame = (s) => {
         for (const tb of s?.boxscore?.players || []) {
           const grp = (tb.statistics || [])[0] || {}; const cols = grp.names || grp.labels || [];
@@ -149,7 +159,7 @@ export default async function handler(req, res) {
         fg: pct("fgm", "fga"), p3: pct("p3m", "p3a"), ft: pct("ftm", "fta") };
     });
     res.setHeader("Cache-Control", "s-maxage=120, stale-while-revalidate=240"); // 2-minute window
-    return res.status(200).json({ season: `${season - 1}-${season}`, seasontype, source: fromBox ? "box scores" : "espn table", count: players.length, players, updatedAt: new Date().toISOString() });
+    return res.status(200).json({ season: `${season - 1}-${season}`, seasontype, source: fromBox ? "box scores" : "espn table", gamesSeen, gamesUsed, maxTeamGP, count: players.length, players, updatedAt: new Date().toISOString() });
   } catch (e) {
     return res.status(502).json({ error: String(e.message || e) });
   }
