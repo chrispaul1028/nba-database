@@ -839,7 +839,7 @@ function GameView({ game, teams, players, onBack, onSelectTeam }) {
                   <span className="opacity-50 text-2xl mx-1.5">–</span>
                   <span className={isFinal && !home.winner ? "opacity-60" : ""}>{home.score ?? 0}</span>
                 </div>
-                <div className={"text-xs font-extrabold uppercase mt-2 tracking-widest " + (isLive ? "text-rose-200" : "opacity-90")}>{isLive ? (g?.detail || game.detail) : "Final"}</div>
+                <div className={"text-xs font-extrabold uppercase mt-2 tracking-widest " + (isLive ? "text-white" : "opacity-90")}>{isLive ? (g?.detail || game.detail) : "Final"}</div>
               </>
             )}
           </div>
@@ -916,10 +916,11 @@ function GameView({ game, teams, players, onBack, onSelectTeam }) {
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                       {rows.map((r, i) => (
-                        <tr key={r.id || i} className={"text-slate-900 dark:text-white " + (r.starter ? "font-bold" : "font-medium")}>
+                        <tr key={r.id || i} className={"text-slate-900 dark:text-white " + (r.starter ? "font-bold" : "font-medium")}
+                          style={!r.starter && i > 0 && rows[i - 1].starter ? { borderTop: "3px solid " + c } : undefined}>
                           <td className="px-3 py-2 sticky left-0 bg-white dark:bg-slate-900 whitespace-nowrap">
                             <span className="font-bold text-slate-900 dark:text-white">{r.name}</span>
-                            <span className="ml-1 text-[9px] font-semibold text-slate-400">{r.pos}{r.starter ? " · S" : ""}</span>
+                            <span className="ml-1 text-[9px] font-semibold text-slate-400">{r.pos}</span>
                           </td>
                           {idx.map((k, j) => <td key={j} className={"px-2 py-2 text-center whitespace-nowrap " + (want[j] === "PTS" ? "font-extrabold text-slate-900 dark:text-white" : "")}>{k >= 0 ? (r.stats[k] ?? "—") : "—"}</td>)}
                         </tr>
@@ -1152,7 +1153,7 @@ function PlayersTab({ players, onSelect, pills, forceInj, title }) {
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
           {list.map((p) => (
             <button key={p.id} onClick={() => onSelect(p)} className="w-full flex items-start gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
-              <span className="self-center shrink-0 w-12 flex justify-center"><TeamPill team={teamOfPlayer(p) || p.teamName || activeOf(p)?.team} /></span>
+              <span className="self-start shrink-0 w-12 flex justify-center"><TeamPill team={teamOfPlayer(p) || p.teamName || activeOf(p)?.team} /></span>
               <Avatar p={p} />
               <span className="flex-1 min-w-0">
                 <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
@@ -3022,7 +3023,7 @@ function TonightTab({ players, teams, onSelect, onSelectTeam, onOpenGame }) {
                     {isLive ? (
                       <>
                         <div className="text-2xl font-extrabold tabular-nums leading-none">{g.away.score ?? 0} <span className="opacity-60">–</span> {g.home.score ?? 0}</div>
-                        <div className="text-xs font-extrabold text-rose-200 uppercase mt-1 flex items-center justify-center gap-1">
+                        <div className="text-xs font-extrabold text-white uppercase mt-1 flex items-center justify-center gap-1">
                           <span className="relative flex w-2 h-2"><span className="absolute inline-flex h-full w-full rounded-full bg-rose-300 opacity-75" style={{ animation: "hrbPing 1.4s cubic-bezier(0,0,.2,1) infinite" }} /><span className="relative inline-flex rounded-full w-2 h-2 bg-rose-400" /></span>
                           {g.detail}
                         </div>
@@ -3109,9 +3110,11 @@ export default function App() {
   const [selGame, setSelGame] = useState(null);       // matchup opened from the Matchups tab
   useEffect(() => {
     // Headshots + positions for anyone Airtable is missing them for.
-    fetch("/api/lineups").then((r) => r.json())
+    const loadLineups = () => fetch("/api/lineups").then((r) => r.json())
       .then((d) => { if (d && d.lineups) { Object.assign(LINEUPS, d.lineups); setEspnTick((t) => t + 1); } })
       .catch(() => {});
+    loadLineups();
+    setInterval(loadLineups, 15 * 60 * 1000);
     fetch("/api/espn-rosters").then((r) => r.json())
       .then((d) => { if (d && d.players) { Object.assign(ESPN_BY_NAME, d.players); setEspnTick((t) => t + 1); } })
       .catch(() => {});
