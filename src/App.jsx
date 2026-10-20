@@ -742,8 +742,8 @@ function TeamPill({ team }) {
     return <img src={logo} alt={abbr} className="w-11 h-11 object-contain shrink-0" style={logoTrim(abbr)} />;
   }
   return (
-    <span className="text-[10px] font-bold text-white px-2 py-1 rounded-full shrink-0" style={{ backgroundColor: teamColor(abbr) }}>
-      {abbr}
+    <span className="text-[10px] font-bold text-white px-2 py-1 rounded-xl shrink-0 text-center leading-tight" style={{ backgroundColor: teamColor(abbr) }}>
+      {/free\s*agent/i.test(String(team)) ? <>Free<br />Agent</> : abbr}
     </span>
   );
 }
@@ -1098,14 +1098,13 @@ function InjuryFeed({ players, teams, onSelect, pills, feed, markSeen }) {
                 return (
                   <button key={r.id} onClick={p ? () => onSelect(p) : undefined} className="w-full flex items-start gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800"
                     style={{ borderLeft: "3px solid " + teamColor(ab) }}>
-                    <span className="w-12 shrink-0 text-center text-[11px] font-extrabold text-white rounded-md py-1 tabular-nums mt-1" style={{ backgroundColor: teamColor(ab) }}>
-                      {(() => { const no = r.jersey || (p && cleanNo(p.no)) || (p && espnOf(p)?.jersey); return no ? "#" + no : "—"; })()}
-                    </span>
+                    <span className="w-12 shrink-0 flex justify-center mt-0.5">{TEAM_LOGOS[ab] ? <img src={TEAM_LOGOS[ab]} alt="" className="w-11 h-11 object-contain" style={logoTrim(ab)} /> : <TeamPill team={ab} />}</span>
                     {photo ? <img src={photo} alt="" className="w-11 h-11 rounded-full object-cover object-top bg-slate-200 shrink-0" /> : <span className="w-11 h-11 rounded-full bg-slate-200 shrink-0" />}
                     <span className="flex-1 min-w-0">
                       <span className="flex items-center gap-2 min-w-0">
-                        <span className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate"><span className="text-slate-400 font-extrabold mr-1.5">{r.pos}</span>{r.name}</span>
-                        {TEAM_LOGOS[ab] && <img src={TEAM_LOGOS[ab]} alt="" className="w-6 h-6 object-contain shrink-0" style={logoTrim(ab)} />}
+                        <span className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
+                          {(() => { const no = r.jersey || (p && cleanNo(p.no)) || (p && espnOf(p)?.jersey); return no ? <span className="text-slate-400 font-extrabold mr-1.5">#{no}</span> : null; })()}{r.name}
+                        </span>
                       </span>
                       <span className="flex items-center justify-between mt-1.5">
                         <StatusBadge status={r.status || "Injured"} />
@@ -1157,7 +1156,7 @@ function PlayersTab({ players, onSelect, pills, forceInj, title }) {
               <Avatar p={p} />
               <span className="flex-1 min-w-0">
                 <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
-                  <span className="text-slate-400 font-extrabold mr-1.5">{courtPos(p) || ""}</span>{p.name}
+                  {cleanNo(p.no) && <span className="text-slate-400 font-extrabold mr-1.5">#{cleanNo(p.no)}</span>}{p.name}
                 </span>
                 <span className="block text-[11px] text-slate-400 font-medium truncate">
                   {[p.height, p.weight ? String(p.weight).replace(/\s*lbs?$/i, "") + " lbs" : "", p.age ? p.age + " yrs" : ""].filter(Boolean).join(" · ") || "—"}
@@ -1169,6 +1168,9 @@ function PlayersTab({ players, onSelect, pills, forceInj, title }) {
                   </span>
                 )}
               </span>
+              {(() => { const ab = teamOfPlayer(p) || toAbbr(p.teamName) || toAbbr(activeOf(p)?.team); return courtPos(p)
+                ? <span className="self-center shrink-0 w-9 text-center text-sm font-extrabold" style={{ color: ab ? teamColor(ab) : "#64748b" }}>{courtPos(p)}</span>
+                : null; })()}
             </button>
           ))}
           {list.length === 0 && forceInj && <div className="text-center text-sm text-slate-400 py-12 px-6">Nobody on the injury report{q ? ` matching "${q}"` : ""}. Everyone's Active.</div>}
