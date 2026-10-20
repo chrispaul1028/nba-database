@@ -396,14 +396,22 @@ function useSwipe(onLeft, onRight) {
 }
 
 // ═══════════════ SHARED PIECES ═══════════════════════════════════
-// A little jersey in the team's colors with the number on the chest
+// A basketball jersey in the team's colors: sleeveless tank, scoop neck,
+// deep armholes, contrast trim, number on the chest.
 function Jersey({ no, color, trim }) {
   return (
-    <span className="self-center shrink-0 relative w-12 h-12 flex items-center justify-center">
-      <svg viewBox="0 0 48 48" className="absolute inset-0 w-full h-full">
-        <path d="M14 4 L20 2 Q24 8 28 2 L34 4 L46 12 L41 21 L36 18 L36 46 L12 46 L12 18 L7 21 L2 12 Z" fill={color} stroke={trim} strokeWidth="2" strokeLinejoin="round" />
+    <span className="self-center shrink-0 relative w-12 h-14 flex items-center justify-center">
+      <svg viewBox="0 0 48 56" className="absolute inset-0 w-full h-full">
+        {/* body + straps */}
+        <path d="M8 2 H17 Q24 15 31 2 H40 V11 Q33 17 41 27 V54 H7 V27 Q15 17 8 11 Z" fill={color} stroke="rgba(0,0,0,0.25)" strokeWidth="0.8" strokeLinejoin="round" />
+        {/* neck + armhole trim */}
+        <path d="M17 2 Q24 15 31 2" fill="none" stroke={trim} strokeWidth="2.2" strokeLinecap="round" />
+        <path d="M40 11 Q33 17 41 27" fill="none" stroke={trim} strokeWidth="2.2" strokeLinecap="round" />
+        <path d="M8 11 Q15 17 7 27" fill="none" stroke={trim} strokeWidth="2.2" strokeLinecap="round" />
+        {/* side piping */}
+        <path d="M11 32 V52 M37 32 V52" fill="none" stroke={trim} strokeWidth="1.2" opacity="0.7" />
       </svg>
-      <span className="relative text-[13px] font-extrabold text-white tabular-nums leading-none mt-2" style={{ textShadow: "0 1px 2px rgba(0,0,0,0.45)" }}>{no || "—"}</span>
+      <span className="relative text-[14px] font-extrabold text-white tabular-nums leading-none mt-3" style={{ textShadow: "0 1px 2px rgba(0,0,0,0.5)" }}>{no || "—"}</span>
     </span>
   );
 }
