@@ -661,7 +661,7 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
           return (
             <>
               <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mt-6 mb-2 px-1">
-                {seasonTick({ season: st.season }) || st.season} season{gp != null ? " · " + gp + " GP" : ""}
+                {seasonTick({ season: st.season }) || st.season} season{gp != null ? " · " + gp + " GP" : ""}{st.live ? " · live" : ""}
               </div>
               <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-3">
                 <div className="grid grid-cols-4 gap-2">
@@ -732,6 +732,7 @@ function ListHeader({ title, q, setQ, placeholder, pills, noSearch }) {
 const TEAM_LOGOS = {};
 const TEAM_NAMES = {}; // abbr → full name, filled once teams load
 const STANDINGS_PHASE = { v: "regular" }; // "preseason" until opening night
+const LIVE_STATS = { updatedAt: null, season: null };   // when ESPN season averages last loaded
 
 function TeamPill({ team }) {
   const abbr = toAbbr(team) || team;
@@ -3123,6 +3124,23 @@ export default function App() {
         setPlayers(d.players); setTeams(d.teams || []);
         // Live standings (ESPN) replace the hand-entered Wins / Losses / PPG /
         // Opp PPG. Airtable's numbers stay as the fallback if ESPN is down.
+        // Live season stats (ESPN): this season's averages become each player's
+        // top Stats row, replacing a hand-entered row for the same season.
+        const loadLive = () => fetch("/api/season-stats").then((r) => r.json()).then((ls) => {
+          if (!ls || !ls.players || !ls.players.length) return;
+          const by = {}; for (const r of ls.players) by[espnNrm(r.name)] = r;
+          LIVE_STATS.updatedAt = ls.updatedAt; LIVE_STATS.season = CURRENT_SEASON;
+          setPlayers((prev) => prev.map((p) => {
+            const r = by[espnNrm(p.name)];
+            if (!r || !(r.gp > 0)) return p;
+            const row = { season: CURRENT_SEASON, live: true, gp: r.gp, min: r.min, pts: r.pts, reb: r.reb, ast: r.ast, stl: r.stl, blk: r.blk, tov: r.tov,
+              fg: r.fg, p3: r.p3, ft: r.ft, fgm: r.fgm, fga: r.fga, p3m: r.p3m, p3a: r.p3a, ftm: r.ftm, fta: r.fta };
+            const rest = (p.stats || []).filter((x) => x.season !== CURRENT_SEASON);
+            return { ...p, stats: [row, ...rest] };
+          }));
+        }).catch(() => {});
+        loadLive();
+        setInterval(loadLive, 30 * 60 * 1000);                          // refresh every 30 min while open
         fetch("/api/standings").then((r) => r.json()).then((sd) => {
           if (!sd || !sd.teams || !sd.teams.length) return;
           const by = {}; for (const t of sd.teams) by[t.abbr] = t;
