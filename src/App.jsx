@@ -550,10 +550,11 @@ function ContractCard({ c, big }) {
 // Season total for a per-game stat (per-game × games)
 const totalOf = (st, key) => (st && st[key] != null && st.gp ? Math.round(st[key] * st.gp) : st && st[key] != null ? st[key] : null);
 // League rank by season TOTAL (not average). Ties share a rank: "30th (tied)".
+const curStats = (p) => (p.stats || []).find((x) => x.season === CURRENT_SEASON) || null;
 function leagueRank(players, p, key) {
-  const st = latestStats(p); const v = totalOf(st, key);
+  const st = curStats(p); const v = totalOf(st, key);
   if (v == null) return null;
-  const all = players.map((q) => totalOf(latestStats(q), key)).filter((x) => x != null && x > 0).sort((a, b) => b - a);
+  const all = players.map((q) => totalOf(curStats(q), key)).filter((x) => x != null && x > 0).sort((a, b) => b - a);
   const i = all.indexOf(v);
   if (i < 0) return null;
   const tied = all.filter((x) => x === v).length > 1;
@@ -617,19 +618,20 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
       </div>
 
       <div className="px-4 -mt-3">
-        {latestStats(p) && <div className="grid grid-cols-3 gap-2">
+        {(() => { const cur = (p.stats || []).find((x) => x.season === CURRENT_SEASON); return (
+        <div className="grid grid-cols-3 gap-2">
           {[["pts", "PTS"], ["reb", "REB"], ["ast", "AST"]].map(([k, lbl]) => {
-            const st = latestStats(p); const v = st?.[k];
+            const st = cur; const v = st?.[k];
             const r = players ? leagueRank(players, p, k) : null;
             const cls = r ? (r.rank <= 10 ? "text-green-600 dark:text-green-400" : r.rank <= 50 ? "text-yellow-600 dark:text-yellow-400" : "text-slate-400") : null;
             return (
               <Tile key={k} value={v != null ? fmt1(v) : "—"} label={lbl}
-                sub={r ? { label: r.label, cls } : (st ? "per game" : null)}
+                sub={r ? { label: r.label, cls } : (st ? "per game" : "no games yet")}
                 onClick={onJumpToStats && v != null ? () => onJumpToStats(p, k) : undefined}
                 borderColor={playerHeaderColor(p)} />
             );
           })}
-        </div>}
+        </div>); })()}
 
         {mode === "full" && (p.height || p.weight || p.age || p.draft || p.birthplace || p.draftYear) && (
           <>
@@ -891,7 +893,7 @@ function GameView({ game, teams, players, onBack, onSelectTeam }) {
           const c = teamColor(t.abbr);
           const minIdx = bx.cols.indexOf("MIN");
           const mins = (r) => { const v = String(r.stats[minIdx] ?? "0"); const [m, sec] = v.split(":"); return Number(m) + (sec ? Number(sec) / 60 : 0); };
-          const rows = bx.rows.filter((r) => !r.dnp).sort((a, b) => (b.starter - a.starter) || (mins(b) - mins(a)));
+          const rows = [...bx.rows.filter((r) => !r.dnp && r.starter), ...bx.rows.filter((r) => !r.dnp && !r.starter).sort((a, b) => mins(b) - mins(a))];
           const dnp = bx.rows.filter((r) => r.dnp);
           return (
             <div>
@@ -2003,6 +2005,85 @@ const STAT_SETS = {
   volume:   { label: "Volume",   cols: [["min", "MIN"], ["fga", "FGA"], ["p3a", "3PA"], ["fta", "FTA"], ["tov", "TOV"]] },
   shooting: { label: "Shooting", cols: [["fg", "FG%"], ["p3", "3P%"], ["ft", "FT%"], ["fga", "FGA"], ["p3a", "3PA"], ["fta", "FTA"]], pct: ["fg", "p3", "ft"], gate: { fg: ["fga", 3], p3: ["p3a", 1.5], ft: ["fta", 1.5] } },
 };
+// ── Team Schedule: every game with results, plus opponent-strength tiles ──
+// Opponent strength = net rating (PPG − Opp PPG) from live standings.
+function TeamSchedule({ team, abbr, teams, onSelectTeam }) {
+  const [d, setD] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/lineups?schedule=" + encodeURIComponent(modernAbbr(abbr))).then((r) => r.json()).then((x) => alive && setD(x)).catch(() => alive && setD({ games: [], error: "unreachable" }));
+    return () => { alive = false; };
+  }, [abbr]);
+  const byAbbr = (ab) => (teams || []).find((t) => modernAbbr(t.abbr || toAbbr(t.name)) === modernAbbr(ab));
+  const netOf = (ab) => { const t = byAbbr(ab); return t && t.ppg != null && t.oppPpg != null ? t.ppg - t.oppPpg : null; };
+  const recOf = (ab) => { const t = byAbbr(ab); return t ? `${t.wins ?? 0}-${t.losses ?? 0}` : ""; };
+  const games = d?.games || [];
+  const played = games.filter((g) => g.completed), upcoming = games.filter((g) => !g.completed);
+  const avgNet = (list) => { const v = list.map((g) => netOf(g.opp)).filter((x) => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+  const sumRec = (list) => { let w = 0, l = 0; for (const g of list) { const t = byAbbr(g.opp); if (t) { w += t.wins ?? 0; l += t.losses ?? 0; } } return `OPP ${w}-${l}`; };
+  const fmtNet = (v) => (v == null ? "—" : (v > 0 ? "+" : "") + v.toFixed(1));
+  const netCls = (v) => (v == null ? "text-slate-400" : v <= -1 ? "text-green-600" : v >= 1 ? "text-red-500" : "text-amber-600");  // easier opponents = green
+  const tileSets = [["Opp net · played", played], ["Opp net · next 5", upcoming.slice(0, 5)], ["Opp net · rest of season", upcoming]];
+  let w = 0, l = 0;
+  return (
+    <div className="mt-2">
+      <div className="grid grid-cols-3 gap-2">
+        {tileSets.map(([lbl, list]) => { const v = avgNet(list); return (
+          <div key={lbl} className="bg-white dark:bg-slate-900 rounded-2xl border-2 px-2 py-3 text-center shadow-sm" style={{ borderColor: teamColor(abbr) }}>
+            <div className="text-[9px] font-bold tracking-widest uppercase text-slate-500 dark:text-slate-400 leading-tight">{lbl}</div>
+            <div className={"text-2xl font-extrabold mt-1 tabular-nums " + netCls(v)}>{fmtNet(v)}</div>
+            <div className="text-[10px] font-semibold text-slate-400 mt-0.5">{list.length ? sumRec(list) : "—"}</div>
+          </div>
+        ); })}
+      </div>
+      <div className="flex items-center justify-between mt-5 mb-2 px-1">
+        <span className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase">Schedule</span>
+        <span className="flex gap-1.5"><span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-red-100 text-red-600">tough</span><span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-green-100 text-green-700">favorable</span></span>
+      </div>
+      {!d && <div className="text-center text-xs text-slate-400 py-8">Loading schedule…</div>}
+      {d && d.error && <div className="text-center text-xs text-slate-400 py-8">Couldn't load the schedule. Try again in a minute.</div>}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
+        {games.map((g) => {
+          if (g.completed) { if (g.win) w++; else l++; }
+          const net = netOf(g.opp);
+          const dt = new Date(g.date);
+          const oppT = byAbbr(g.opp);
+          return (
+            <button key={g.id} onClick={() => { if (oppT && onSelectTeam) onSelectTeam(oppT); }} className="w-full text-left px-4 py-3 active:bg-slate-50 dark:active:bg-slate-800">
+              <div className="flex items-center gap-3">
+                <span className="w-9 shrink-0 text-[11px] font-extrabold text-slate-400 uppercase">G {g.n}</span>
+                <img src={oppT?.logo || g.oppLogo || ""} alt="" className="w-9 h-9 object-contain shrink-0" style={logoTrim(g.opp)} />
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm font-bold text-slate-900 dark:text-white truncate"><span className="text-slate-400 mr-1">{g.home ? "vs" : "@"}</span>{g.oppName || g.opp}</span>
+                  <span className="block text-[11px] text-slate-400 font-medium truncate">{dt.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })} · {dt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}{g.broadcast ? " · " + g.broadcast : ""}</span>
+                </span>
+                <span className="text-right shrink-0">
+                  {g.completed ? (
+                    <>
+                      <span className="block text-sm font-extrabold tabular-nums"><span className={g.win ? "text-green-600" : "text-red-500"}>{g.win ? "W" : "L"}</span> <span className="text-slate-900 dark:text-white">{g.my}-{g.their}</span></span>
+                      <span className="block text-[11px] font-semibold text-slate-400 tabular-nums">({w}-{l})</span>
+                    </>
+                  ) : g.state === "in" ? (
+                    <span className="block text-xs font-extrabold text-red-500">LIVE {g.my}-{g.their}</span>
+                  ) : (
+                    <span className="block text-[11px] font-semibold text-slate-400">{recOf(g.opp)}</span>
+                  )}
+                </span>
+              </div>
+              <div className="flex gap-1.5 mt-2 ml-12">
+                <span className={"px-2 py-0.5 rounded-md text-[10px] font-bold " + (net == null ? "bg-slate-100 text-slate-500" : net <= -1 ? "bg-green-100 text-green-700" : net >= 1 ? "bg-red-100 text-red-600" : "bg-amber-100 text-amber-700")}>OPP {fmtNet(net)} net</span>
+                {oppT && oppT.ppg != null && <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">{oppT.ppg.toFixed(1)} PPG</span>}
+                {oppT && oppT.oppPpg != null && <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">{oppT.oppPpg.toFixed(1)} allowed</span>}
+              </div>
+            </button>
+          );
+        })}
+        {d && !d.error && games.length === 0 && <div className="text-center text-sm text-slate-400 py-10">No schedule published yet.</div>}
+      </div>
+    </div>
+  );
+}
+
 // ── Team Profile: each stat as a league-wide dot plot, this team highlighted ──
 // Team per-game numbers are the roster's per-game stats added up; percentages
 // are weighted by attempts. Shows rank AND distance from the pack.
@@ -2441,7 +2522,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
       </div>
 
       <div className="px-4 -mt-3">
-        <div className={"grid grid-cols-3 gap-2" + (faTeam && seg !== "contracts" ? " hidden" : "")}>
+        <div className={"grid grid-cols-3 gap-2" + ((faTeam && seg !== "contracts") || seg === "schedule" ? " hidden" : "")}>
           {seg === "contracts" ? (() => {
             // Contracts view tiles: payroll · free agents next offseason · avg age (ranked youngest → oldest)
             const fa = faEligible(roster).length;
@@ -2473,7 +2554,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
         </div>
 
         <div className="flex gap-2 mt-4">
-          {[["roster", "Roster"], ["contracts", "Contracts"], ["stats", "Stats"], ["moves", "Moves"]].map(([k, lbl]) => (
+          {[["roster", "Roster"], ["schedule", "Schedule"], ["contracts", "Contracts"], ["stats", "Stats"]].map(([k, lbl]) => (
             <button key={k} onClick={() => setSeg(k)}
               className={"flex-1 py-2 rounded-full text-xs font-bold transition-colors " + (seg === k
                 ? "text-white"
@@ -2567,7 +2648,17 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
         ))}
         {seg === "contracts" && cView === "cap" && <CapOutlook roster={roster} color={teamColor(abbr)} onSelectPlayer={onSelectPlayer} />}
         {seg === "contracts" && cView === "bio" && <BioPanel roster={roster} abbr={abbr} teams={teams} players={players} color={teamColor(abbr)} onSelectPlayer={onSelectPlayer} />}
-        {seg === "moves" && <div className="-mx-4"><TransactionsFeed players={players} teams={teams} onSelect={onSelectPlayer} onlyTeam={abbr} embedded /></div>}
+        {seg === "schedule" && <TeamSchedule team={team} abbr={abbr} teams={teams} onSelectTeam={onSelectTeam} />}
+        {seg === "contracts" && (
+          <div className="flex gap-2 mt-4">
+            {[["list", "Contracts"], ["moves", "Moves"]].map(([k, lbl]) => (
+              <button key={k} onClick={() => setCView(k)}
+                className={"flex-1 py-2 rounded-full text-sm font-bold border " + ((cView === k || (k === "list" && cView !== "moves")) ? "text-white border-transparent" : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-800")}
+                style={(cView === k || (k === "list" && cView !== "moves")) ? { backgroundColor: teamColor(abbr) } : undefined}>{lbl}</button>
+            ))}
+          </div>
+        )}
+        {seg === "contracts" && cView === "moves" && <div className="-mx-4"><TransactionsFeed players={players} teams={teams} onSelect={onSelectPlayer} onlyTeam={abbr} embedded /></div>}
         {seg === "contracts" && (cView === "list" || cView === "fa") && (
           <>
             <div className="flex items-baseline justify-between mt-6 mb-2 pl-1 pr-4">
@@ -2671,7 +2762,7 @@ const STAT_GROUPS = [
 ];
 function StatsTab({ players, teams, onSelect, focus, onBackToPlayer }) {
   const swipe = useSwipe(null, focus && onBackToPlayer ? onBackToPlayer : null);
-  const seasons = Array.from(new Set(players.flatMap((p) => (p.stats || []).map((s) => s.season)).filter(Boolean))).sort((a, b) => String(b).localeCompare(String(a)));
+  const seasons = Array.from(new Set([CURRENT_SEASON, ...players.flatMap((p) => (p.stats || []).map((s) => s.season)).filter(Boolean)])).sort((a, b) => String(b).localeCompare(String(a)));
   const [selSeason, setSelSeason] = useState(null);
   const season = selSeason && seasons.includes(selSeason) ? selSeason : (seasons.includes(CURRENT_SEASON) ? CURRENT_SEASON : seasons[0]);
   const [group, setGroup] = useState("scoring");
