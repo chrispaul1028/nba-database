@@ -983,7 +983,7 @@ function useInjuryFeed(players) {
       })
       .catch(() => alive && setFeed({ records: [], error: "unreachable" }));
     load();
-    const t = setInterval(load, 5 * 60 * 1000);                      // every 5 min while open
+    const t = setInterval(load, 2 * 60 * 1000);                      // every 2 min while open
     const onWake = () => { if (document.visibilityState === "visible") load(); };   // and the moment the app is reopened
     document.addEventListener("visibilitychange", onWake);
     return () => { alive = false; clearInterval(t); document.removeEventListener("visibilitychange", onWake); };
@@ -1584,9 +1584,9 @@ function posGroup(p) {
 // "out" | "q" | "ok"  — from the Airtable Status field
 function healthOf(p) {
   const s = String(p ? effectiveStatus(p) : "").toLowerCase().trim();
-  if (!s) return p?.injuryNotes ? "q" : "ok";
-  if (s === "ir" || s.includes("injured reserve") || s.includes("out")) return "out";
-  if (s.includes("active") || s.includes("available")) return p?.injuryNotes ? "q" : "ok";
+  if (!s) return "ok";
+  if (s === "ir" || s.includes("injured reserve") || s.includes("out") || s.includes("suspend")) return "out";
+  if (s.includes("active") || s.includes("available")) return "ok";          // Active is Active, even if an old note is still in the cell
   return "q"; // Game Time Decision, questionable, day-to-day…
 }
 const posOf = courtPos;
@@ -3116,7 +3116,8 @@ export default function App() {
       .then((d) => { if (d && d.lineups) { Object.assign(LINEUPS, d.lineups); setEspnTick((t) => t + 1); } })
       .catch(() => {});
     loadLineups();
-    setInterval(loadLineups, 15 * 60 * 1000);
+    setInterval(loadLineups, 5 * 60 * 1000);
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") loadLineups(); });
     fetch("/api/espn-rosters").then((r) => r.json())
       .then((d) => { if (d && d.players) { Object.assign(ESPN_BY_NAME, d.players); setEspnTick((t) => t + 1); } })
       .catch(() => {});
@@ -3145,13 +3146,17 @@ export default function App() {
           }));
         }).catch(() => {});
         loadLive();
-        setInterval(loadLive, 30 * 60 * 1000);                          // refresh every 30 min while open
-        fetch("/api/standings").then((r) => r.json()).then((sd) => {
+        setInterval(loadLive, 2 * 60 * 1000);                           // every 2 min while open
+        document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") loadLive(); });
+        const loadStandings = () => fetch("/api/standings").then((r) => r.json()).then((sd) => {
           if (!sd || !sd.teams || !sd.teams.length) return;
           const by = {}; for (const t of sd.teams) by[t.abbr] = t;
           STANDINGS_PHASE.v = sd.phase || "regular";
           setTeams((prev) => prev.map((t) => { const a = t.abbr || toAbbr(t.name); const e = by[a]; return e ? { ...t, wins: e.wins ?? t.wins, losses: e.losses ?? t.losses, ppg: e.ppg ?? t.ppg, oppPpg: e.oppPpg ?? t.oppPpg, streak: e.streak || null, live: true } : t; }));
         }).catch(() => {});
+        loadStandings();
+        setInterval(loadStandings, 2 * 60 * 1000);
+        document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") loadStandings(); });
       } })
       .catch((e) => setError(String(e)));
   }, []);
