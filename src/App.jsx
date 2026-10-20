@@ -1005,9 +1005,9 @@ function TransactionsFeed({ players, teams, onSelect, pills, onlyTeam, embedded 
   const [feed, setFeed] = useState(null);
   useEffect(() => {
     let alive = true;
-    fetch("/api/transactions").then((r) => r.json()).then((d) => alive && setFeed(d && d.records ? d : { records: [], error: d?.error || "unavailable" })).catch(() => alive && setFeed({ records: [], error: "unreachable" }));
+    fetch("/api/transactions" + (onlyTeam ? "?team=" + encodeURIComponent(modernAbbr(onlyTeam)) : "")).then((r) => r.json()).then((d) => alive && setFeed(d && d.records ? d : { records: [], error: d?.error || "unavailable" })).catch(() => alive && setFeed({ records: [], error: "unreachable" }));
     return () => { alive = false; };
-  }, []);
+  }, [onlyTeam]);
   const KIND_CLS = { "Signing": "bg-green-600 text-white", "Option exercised": "bg-green-600 text-white", "Option declined": "bg-red-600 text-white", "Waived": "bg-red-600 text-white", "Trade": "bg-blue-600 text-white", "Two-way": "bg-purple-600 text-white", "G League": "bg-slate-500 text-white", "Transaction": "bg-slate-500 text-white" };
   const s0 = q.toLowerCase().trim();
   const same = (a, b) => modernAbbr(a) === modernAbbr(b) || (ABBR_VARIANTS[modernAbbr(a)] || []).includes(String(b).toUpperCase()) || (ABBR_VARIANTS[modernAbbr(b)] || []).includes(String(a).toUpperCase());
@@ -1151,7 +1151,7 @@ function PlayersTab({ players, onSelect, pills, forceInj, title }) {
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
           {list.map((p) => (
             <button key={p.id} onClick={() => onSelect(p)} className="w-full flex items-start gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
-              {(() => { const ab = teamOfPlayer(p) || toAbbr(p.teamName) || toAbbr(activeOf(p)?.team); return <Jersey no={cleanNo(p.no)} color={ab ? teamColor(ab) : "#64748b"} trim={ab ? teamColor2(ab) : "#ffffff"} />; })()}
+              <span className="self-center shrink-0 w-12 flex justify-center"><TeamPill team={teamOfPlayer(p) || p.teamName || activeOf(p)?.team} /></span>
               <Avatar p={p} />
               <span className="flex-1 min-w-0">
                 <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
@@ -1164,11 +1164,9 @@ function PlayersTab({ players, onSelect, pills, forceInj, title }) {
                   <span className="block mt-1.5">
                     <StatusBadge status={effectiveStatus(p) || "Injured"} />
                     {isSidelined(p) && injuryDetailOf(p) && <span className="block text-[11px] font-semibold text-red-500 mt-1">({injuryDetailOf(p)})</span>}
-                    {injuryReturnOf(p) && <span className="block text-[11px] font-semibold text-slate-900 dark:text-white mt-0.5">Estimated Return Date: {injuryReturnOf(p)}</span>}
                   </span>
                 )}
               </span>
-              <span className="self-center shrink-0"><TeamPill team={teamOfPlayer(p) || p.teamName || activeOf(p)?.team} /></span>
             </button>
           ))}
           {list.length === 0 && forceInj && <div className="text-center text-sm text-slate-400 py-12 px-6">Nobody on the injury report{q ? ` matching "${q}"` : ""}. Everyone's Active.</div>}
