@@ -48,7 +48,7 @@ export default async function handler(req, res) {
     if (!played && !opened) {
       try { const pre = parse(await getJson(base + "&seasontype=1")); if (pre.length) { teams = pre; phase = "preseason"; } } catch {}
     }
-    res.setHeader("Cache-Control", "s-maxage=600, stale-while-revalidate=1200");
+    res.setHeader("Cache-Control", "s-maxage=120, stale-while-revalidate=240"); // 2-minute window
     return res.status(200).json({ season: year, phase, count: teams.length, teams, updatedAt: new Date().toISOString() });
   } catch (e) {
     return res.status(502).json({ error: String(e.message || e) });

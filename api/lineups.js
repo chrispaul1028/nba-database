@@ -67,7 +67,7 @@ export default async function handler(req, res) {
       };
     }
 
-    res.setHeader("Cache-Control", "s-maxage=900, stale-while-revalidate=1800"); // 15 min — tonight's starters show up during the game
+    res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600"); // 5 min — tonight's starters show up during the game
     return res.status(200).json({ count: Object.keys(lineups).length, lineups, updatedAt: new Date().toISOString() });
   } catch (e) {
     return res.status(502).json({ error: String(e.message || e) });

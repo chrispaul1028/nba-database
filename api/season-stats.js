@@ -51,7 +51,7 @@ export default async function handler(req, res) {
       more = pg.page != null && pg.pages != null ? pg.page < pg.pages : (d.athletes || []).length >= 1000;
       page++;
     }
-    res.setHeader("Cache-Control", "s-maxage=1800, stale-while-revalidate=3600");
+    res.setHeader("Cache-Control", "s-maxage=120, stale-while-revalidate=240"); // 2-minute window
     return res.status(200).json({ season: `${season - 1}-${season}`, seasontype, count: players.length, players, updatedAt: new Date().toISOString() });
   } catch (e) {
     return res.status(502).json({ error: String(e.message || e) });

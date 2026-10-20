@@ -46,7 +46,7 @@ export default async function handler(req, res) {
       }
     }
     out.sort((x, y) => new Date(y.date || 0) - new Date(x.date || 0));
-    res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600"); // 5-minute window
+    res.setHeader("Cache-Control", "s-maxage=120, stale-while-revalidate=240"); // 2-minute window
     return res.status(200).json({ count: out.length, records: out, updatedAt: new Date().toISOString() });
   } catch (e) {
     return res.status(502).json({ error: String(e.message || e) });
