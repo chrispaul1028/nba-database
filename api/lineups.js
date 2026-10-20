@@ -21,6 +21,30 @@ export default async function handler(req, res) {
     const list = await getJson("https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams?limit=40");
     const teams = ((list.sports || [])[0]?.leagues?.[0]?.teams || []).map((x) => x.team).filter(Boolean);
 
+    // ?schedule=NY → that team's regular-season schedule with results so far
+    if (req.query?.schedule) {
+      const want = fix(req.query.schedule);
+      const t = teams.find((x) => fix(x.abbreviation) === want || [want, req.query.schedule].includes(String(x.abbreviation).toUpperCase()));
+      if (!t) return res.status(404).json({ error: "unknown team" });
+      const sch = await getJson(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/${t.id}/schedule?seasontype=2`);
+      const games = (sch.events || []).map((e, i) => {
+        const c = e.competitions?.[0] || {};
+        const me = (c.competitors || []).find((x) => String(x.team?.id) === String(t.id)) || {};
+        const opp = (c.competitors || []).find((x) => String(x.team?.id) !== String(t.id)) || {};
+        const st = c.status?.type || {};
+        return {
+          id: e.id, n: i + 1, date: e.date, home: me.homeAway === "home",
+          opp: fix(opp.team?.abbreviation), oppName: opp.team?.displayName || "", oppLogo: opp.team?.logos?.[0]?.href || opp.team?.logo || null,
+          state: st.state || "pre", completed: !!st.completed, detail: st.shortDetail || "",
+          my: me.score?.value ?? me.score?.displayValue ?? null, their: opp.score?.value ?? opp.score?.displayValue ?? null,
+          win: me.winner === true ? true : me.winner === false ? false : null,
+          broadcast: (c.broadcasts || [])[0]?.media?.shortName || (c.broadcasts || [])[0]?.names?.[0] || null,
+        };
+      });
+      res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
+      return res.status(200).json({ team: want, games, updatedAt: new Date().toISOString() });
+    }
+
     // Latest completed game per team (regular season or playoffs; preseason too if that's all there is)
     const schedules = await Promise.all(teams.map((t) =>
       getJson(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/${t.id}/schedule`).catch(() => null)

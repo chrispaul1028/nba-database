@@ -23,34 +23,84 @@ const KEYS = {
   avgOffensiveRebounds: "oreb", avgDefensiveRebounds: "dreb", avgFouls: "pf", plusMinus: "pm",
 };
 
+// Box-score column label → app key (for live overlay from in-progress games)
+const BOX = { MIN: "min", PTS: "pts", REB: "reb", AST: "ast", STL: "stl", BLK: "blk", TO: "tov", FG: "fg_", "3PT": "p3_", FT: "ft_" };
+const splitMade = (v) => { const m = String(v || "").match(/^(\d+)-(\d+)$/); return m ? [Number(m[1]), Number(m[2])] : [0, 0]; };
+const nrm = (s) => String(s || "").toLowerCase().replace(/[.'’-]/g, "").replace(/\s+/g, " ").trim();
+
 export default async function handler(req, res) {
   try {
     const now = new Date();
     const season = Number(req.query?.season) || (now.getMonth() >= 8 ? now.getFullYear() + 1 : now.getFullYear());
     const seasontype = Number(req.query?.seasontype) || 2;
     const base = `https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byathlete?region=us&lang=en&contentorigin=espn&isqualified=false&season=${season}&seasontype=${seasontype}&limit=1000`;
-    const players = [];
+
+    // 1) Season averages for everyone. ESPN puts the column names on the
+    //    top-level categories and only the values on each athlete.
+    const tot = {};   // name → { gp, min_t, pts_t, … } running totals
     let page = 1, more = true;
     while (more && page <= 3) {
       const d = await getJson(base + `&page=${page}`);
+      const catNames = {};
+      for (const c of d.categories || []) catNames[c.name] = c.names || [];
       for (const a of d.athletes || []) {
         const ath = a.athlete || {};
-        const row = {};
+        const avg = {};
         for (const cat of a.categories || []) {
-          const names = cat.names || [], vals = cat.values || cat.displayValues || [];
-          names.forEach((n, i) => { const k = KEYS[n]; if (k && row[k] == null) { const v = Number(vals[i]); if (!isNaN(v)) row[k] = v; } });
+          const names = cat.names || catNames[cat.name] || [];
+          const vals = cat.values || [];
+          names.forEach((n, i) => { const k = KEYS[n]; if (k && avg[k] == null) { const v = Number(vals[i]); if (!isNaN(v)) avg[k] = v; } });
         }
+        const gp = avg.gp || 0;
         const raw = String(ath.teamShortName || ath.team?.abbreviation || "").toUpperCase();
-        players.push({
-          id: ath.id, name: ath.displayName || ath.name || "", team: ABBR_FIX[raw] || raw,
-          pos: ath.position?.abbreviation || "", headshot: ath.headshot?.href || null,
-          ...row,
-        });
+        const rec = { id: ath.id, name: ath.displayName || ath.name || "", team: ABBR_FIX[raw] || raw, pos: ath.position?.abbreviation || "", headshot: ath.headshot?.href || null, gp,
+          tot: {}, live: false };
+        for (const k of ["min", "pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "p3m", "p3a", "ftm", "fta"]) rec.tot[k] = (avg[k] || 0) * gp;
+        tot[nrm(rec.name)] = rec;
       }
       const pg = d.pagination || {};
       more = pg.page != null && pg.pages != null ? pg.page < pg.pages : (d.athletes || []).length >= 1000;
       page++;
     }
+
+    // 2) Live overlay: games in progress right now aren't in the averages
+    //    yet, so add each player's live line on top (gp + 1).
+    try {
+      const sb = await getJson("https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard");
+      const live = (sb.events || []).filter((e) => e.competitions?.[0]?.status?.type?.state === "in");
+      const sums = await Promise.all(live.map((e) => getJson(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=${e.id}`).catch(() => null)));
+      for (const s of sums) {
+        for (const tb of s?.boxscore?.players || []) {
+          const grp = (tb.statistics || [])[0] || {};
+          const cols = grp.names || grp.labels || [];
+          const raw = String(tb.team?.abbreviation || "").toUpperCase();
+          for (const a of grp.athletes || []) {
+            if (a.didNotPlay) continue;
+            const name = a.athlete?.displayName || "";
+            let rec = tot[nrm(name)];
+            if (!rec) { rec = { id: a.athlete?.id, name, team: ABBR_FIX[raw] || raw, pos: a.athlete?.position?.abbreviation || "", headshot: a.athlete?.headshot?.href || null, gp: 0, tot: Object.fromEntries(["min", "pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "p3m", "p3a", "ftm", "fta"].map((k) => [k, 0])), live: false }; tot[nrm(name)] = rec; }
+            rec.gp += 1; rec.live = true;
+            cols.forEach((c, i) => {
+              const k = BOX[c]; if (!k) return;
+              const v = a.stats?.[i];
+              if (k.endsWith("_")) { const [m, att] = splitMade(v); const p = k.slice(0, -1); rec.tot[(p === "fg" ? "fg" : p === "p3" ? "p3" : "ft") + "m"] += m; rec.tot[(p === "fg" ? "fg" : p === "p3" ? "p3" : "ft") + "a"] += att; }
+              else rec.tot[k] += Number(v) || 0;
+            });
+          }
+        }
+      }
+    } catch {}
+
+    // 3) Back to per-game + percentages
+    const players = Object.values(tot).filter((r) => r.gp > 0).map((r) => {
+      const g = r.gp, t = r.tot;
+      const pg = (k) => Math.round((t[k] / g) * 10) / 10;
+      const pct = (m, a) => (t[a] ? Math.round((t[m] / t[a]) * 1000) / 10 : null);
+      return { id: r.id, name: r.name, team: r.team, pos: r.pos, headshot: r.headshot, gp: g, live: r.live,
+        min: pg("min"), pts: pg("pts"), reb: pg("reb"), ast: pg("ast"), stl: pg("stl"), blk: pg("blk"), tov: pg("tov"),
+        fgm: pg("fgm"), fga: pg("fga"), p3m: pg("p3m"), p3a: pg("p3a"), ftm: pg("ftm"), fta: pg("fta"),
+        fg: pct("fgm", "fga"), p3: pct("p3m", "p3a"), ft: pct("ftm", "fta") };
+    });
     res.setHeader("Cache-Control", "s-maxage=120, stale-while-revalidate=240"); // 2-minute window
     return res.status(200).json({ season: `${season - 1}-${season}`, seasontype, count: players.length, players, updatedAt: new Date().toISOString() });
   } catch (e) {
