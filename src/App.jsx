@@ -2029,7 +2029,7 @@ function TeamSchedule({ team, abbr, teams, onSelectTeam }) {
     <div className="mt-2">
       <div className="grid grid-cols-3 gap-2">
         {tileSets.map(([lbl, list]) => { const v = avgNet(list); return (
-          <div key={lbl} className="bg-white dark:bg-slate-900 rounded-2xl border-2 px-2 py-3 text-center shadow-sm" style={{ borderColor: teamColor(abbr) }}>
+          <div key={lbl} className="bg-white dark:bg-slate-900 rounded-2xl border-2 px-2 py-3 text-center shadow-sm flex flex-col items-center justify-center" style={{ borderColor: teamColor(abbr) }}>
             <div className="text-[9px] font-bold tracking-widest uppercase text-slate-500 dark:text-slate-400 leading-tight">{lbl}</div>
             <div className={"text-2xl font-extrabold mt-1 tabular-nums " + netCls(v)}>{fmtNet(v)}</div>
             <div className="text-[10px] font-semibold text-slate-400 mt-0.5">{list.length ? sumRec(list) : "—"}</div>
@@ -2051,11 +2051,11 @@ function TeamSchedule({ team, abbr, teams, onSelectTeam }) {
           return (
             <button key={g.id} onClick={() => { if (oppT && onSelectTeam) onSelectTeam(oppT); }} className="w-full text-left px-4 py-3 active:bg-slate-50 dark:active:bg-slate-800">
               <div className="flex items-center gap-3">
-                <span className="w-9 shrink-0 text-[11px] font-extrabold text-slate-400 uppercase">G {g.n}</span>
+                <span className="w-11 shrink-0 text-center leading-tight"><span className="block text-[10px] font-bold text-slate-400 uppercase">{dt.toLocaleDateString([], { month: "short" })}</span><span className="block text-sm font-extrabold text-slate-900 dark:text-white tabular-nums">{dt.getDate()}</span></span>
                 <img src={oppT?.logo || g.oppLogo || ""} alt="" className="w-9 h-9 object-contain shrink-0" style={logoTrim(g.opp)} />
                 <span className="flex-1 min-w-0">
                   <span className="block text-sm font-bold text-slate-900 dark:text-white truncate"><span className="text-slate-400 mr-1">{g.home ? "vs" : "@"}</span>{g.oppName || g.opp}</span>
-                  <span className="block text-[11px] text-slate-400 font-medium truncate">{dt.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })} · {dt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}{g.broadcast ? " · " + g.broadcast : ""}</span>
+                  <span className="block text-[11px] text-slate-400 font-medium truncate">{dt.toLocaleDateString([], { weekday: "short" })} · {dt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}{g.broadcast ? " · " + g.broadcast : ""}</span>
                 </span>
                 <span className="text-right shrink-0">
                   {g.completed ? (
@@ -2070,7 +2070,7 @@ function TeamSchedule({ team, abbr, teams, onSelectTeam }) {
                   )}
                 </span>
               </div>
-              <div className="flex gap-1.5 mt-2 ml-12">
+              <div className="flex gap-1.5 mt-2 ml-14">
                 <span className={"px-2 py-0.5 rounded-md text-[10px] font-bold " + (net == null ? "bg-slate-100 text-slate-500" : net <= -1 ? "bg-green-100 text-green-700" : net >= 1 ? "bg-red-100 text-red-600" : "bg-amber-100 text-amber-700")}>OPP {fmtNet(net)} net</span>
                 {oppT && oppT.ppg != null && <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">{oppT.ppg.toFixed(1)} PPG</span>}
                 {oppT && oppT.oppPpg != null && <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">{oppT.oppPpg.toFixed(1)} allowed</span>}
@@ -2583,10 +2583,10 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
         )}
         {seg === "stats" && (
           <>
-            <div className="flex gap-2 mt-4 mb-3">
+            <div className="flex gap-2 mt-3 mb-3">
               {[["table", "Table"], ["profile", "Profile"]].map(([k, lbl]) => (
                 <button key={k} onClick={() => setStatsLayout(k)}
-                  className={"flex-1 py-2 rounded-full text-sm font-bold border " + (statsLayout === k ? "text-white border-transparent" : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-800")}
+                  className={"flex-1 py-1.5 rounded-full text-[11px] font-extrabold border " + (statsLayout === k ? "text-white border-transparent" : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800")}
                   style={statsLayout === k ? { backgroundColor: teamColor(abbr) } : undefined}>{lbl}</button>
               ))}
             </div>
@@ -2650,10 +2650,10 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
         {seg === "contracts" && cView === "bio" && <BioPanel roster={roster} abbr={abbr} teams={teams} players={players} color={teamColor(abbr)} onSelectPlayer={onSelectPlayer} />}
         {seg === "schedule" && <TeamSchedule team={team} abbr={abbr} teams={teams} onSelectTeam={onSelectTeam} />}
         {seg === "contracts" && (
-          <div className="flex gap-2 mt-4">
+          <div className="flex gap-2 mt-3">
             {[["list", "Contracts"], ["moves", "Moves"]].map(([k, lbl]) => (
               <button key={k} onClick={() => setCView(k)}
-                className={"flex-1 py-2 rounded-full text-sm font-bold border " + ((cView === k || (k === "list" && cView !== "moves")) ? "text-white border-transparent" : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-800")}
+                className={"flex-1 py-1.5 rounded-full text-[11px] font-extrabold border " + ((cView === k || (k === "list" && cView !== "moves")) ? "text-white border-transparent" : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800")}
                 style={(cView === k || (k === "list" && cView !== "moves")) ? { backgroundColor: teamColor(abbr) } : undefined}>{lbl}</button>
             ))}
           </div>
