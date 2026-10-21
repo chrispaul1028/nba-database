@@ -435,7 +435,7 @@ function Avatar({ p, size }) {
 
 function rankOf(teams, team, key, dir) {
   if (!teams || team[key] == null) return null;
-  const vals = teams.filter((t) => t[key] != null);
+  const vals = teams.filter((t) => t[key] != null && !isFaTeam(t) && ((t.wins ?? 0) + (t.losses ?? 0) > 0 || !t.live));
   if (vals.length < 2) return null;
   const sorted = vals.slice().sort((a, b) => (dir === "asc" ? a[key] - b[key] : b[key] - a[key]));
   const rank = sorted.findIndex((t) => t.id === team.id) + 1;
@@ -2064,18 +2064,29 @@ function TeamSchedule({ team, abbr, teams, onSelectTeam }) {
   const sumRec = (list) => { let w = 0, l = 0; for (const g of list) { const t = byAbbr(g.opp); if (t) { w += t.wins ?? 0; l += t.losses ?? 0; } } return `OPP ${w}-${l}`; };
   const fmtNet = (v) => (v == null ? "—" : (v > 0 ? "+" : "") + v.toFixed(1));
   const netCls = (v) => (v == null ? "text-slate-400" : v <= -1 ? "text-green-600" : v >= 1 ? "text-red-500" : "text-amber-600");  // easier opponents = green
-  const tileSets = [["Opp net · played", played], ["Opp net · next 5", upcoming.slice(0, 5)], ["Opp net · rest of season", upcoming]];
+  // Basketball tiles: form (last 10), what's next (next 5), where you win (home / road)
+  const last10 = played.slice(-10);
+  const rec = (list) => { const w = list.filter((g) => g.win).length; return `${w}-${list.length - w}`; };
+  const margin = (list) => { const v = list.map((g) => Number(g.my) - Number(g.their)).filter((x) => !isNaN(x)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+  const homeP = played.filter((g) => g.home), roadP = played.filter((g) => !g.home);
+  const next5 = upcoming.slice(0, 5); const next5Home = next5.filter((g) => g.home).length;
+  const n5 = avgNet(next5);
+  const tiles = [
+    { lbl: "Last 10", big: played.length ? rec(last10) : "—", bigCls: margin(last10) == null ? "text-slate-400" : margin(last10) > 0 ? "text-green-600" : margin(last10) < 0 ? "text-red-500" : "text-amber-600", sub: margin(last10) != null ? `${fmtNet(margin(last10))} margin` : "no games yet" },
+    { lbl: "Next 5", big: next5.length ? fmtNet(n5) : "—", bigCls: netCls(n5), sub: next5.length ? `opp net · ${next5Home} home, ${next5.length - next5Home} away` : "season over" },
+    { lbl: "Home / Road", big: played.length ? `${rec(homeP)} · ${rec(roadP)}` : "—", bigCls: "text-slate-900 dark:text-white", sub: played.length ? `home ${fmtNet(margin(homeP))} · road ${fmtNet(margin(roadP))}` : "no games yet" },
+  ];
   let w = 0, l = 0;
   return (
     <div className="mt-2">
       <div className="grid grid-cols-3 gap-2">
-        {tileSets.map(([lbl, list]) => { const v = avgNet(list); return (
-          <div key={lbl} className="bg-white dark:bg-slate-900 rounded-2xl border-2 px-2 py-3 text-center shadow-sm flex flex-col items-center justify-center" style={{ borderColor: teamColor(abbr) }}>
-            <div className="text-[9px] font-bold tracking-widest uppercase text-slate-500 dark:text-slate-400 leading-tight">{lbl}</div>
-            <div className={"text-2xl font-extrabold mt-1 tabular-nums " + netCls(v)}>{fmtNet(v)}</div>
-            <div className="text-[10px] font-semibold text-slate-400 mt-0.5">{list.length ? sumRec(list) : "—"}</div>
+        {tiles.map((t) => (
+          <div key={t.lbl} className="bg-white dark:bg-slate-900 rounded-2xl border-2 px-2 py-3 text-center shadow-sm flex flex-col items-center justify-center" style={{ borderColor: teamColor(abbr) }}>
+            <div className="text-[9px] font-bold tracking-widest uppercase text-slate-500 dark:text-slate-400 leading-tight">{t.lbl}</div>
+            <div className={"text-xl font-extrabold mt-1 tabular-nums whitespace-nowrap " + t.bigCls}>{t.big}</div>
+            <div className="text-[9px] font-semibold text-slate-400 mt-0.5 leading-tight">{t.sub}</div>
           </div>
-        ); })}
+        ))}
       </div>
       <div className="flex items-center justify-between mt-5 mb-2 px-1">
         <span className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase">Schedule</span>
@@ -2092,13 +2103,22 @@ function TeamSchedule({ team, abbr, teams, onSelectTeam }) {
           return (
             <button key={g.id} onClick={() => { if (oppT && onSelectTeam) onSelectTeam(oppT); }} className="w-full text-left px-4 py-3 active:bg-slate-50 dark:active:bg-slate-800">
               <div className="flex items-center gap-3">
-                <span className="w-11 shrink-0 text-center leading-tight"><span className="block text-[10px] font-bold text-slate-400 uppercase">{dt.toLocaleDateString([], { month: "short" })}</span><span className="block text-sm font-extrabold text-slate-900 dark:text-white tabular-nums">{dt.getDate()}</span></span>
-                <img src={oppT?.logo || g.oppLogo || ""} alt="" className="w-9 h-9 object-contain shrink-0" style={logoTrim(g.opp)} />
+                <span className="w-11 shrink-0 text-center leading-tight self-center"><span className="block text-[10px] font-bold text-slate-400 uppercase">{dt.toLocaleDateString([], { month: "short" })}</span><span className="block text-sm font-extrabold text-slate-900 dark:text-white tabular-nums">{dt.getDate()}</span></span>
                 <span className="flex-1 min-w-0">
-                  <span className="block text-sm font-bold text-slate-900 dark:text-white truncate"><span className="text-slate-400 mr-1">{g.home ? "vs" : "@"}</span>{g.oppName || g.opp}</span>
-                  <span className="block text-[11px] text-slate-400 font-medium truncate">{dt.toLocaleDateString([], { weekday: "short" })} · {dt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}{g.broadcast ? " · " + g.broadcast : ""}</span>
+                  <span className="flex items-center gap-3">
+                    <img src={oppT?.logo || g.oppLogo || ""} alt="" className="w-9 h-9 object-contain shrink-0" style={logoTrim(g.opp)} />
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-sm font-bold text-slate-900 dark:text-white truncate"><span className="text-slate-400 mr-1">{g.home ? "vs" : "@"}</span>{g.oppName || g.opp}</span>
+                      <span className="block text-[11px] text-slate-400 font-medium truncate">{dt.toLocaleDateString([], { weekday: "short" })} · {dt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}{g.broadcast ? " · " + g.broadcast : ""}</span>
+                    </span>
+                  </span>
+                  <span className="flex gap-1 mt-1.5 overflow-x-auto whitespace-nowrap" style={{ scrollbarWidth: "none" }}>
+                    <span className={"shrink-0 px-1.5 py-0.5 rounded-md text-[9px] font-bold " + (net == null ? "bg-slate-100 text-slate-500" : net <= -1 ? "bg-green-100 text-green-700" : net >= 1 ? "bg-red-100 text-red-600" : "bg-amber-100 text-amber-700")}>OPP {fmtNet(net)} net</span>
+                    {oppT && oppT.ppg != null && <span className="shrink-0 px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">{oppT.ppg.toFixed(1)} PPG</span>}
+                    {oppT && oppT.oppPpg != null && <span className="shrink-0 px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">{oppT.oppPpg.toFixed(1)} allowed</span>}
+                  </span>
                 </span>
-                <span className="text-right shrink-0">
+                <span className="text-right shrink-0 self-center">
                   {g.completed ? (
                     <>
                       <span className="block text-sm font-extrabold tabular-nums"><span className={g.win ? "text-green-600" : "text-red-500"}>{g.win ? "W" : "L"}</span> <span className="text-slate-900 dark:text-white">{g.my}-{g.their}</span></span>
@@ -2111,11 +2131,6 @@ function TeamSchedule({ team, abbr, teams, onSelectTeam }) {
                   )}
                 </span>
               </div>
-              <div className="flex gap-1.5 mt-2 ml-14">
-                <span className={"px-2 py-0.5 rounded-md text-[10px] font-bold " + (net == null ? "bg-slate-100 text-slate-500" : net <= -1 ? "bg-green-100 text-green-700" : net >= 1 ? "bg-red-100 text-red-600" : "bg-amber-100 text-amber-700")}>OPP {fmtNet(net)} net</span>
-                {oppT && oppT.ppg != null && <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">{oppT.ppg.toFixed(1)} PPG</span>}
-                {oppT && oppT.oppPpg != null && <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">{oppT.oppPpg.toFixed(1)} allowed</span>}
-              </div>
             </button>
           );
         })}
@@ -2127,69 +2142,78 @@ function TeamSchedule({ team, abbr, teams, onSelectTeam }) {
 
 // ── Team Trends: points scored / allowed / margin by game, plus who scores ──
 function TeamTrends({ roster, abbr, onSelectPlayer }) {
-  const [d, setD] = useState(null);
-  const [stat, setStat] = useState("pts");
-  useEffect(() => { let alive = true; fetch("/api/lineups?schedule=" + encodeURIComponent(modernAbbr(abbr))).then((r) => r.json()).then((x) => alive && setD(x)).catch(() => alive && setD({ games: [] })); return () => { alive = false; }; }, [abbr]);
+  // A matrix: rows are players (by minutes), columns are stats. Each cell is a
+  // circle sized by that player's share of the team leader in that stat — no
+  // digits. Tap a column to sort by it; tap a player to open a radar of his
+  // profile vs the team. Current season only.
+  const COLS = [["pts", "PTS"], ["reb", "REB"], ["ast", "AST"], ["stl", "STL"], ["blk", "BLK"], ["p3m", "3PM"], ["tov", "TOV"], ["min", "MIN"]];
+  const [sortKey, setSortKey] = useState("min");
+  const [open, setOpen] = useState(null);
   const color = teamColor(abbr);
-  const games = (d?.games || []).filter((g) => g.completed).slice(-20);
-  const CATS = [["pts", "Scored"], ["allowed", "Allowed"], ["margin", "Margin"]];
-  const val = (g) => stat === "pts" ? Number(g.my) : stat === "allowed" ? Number(g.their) : Number(g.my) - Number(g.their);
-  const vals = games.map(val);
-  const lo = stat === "margin" ? Math.min(0, ...vals) : Math.max(0, Math.min(...vals) - 10), hi = Math.max(1, ...vals) + (stat === "margin" ? 2 : 5);
-  const W = 320, H = 130, padL = 26, padR = 10, padT = 14, padB = 22;
-  const x = (i) => padL + (games.length > 1 ? (i / (games.length - 1)) * (W - padL - padR) : (W - padL - padR) / 2);
-  const y = (v) => padT + (1 - (v - lo) / (hi - lo || 1)) * (H - padT - padB);
-  const path = vals.map((v, i) => (i ? "L" : "M") + x(i) + " " + y(v)).join(" ");
-  // scoring share: this season's points per game by player
-  const scorers = roster.map((p) => ({ p, v: curStats(p)?.pts ?? 0 })).filter((x) => x.v > 0).sort((a, b) => b.v - a.v);
-  const totalPts = scorers.reduce((a, x) => a + x.v, 0) || 1;
-  const top = scorers.slice(0, 6); const rest = scorers.slice(6).reduce((a, x) => a + x.v, 0);
-  const slices = [...top.map((x) => ({ label: lastNameOf(x.p), v: x.v, p: x.p })), ...(rest > 0 ? [{ label: "Others", v: rest }] : [])];
-  const shades = [1, 0.85, 0.7, 0.55, 0.42, 0.3, 0.18];
-  let acc = 0;
-  const arc = (from, to) => { const r = 48, cx = 60, cy = 60; const a0 = 2 * Math.PI * from - Math.PI / 2, a1 = 2 * Math.PI * to - Math.PI / 2; const x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0), x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1); return `M ${cx} ${cy} L ${x0} ${y0} A ${r} ${r} 0 ${to - from > 0.5 ? 1 : 0} 1 ${x1} ${y1} Z`; };
+  const rows = roster.map((p) => ({ p, s: curStats(p) })).filter((x) => x.s && (x.s.gp ?? 0) > 0).sort((a, b) => (b.s[sortKey] ?? 0) - (a.s[sortKey] ?? 0));
+  const max = {}; for (const [k] of COLS) max[k] = Math.max(0.1, ...rows.map((x) => x.s[k] ?? 0));
+  const waiting = roster.filter((p) => !(curStats(p)?.gp > 0)).length;
+  const R = 11;
+  const radarKeys = [["pts", "PTS"], ["reb", "REB"], ["ast", "AST"], ["stl", "STL"], ["blk", "BLK"], ["p3m", "3PM"]];
+  const radar = (s0) => {
+    const cx = 70, cy = 70, r = 52, n = radarKeys.length;
+    const pt = (i, f) => { const a = -Math.PI / 2 + (i / n) * 2 * Math.PI; return [cx + r * f * Math.cos(a), cy + r * f * Math.sin(a)]; };
+    const me = radarKeys.map(([k], i) => pt(i, Math.min(1, (s0[k] ?? 0) / max[k])));
+    const ring = (f) => radarKeys.map((_, i) => pt(i, f).join(",")).join(" ");
+    return (
+      <svg viewBox="0 0 140 140" className="w-36 h-36 shrink-0">
+        {[0.33, 0.66, 1].map((f) => <polygon key={f} points={ring(f)} fill="none" stroke="currentColor" className="text-slate-200 dark:text-slate-700" strokeWidth="1" />)}
+        {radarKeys.map(([, l], i) => { const [x, y] = pt(i, 1.18); return <text key={l} x={x} y={y + 3} fontSize="8" fontWeight="700" textAnchor="middle" fill="currentColor" className="text-slate-500 dark:text-slate-400">{l}</text>; })}
+        <polygon points={me.map((q) => q.join(",")).join(" ")} fill={color} opacity="0.35" stroke={color} strokeWidth="2" strokeLinejoin="round" />
+        {me.map(([x, y], i) => <circle key={i} cx={x} cy={y} r="3" fill={color} />)}
+      </svg>
+    );
+  };
   return (
-    <div className="space-y-4">
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-3">
-        <div className="flex gap-1.5 mb-2">
-          {CATS.map(([k, l]) => <button key={k} onClick={() => setStat(k)} className={"flex-1 py-1 rounded-full text-[10px] font-extrabold border " + (stat === k ? "text-white border-transparent" : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800")} style={stat === k ? { backgroundColor: color } : undefined}>{l}</button>)}
+    <div className="space-y-3">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+        <div className="flex items-center px-3 py-2 border-b border-slate-100 dark:border-slate-800">
+          <span className="w-[108px] shrink-0 text-[9px] font-extrabold tracking-widest uppercase text-slate-900 dark:text-white">Tap a stat</span>
+          <span className="flex-1 flex">
+            {COLS.map(([k, l]) => (
+              <button key={k} onClick={() => setSortKey(k)} className={"flex-1 text-center text-[9px] font-extrabold py-1 rounded-md " + (sortKey === k ? "text-white" : "text-slate-500 dark:text-slate-400")} style={sortKey === k ? { backgroundColor: color } : undefined}>{l}</button>
+            ))}
+          </span>
         </div>
-        {!d && <div className="text-center text-[11px] text-slate-400 py-8">Loading…</div>}
-        {d && games.length === 0 && <div className="text-center text-[11px] text-slate-400 py-8">No completed games yet.</div>}
-        {games.length > 0 && (
-          <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-36">
-            {[lo, (lo + hi) / 2, hi].map((v, i) => <g key={i}><line x1={padL} x2={W - padR} y1={y(v)} y2={y(v)} stroke="currentColor" strokeDasharray="3 3" className="text-slate-200 dark:text-slate-700" /><text x={padL - 4} y={y(v) + 3} fontSize="8" textAnchor="end" fill="currentColor" className="text-slate-400">{Math.round(v)}</text></g>)}
-            {stat === "margin" && <line x1={padL} x2={W - padR} y1={y(0)} y2={y(0)} stroke="currentColor" className="text-slate-400" strokeWidth="1" />}
-            <path d={path} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
-            {vals.map((v, i) => <g key={i}><circle cx={x(i)} cy={y(v)} r="4.5" fill={games[i].win ? "#16a34a" : "#dc2626"} stroke="white" strokeWidth="2" /><text x={x(i)} y={y(v) - 9} fontSize="9" fontWeight="700" textAnchor="middle" fill="currentColor" className="text-slate-900 dark:text-white">{stat === "margin" && v > 0 ? "+" + v : v}</text></g>)}
-            {games.map((g, i) => (games.length <= 10 || i % Math.ceil(games.length / 8) === 0) && <text key={"x" + i} x={x(i)} y={H - 6} fontSize="8" textAnchor="middle" fill="currentColor" className="text-slate-400">{(g.home ? "vs" : "@") + g.opp}</text>)}
-          </svg>
-        )}
-        {games.length > 0 && <div className="text-center text-[10px] text-slate-400 mt-1">By game · green dot = win, red = loss</div>}
-      </div>
-      {slices.length > 0 && (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-3">
-          <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mb-2">Who scores · {seasonTick({ season: CURRENT_SEASON })}</div>
-          <div className="flex items-center gap-4">
-            <svg viewBox="0 0 120 120" className="w-32 h-32 shrink-0">
-              {slices.map((sl, i) => { const from = acc / totalPts; acc += sl.v; const to = acc / totalPts; return <path key={i} d={arc(from, to)} fill={color} opacity={shades[i] ?? 0.15} stroke="white" strokeWidth="1.5" />; })}
-              <circle cx="60" cy="60" r="26" fill="white" className="dark:fill-slate-900" />
-              <text x="60" y="57" fontSize="11" fontWeight="800" textAnchor="middle" fill="currentColor" className="text-slate-900 dark:text-white">{Math.round(totalPts)}</text>
-              <text x="60" y="69" fontSize="7" textAnchor="middle" fill="currentColor" className="text-slate-400">PPG</text>
-            </svg>
-            <div className="flex-1 min-w-0 space-y-1">
-              {slices.map((sl, i) => (
-                <button key={i} onClick={sl.p ? () => onSelectPlayer(sl.p) : undefined} className="w-full flex items-center gap-2 text-left">
-                  <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: color, opacity: shades[i] ?? 0.15 }} />
-                  <span className="flex-1 text-[11px] font-bold text-slate-900 dark:text-white truncate">{sl.label}</span>
-                  <span className="text-[11px] font-extrabold text-slate-900 dark:text-white tabular-nums">{Math.round((sl.v / totalPts) * 100)}%</span>
-                  <span className="w-10 text-right text-[10px] text-slate-400 tabular-nums">{sl.v.toFixed(1)}</span>
-                </button>
-              ))}
+        <div className="divide-y divide-slate-100 dark:divide-slate-800">
+          {rows.map(({ p, s: st }) => (
+            <div key={p.id}>
+              <button onClick={() => setOpen(open === p.id ? null : p.id)} className={"w-full flex items-center px-3 py-1.5 text-left " + (open === p.id ? "bg-slate-50 dark:bg-slate-800/60" : "active:bg-slate-50 dark:active:bg-slate-800")}>
+                <span className="w-[108px] shrink-0 flex items-center gap-2 min-w-0">
+                  <Avatar p={p} />
+                  <span className="min-w-0"><span className="block text-[12px] font-bold text-slate-900 dark:text-white truncate">{lastNameOf(p)}</span><span className="block text-[9px] font-semibold text-slate-400">{courtPos(p)}</span></span>
+                </span>
+                <span className="flex-1 flex">
+                  {COLS.map(([k]) => { const f = Math.min(1, (st[k] ?? 0) / max[k]); const lead = f >= 0.999; return (
+                    <span key={k} className="flex-1 flex items-center justify-center h-7">
+                      <span className="rounded-full" style={{ width: Math.max(4, 2 * R * Math.sqrt(f)), height: Math.max(4, 2 * R * Math.sqrt(f)), backgroundColor: color, opacity: 0.25 + 0.75 * f, boxShadow: lead ? `0 0 0 2px white, 0 0 0 3.5px ${color}` : "none" }} />
+                    </span>
+                  ); })}
+                </span>
+              </button>
+              {open === p.id && (
+                <div className="flex items-center gap-3 px-3 pb-3 pt-1">
+                  {radar(st)}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[11px] font-extrabold text-slate-900 dark:text-white">{p.name} <span className="text-slate-400 font-semibold">· {Math.round(st.gp)} GP</span></div>
+                    <div className="grid grid-cols-4 gap-x-2 gap-y-1 mt-1.5">
+                      {COLS.map(([k, l]) => <div key={k}><div className="text-[8px] font-bold text-slate-400">{l}</div><div className="text-[12px] font-extrabold text-slate-900 dark:text-white tabular-nums">{fmt1(st[k])}</div></div>)}
+                    </div>
+                    <button onClick={() => onSelectPlayer(p)} className="mt-2 text-[10px] font-extrabold" style={{ color }}>Open player card ›</button>
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
+          ))}
+          {rows.length === 0 && <div className="text-center text-xs text-slate-400 py-10">No {seasonTick({ season: CURRENT_SEASON })} games for this roster yet.</div>}
         </div>
-      )}
+        <div className="px-3 py-2 text-[9px] text-slate-400 border-t border-slate-100 dark:border-slate-800">Circle = share of the team leader in that stat · ringed = team leader{waiting ? ` · ${waiting} yet to play` : ""}</div>
+      </div>
     </div>
   );
 }
@@ -2215,6 +2239,7 @@ function TeamProfile({ roster, abbr, teams, players }) {
     const ab = t.abbr || toAbbr(t.name);
     const live = LIVE_STATS.teams && (LIVE_STATS.teams[modernAbbr(ab)] || LIVE_STATS.teams[ab] || Object.entries(LIVE_STATS.teams).find(([k]) => modernAbbr(k) === modernAbbr(ab))?.[1]);
     if (live && live.gp > 0) return { abbr: ab, ...live };
+    if (LIVE_STATS.teams) return { abbr: ab };          // live season: a team with no game yet has no line
     const r = rosterOf(t, players);
     const o = { abbr: ab }; for (const [k, , , kind] of PROFILE_STATS) o[k] = teamStatLine(r, k, kind === "pct"); return o;
   }), [teams, players, LIVE_STATS.teams]);
@@ -2657,7 +2682,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
         {seg === "stats" && (
           <>
             <div className="flex gap-2 mt-3 mb-3">
-              {[["table", "Trends"], ["profile", "Profile"]].map(([k, lbl]) => (
+              {[["table", "Matrix"], ["profile", "Profile"]].map(([k, lbl]) => (
                 <button key={k} onClick={() => setStatsLayout(k)}
                   className={"flex-1 py-1.5 rounded-full text-[11px] font-extrabold border " + (statsLayout === k ? "text-white border-transparent" : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800")}
                   style={statsLayout === k ? { backgroundColor: teamColor(abbr) } : undefined}>{lbl}</button>
@@ -3315,9 +3340,15 @@ export default function App() {
         document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") loadLive(); });
         const loadStandings = () => fetch("/api/standings").then((r) => r.json()).then((sd) => {
           if (!sd || !sd.teams || !sd.teams.length) return;
-          const by = {}; for (const t of sd.teams) by[t.abbr] = t;
+          const by = {}; for (const t of sd.teams) { by[t.abbr] = t; by[modernAbbr(t.abbr)] = t; for (const v of ABBR_VARIANTS[modernAbbr(t.abbr)] || []) by[v] = t; }
           STANDINGS_PHASE.v = sd.phase || "regular";
-          setTeams((prev) => prev.map((t) => { const a = t.abbr || toAbbr(t.name); const e = by[a]; return e ? { ...t, wins: e.wins ?? t.wins, losses: e.losses ?? t.losses, ppg: e.ppg ?? t.ppg, oppPpg: e.oppPpg ?? t.oppPpg, streak: e.streak || null, live: true } : t; }));
+          setTeams((prev) => prev.map((t) => {
+            if (isFaTeam(t)) return t;
+            const a = t.abbr || toAbbr(t.name); const e = by[String(a).toUpperCase()] || by[modernAbbr(a)] || sd.teams.find((x) => String(x.name).toLowerCase() === String(t.name).toLowerCase());
+            // once the live table is in, every team is live — a team ESPN didn't match shows 0-0 rather than last year's Airtable numbers
+            return e ? { ...t, wins: e.wins ?? 0, losses: e.losses ?? 0, ppg: e.ppg ?? null, oppPpg: e.oppPpg ?? null, streak: e.streak || null, live: true }
+                     : { ...t, wins: 0, losses: 0, ppg: null, oppPpg: null, live: true };
+          }));
         }).catch(() => {});
         loadStandings();
         setInterval(loadStandings, 2 * 60 * 1000);
