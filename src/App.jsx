@@ -567,6 +567,45 @@ function fullTeamName(p, teams) {
   return t ? t.name : (p.teamName || ab || "");
 }
 
+// Game-by-game line chart (PTS / REB / AST / …) from ESPN's game log
+function GameLogChart({ espnId, color }) {
+  const [log, setLog] = useState(null);
+  const [stat, setStat] = useState("pts");
+  useEffect(() => { let alive = true; setLog(null); fetch("/api/season-stats?gamelog=" + espnId).then((r) => r.json()).then((d) => alive && setLog(d && d.games ? d.games : [])).catch(() => alive && setLog([])); return () => { alive = false; }; }, [espnId]);
+  const CATS = [["pts", "Points"], ["reb", "Rebounds"], ["ast", "Assists"], ["stl", "Steals"], ["blk", "Blocks"], ["p3m", "3PM"], ["min", "Minutes"]];
+  const games = (log || []).slice(-20);
+  const vals = games.map((g) => g[stat] ?? 0);
+  const max = Math.max(1, ...vals), avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+  const W = 320, H = 120, padL = 22, padR = 10, padT = 14, padB = 22;
+  const x = (i) => padL + (games.length > 1 ? (i / (games.length - 1)) * (W - padL - padR) : (W - padL - padR) / 2);
+  const y = (v) => padT + (1 - v / max) * (H - padT - padB);
+  const path = vals.map((v, i) => (i ? "L" : "M") + x(i) + " " + y(v)).join(" ");
+  const area = vals.length ? path + ` L ${x(vals.length - 1)} ${H - padB} L ${x(0)} ${H - padB} Z` : "";
+  const lbl = CATS.find(([k]) => k === stat)?.[1] || stat;
+  return (
+    <div className="mb-3">
+      <div className="flex gap-1.5 overflow-x-auto pb-2 -mx-1 px-1" style={{ scrollbarWidth: "none" }}>
+        {CATS.map(([k, l]) => (
+          <button key={k} onClick={() => setStat(k)} className={"shrink-0 px-3 py-1 rounded-full text-[10px] font-extrabold border " + (stat === k ? "text-white border-transparent" : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800")} style={stat === k ? { backgroundColor: color } : undefined}>{l}</button>
+        ))}
+      </div>
+      {!log && <div className="text-center text-[11px] text-slate-400 py-6">Loading game log…</div>}
+      {log && games.length === 0 && <div className="text-center text-[11px] text-slate-400 py-6">No games yet this season.</div>}
+      {games.length > 0 && (
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-32">
+          {[0, 0.5, 1].map((f) => <g key={f}><line x1={padL} x2={W - padR} y1={y(max * f)} y2={y(max * f)} stroke="currentColor" strokeDasharray="3 3" className="text-slate-200 dark:text-slate-700" /><text x={padL - 4} y={y(max * f) + 3} fontSize="8" textAnchor="end" fill="currentColor" className="text-slate-400">{Math.round(max * f)}</text></g>)}
+          <line x1={padL} x2={W - padR} y1={y(avg)} y2={y(avg)} stroke={color} strokeWidth="1" strokeDasharray="2 3" opacity="0.6" />
+          <path d={area} fill={color} opacity="0.12" />
+          <path d={path} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+          {vals.map((v, i) => <g key={i}><circle cx={x(i)} cy={y(v)} r="4" fill="white" stroke={color} strokeWidth="2.5" /><text x={x(i)} y={y(v) - 8} fontSize="9" fontWeight="700" textAnchor="middle" fill="currentColor" className="text-slate-900 dark:text-white">{v}</text></g>)}
+          {games.map((g, i) => (games.length <= 10 || i % Math.ceil(games.length / 8) === 0) && <text key={"x" + i} x={x(i)} y={H - 6} fontSize="8" textAnchor="middle" fill="currentColor" className="text-slate-400">{(g.home ? "vs" : "@") + g.opp}</text>)}
+        </svg>
+      )}
+      {games.length > 0 && <div className="text-center text-[10px] text-slate-400 mt-1">{lbl} by game · dashed line = season average{log.length > 20 ? " · last 20" : ""}</div>}
+    </div>
+  );
+}
+
 function BioRow({ k, v }) {
   if (!v) return null;
   return (
@@ -655,17 +694,19 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
           const tot = (k) => (st[k] == null ? null : gp ? Math.round(st[k] * gp).toLocaleString() : fmt1(st[k]));
           const pg = (k) => (st[k] == null ? null : fmt1(st[k]) + "/g");
           const pct = (k) => (st[k] == null ? null : Number(st[k]).toFixed(1) + "%");
+          const ma = (m, a) => (st[m] != null && st[a] != null ? fmt1(st[m]) + "/" + fmt1(st[a]) : " ");
           const tiles = [
-            ["PTS", tot("pts"), pg("pts"), "pts"], ["REB", tot("reb"), pg("reb"), "reb"], ["AST", tot("ast"), pg("ast"), "ast"], ["STL", tot("stl"), pg("stl"), "stl"],
-            ["BLK", tot("blk"), pg("blk"), "blk"], ["TOV", tot("tov"), pg("tov"), "tov"], ["MIN", tot("min"), pg("min"), "min"], ["FG%", pct("fg"), st.fgm != null && st.fga != null ? fmt1(st.fgm) + "/" + fmt1(st.fga) : null, "fg"],
-            ["3PM", tot("p3m"), pg("p3m"), "p3m"], ["3P%", pct("p3"), null, "p3"], ["FTM", tot("ftm"), pg("ftm"), "ftm"], ["FT%", pct("ft"), null, "ft"],
+            ["PTS", tot("pts"), pg("pts"), "pts"], ["REB", tot("reb"), pg("reb"), "reb"], ["AST", tot("ast"), pg("ast"), "ast"], ["FG%", pct("fg"), ma("fgm", "fga"), "fg"],
+            ["STL", tot("stl"), pg("stl"), "stl"], ["BLK", tot("blk"), pg("blk"), "blk"], ["TOV", tot("tov"), pg("tov"), "tov"], ["MIN", tot("min"), pg("min"), "min"],
+            ["3PM", tot("p3m"), pg("p3m"), "p3m"], ["3P%", pct("p3"), ma("p3m", "p3a"), "p3"], ["FTM", tot("ftm"), pg("ftm"), "ftm"], ["FT%", pct("ft"), ma("ftm", "fta"), "ft"],
           ].filter(([, v]) => v != null);
           return (
             <>
               <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mt-6 mb-2 px-1">
-                {seasonTick({ season: st.season }) || st.season} season{gp != null ? " · " + gp + " GP" : ""}{st.live ? " · live" : ""}
+                {seasonTick({ season: st.season }) || st.season} season{gp != null ? " · " + gp + " GP" : ""}
               </div>
               <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-3">
+                {st.espnId && <GameLogChart espnId={st.espnId} color={c} />}
                 <div className="grid grid-cols-4 gap-2">
                   {tiles.map(([lbl, v, sub, key]) => (
                     <button key={lbl} onClick={onJumpToStats ? () => onJumpToStats(p, key) : undefined}
@@ -673,7 +714,7 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
                       <div className="text-[9px] font-extrabold text-white uppercase tracking-wider py-1" style={{ backgroundColor: c }}>{lbl}</div>
                       <div className="bg-slate-50 dark:bg-slate-800 py-2">
                         <div className="text-lg font-extrabold text-slate-900 dark:text-slate-100 tabular-nums leading-none">{v}</div>
-                        {sub && <div className="text-[10px] font-semibold text-slate-400 mt-1 tabular-nums">{sub}</div>}
+                        <div className="text-[10px] font-semibold text-slate-400 mt-1 tabular-nums min-h-[14px]">{sub || " "}</div>
                       </div>
                     </button>
                   ))}
@@ -734,7 +775,7 @@ function ListHeader({ title, q, setQ, placeholder, pills, noSearch }) {
 const TEAM_LOGOS = {};
 const TEAM_NAMES = {}; // abbr → full name, filled once teams load
 const STANDINGS_PHASE = { v: "regular" }; // "preseason" until opening night
-const LIVE_STATS = { updatedAt: null, season: null };   // when ESPN season averages last loaded
+const LIVE_STATS = { updatedAt: null, season: null, teams: null };   // when ESPN season averages last loaded
 
 function TeamPill({ team }) {
   const abbr = toAbbr(team) || team;
@@ -2084,6 +2125,75 @@ function TeamSchedule({ team, abbr, teams, onSelectTeam }) {
   );
 }
 
+// ── Team Trends: points scored / allowed / margin by game, plus who scores ──
+function TeamTrends({ roster, abbr, onSelectPlayer }) {
+  const [d, setD] = useState(null);
+  const [stat, setStat] = useState("pts");
+  useEffect(() => { let alive = true; fetch("/api/lineups?schedule=" + encodeURIComponent(modernAbbr(abbr))).then((r) => r.json()).then((x) => alive && setD(x)).catch(() => alive && setD({ games: [] })); return () => { alive = false; }; }, [abbr]);
+  const color = teamColor(abbr);
+  const games = (d?.games || []).filter((g) => g.completed).slice(-20);
+  const CATS = [["pts", "Scored"], ["allowed", "Allowed"], ["margin", "Margin"]];
+  const val = (g) => stat === "pts" ? Number(g.my) : stat === "allowed" ? Number(g.their) : Number(g.my) - Number(g.their);
+  const vals = games.map(val);
+  const lo = stat === "margin" ? Math.min(0, ...vals) : Math.max(0, Math.min(...vals) - 10), hi = Math.max(1, ...vals) + (stat === "margin" ? 2 : 5);
+  const W = 320, H = 130, padL = 26, padR = 10, padT = 14, padB = 22;
+  const x = (i) => padL + (games.length > 1 ? (i / (games.length - 1)) * (W - padL - padR) : (W - padL - padR) / 2);
+  const y = (v) => padT + (1 - (v - lo) / (hi - lo || 1)) * (H - padT - padB);
+  const path = vals.map((v, i) => (i ? "L" : "M") + x(i) + " " + y(v)).join(" ");
+  // scoring share: this season's points per game by player
+  const scorers = roster.map((p) => ({ p, v: curStats(p)?.pts ?? 0 })).filter((x) => x.v > 0).sort((a, b) => b.v - a.v);
+  const totalPts = scorers.reduce((a, x) => a + x.v, 0) || 1;
+  const top = scorers.slice(0, 6); const rest = scorers.slice(6).reduce((a, x) => a + x.v, 0);
+  const slices = [...top.map((x) => ({ label: lastNameOf(x.p), v: x.v, p: x.p })), ...(rest > 0 ? [{ label: "Others", v: rest }] : [])];
+  const shades = [1, 0.85, 0.7, 0.55, 0.42, 0.3, 0.18];
+  let acc = 0;
+  const arc = (from, to) => { const r = 48, cx = 60, cy = 60; const a0 = 2 * Math.PI * from - Math.PI / 2, a1 = 2 * Math.PI * to - Math.PI / 2; const x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0), x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1); return `M ${cx} ${cy} L ${x0} ${y0} A ${r} ${r} 0 ${to - from > 0.5 ? 1 : 0} 1 ${x1} ${y1} Z`; };
+  return (
+    <div className="space-y-4">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-3">
+        <div className="flex gap-1.5 mb-2">
+          {CATS.map(([k, l]) => <button key={k} onClick={() => setStat(k)} className={"flex-1 py-1 rounded-full text-[10px] font-extrabold border " + (stat === k ? "text-white border-transparent" : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800")} style={stat === k ? { backgroundColor: color } : undefined}>{l}</button>)}
+        </div>
+        {!d && <div className="text-center text-[11px] text-slate-400 py-8">Loading…</div>}
+        {d && games.length === 0 && <div className="text-center text-[11px] text-slate-400 py-8">No completed games yet.</div>}
+        {games.length > 0 && (
+          <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-36">
+            {[lo, (lo + hi) / 2, hi].map((v, i) => <g key={i}><line x1={padL} x2={W - padR} y1={y(v)} y2={y(v)} stroke="currentColor" strokeDasharray="3 3" className="text-slate-200 dark:text-slate-700" /><text x={padL - 4} y={y(v) + 3} fontSize="8" textAnchor="end" fill="currentColor" className="text-slate-400">{Math.round(v)}</text></g>)}
+            {stat === "margin" && <line x1={padL} x2={W - padR} y1={y(0)} y2={y(0)} stroke="currentColor" className="text-slate-400" strokeWidth="1" />}
+            <path d={path} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+            {vals.map((v, i) => <g key={i}><circle cx={x(i)} cy={y(v)} r="4.5" fill={games[i].win ? "#16a34a" : "#dc2626"} stroke="white" strokeWidth="2" /><text x={x(i)} y={y(v) - 9} fontSize="9" fontWeight="700" textAnchor="middle" fill="currentColor" className="text-slate-900 dark:text-white">{stat === "margin" && v > 0 ? "+" + v : v}</text></g>)}
+            {games.map((g, i) => (games.length <= 10 || i % Math.ceil(games.length / 8) === 0) && <text key={"x" + i} x={x(i)} y={H - 6} fontSize="8" textAnchor="middle" fill="currentColor" className="text-slate-400">{(g.home ? "vs" : "@") + g.opp}</text>)}
+          </svg>
+        )}
+        {games.length > 0 && <div className="text-center text-[10px] text-slate-400 mt-1">By game · green dot = win, red = loss</div>}
+      </div>
+      {slices.length > 0 && (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-3">
+          <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mb-2">Who scores · {seasonTick({ season: CURRENT_SEASON })}</div>
+          <div className="flex items-center gap-4">
+            <svg viewBox="0 0 120 120" className="w-32 h-32 shrink-0">
+              {slices.map((sl, i) => { const from = acc / totalPts; acc += sl.v; const to = acc / totalPts; return <path key={i} d={arc(from, to)} fill={color} opacity={shades[i] ?? 0.15} stroke="white" strokeWidth="1.5" />; })}
+              <circle cx="60" cy="60" r="26" fill="white" className="dark:fill-slate-900" />
+              <text x="60" y="57" fontSize="11" fontWeight="800" textAnchor="middle" fill="currentColor" className="text-slate-900 dark:text-white">{Math.round(totalPts)}</text>
+              <text x="60" y="69" fontSize="7" textAnchor="middle" fill="currentColor" className="text-slate-400">PPG</text>
+            </svg>
+            <div className="flex-1 min-w-0 space-y-1">
+              {slices.map((sl, i) => (
+                <button key={i} onClick={sl.p ? () => onSelectPlayer(sl.p) : undefined} className="w-full flex items-center gap-2 text-left">
+                  <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: color, opacity: shades[i] ?? 0.15 }} />
+                  <span className="flex-1 text-[11px] font-bold text-slate-900 dark:text-white truncate">{sl.label}</span>
+                  <span className="text-[11px] font-extrabold text-slate-900 dark:text-white tabular-nums">{Math.round((sl.v / totalPts) * 100)}%</span>
+                  <span className="w-10 text-right text-[10px] text-slate-400 tabular-nums">{sl.v.toFixed(1)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Team Profile: each stat as a league-wide dot plot, this team highlighted ──
 // Team per-game numbers are the roster's per-game stats added up; percentages
 // are weighted by attempts. Shows rank AND distance from the pack.
@@ -2102,9 +2212,12 @@ function teamStatLine(roster, key, pct) {
 }
 function TeamProfile({ roster, abbr, teams, players }) {
   const league = useMemo(() => (teams || []).filter((t) => !isFaTeam(t)).map((t) => {
-    const ab = t.abbr || toAbbr(t.name); const r = rosterOf(t, players);
+    const ab = t.abbr || toAbbr(t.name);
+    const live = LIVE_STATS.teams && (LIVE_STATS.teams[modernAbbr(ab)] || LIVE_STATS.teams[ab] || Object.entries(LIVE_STATS.teams).find(([k]) => modernAbbr(k) === modernAbbr(ab))?.[1]);
+    if (live && live.gp > 0) return { abbr: ab, ...live };
+    const r = rosterOf(t, players);
     const o = { abbr: ab }; for (const [k, , , kind] of PROFILE_STATS) o[k] = teamStatLine(r, k, kind === "pct"); return o;
-  }), [teams, players]);
+  }), [teams, players, LIVE_STATS.teams]);
   const color = teamColor(abbr);
   return (
     <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm px-4 py-3">
@@ -2544,7 +2657,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
         {seg === "stats" && (
           <>
             <div className="flex gap-2 mt-3 mb-3">
-              {[["table", "Table"], ["profile", "Profile"]].map(([k, lbl]) => (
+              {[["table", "Trends"], ["profile", "Profile"]].map(([k, lbl]) => (
                 <button key={k} onClick={() => setStatsLayout(k)}
                   className={"flex-1 py-1.5 rounded-full text-[11px] font-extrabold border " + (statsLayout === k ? "text-white border-transparent" : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800")}
                   style={statsLayout === k ? { backgroundColor: teamColor(abbr) } : undefined}>{lbl}</button>
@@ -2552,7 +2665,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
             </div>
             {statsLayout === "profile"
               ? <TeamProfile roster={roster} abbr={abbr} teams={teams} players={players} />
-              : <TeamStatsPanel roster={roster} abbr={abbr} mode={statMode} setMode={setStatMode} onSelectPlayer={onSelectPlayer} />}
+              : <TeamTrends roster={roster} abbr={abbr} onSelectPlayer={onSelectPlayer} />}
           </>
         )}
         {seg === "roster" && (rosterView === "list" || faTeam) && listGroups.map(([role, members]) => (
@@ -3187,10 +3300,11 @@ export default function App() {
           if (!ls || !ls.players || !ls.players.length) return;
           const by = {}; for (const r of ls.players) by[espnNrm(r.name)] = r;
           LIVE_STATS.updatedAt = ls.updatedAt; LIVE_STATS.season = CURRENT_SEASON;
+          if (ls.teams) LIVE_STATS.teams = ls.teams;   // true team per-game lines (from box scores)
           setPlayers((prev) => prev.map((p) => {
             const r = by[espnNrm(p.name)];
             if (!r || !(r.gp > 0)) return p;
-            const row = { season: CURRENT_SEASON, live: true, gp: r.gp, min: r.min, pts: r.pts, reb: r.reb, ast: r.ast, stl: r.stl, blk: r.blk, tov: r.tov,
+            const row = { season: CURRENT_SEASON, live: true, espnId: r.id || null, gp: r.gp, min: r.min, pts: r.pts, reb: r.reb, ast: r.ast, stl: r.stl, blk: r.blk, tov: r.tov,
               fg: r.fg, p3: r.p3, ft: r.ft, fgm: r.fgm, fga: r.fga, p3m: r.p3m, p3a: r.p3a, ftm: r.ftm, fta: r.fta };
             const rest = (p.stats || []).filter((x) => x.season !== CURRENT_SEASON);
             return { ...p, stats: [row, ...rest] };
