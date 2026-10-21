@@ -2106,30 +2106,26 @@ function TeamProfile({ roster, abbr, teams, players }) {
     const o = { abbr: ab }; for (const [k, , , kind] of PROFILE_STATS) o[k] = teamStatLine(r, k, kind === "pct"); return o;
   }), [teams, players]);
   const color = teamColor(abbr);
-  const W = 300, padL = 8, padR = 8;
   return (
     <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm px-4 py-3">
-      <div className="text-[10px] font-semibold text-slate-400 mb-2">Each dot is a team · {abbr} in color · gray band = middle half of the league</div>
+      <div className="text-[10px] font-semibold text-slate-400 mb-2">{abbr} vs the league · bar = {abbr} · tick = league average</div>
       {PROFILE_STATS.map(([k, lbl, lowerBetter, kind]) => {
-        const vals = league.map((t) => t[k]).filter((v) => v != null).sort((a, b) => a - b);
+        const vals = league.map((t) => t[k]).filter((v) => v != null);
         const mine = league.find((t) => t.abbr === abbr)?.[k];
         if (!vals.length || mine == null) return null;
-        const lo = vals[0], hi = vals[vals.length - 1], span = hi - lo || 1;
-        const x = (v) => padL + ((v - lo) / span) * (W - padL - padR);
-        const q1 = vals[Math.floor(vals.length * 0.25)], q3 = vals[Math.floor(vals.length * 0.75)];
-        const better = lowerBetter ? vals.filter((v) => v < mine).length : vals.filter((v) => v > mine).length;
-        const rank = better + 1;
+        const max = Math.max(...vals), avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+        const rank = (lowerBetter ? vals.filter((v) => v < mine).length : vals.filter((v) => v > mine).length) + 1;
         const tone = rank <= 10 ? "#16a34a" : rank <= 20 ? "#d97706" : "#dc2626";
+        const pct = (v) => Math.max(2, (v / max) * 100);
         return (
-          <div key={k} className="flex items-center gap-3 py-2 border-t first:border-0 border-slate-100 dark:border-slate-800">
-            <div className="w-10 shrink-0"><div className="text-[11px] font-extrabold text-slate-900 dark:text-white">{lbl}</div><div className="text-[10px] font-bold" style={{ color: tone }}>{ordinal(rank)}</div></div>
-            <svg viewBox={`0 0 ${W} 22`} className="flex-1 h-6">
-              <rect x={x(q1)} y="7" width={Math.max(2, x(q3) - x(q1))} height="8" rx="4" fill="currentColor" className="text-slate-200 dark:text-slate-700" />
-              <line x1={padL} y1="11" x2={W - padR} y2="11" stroke="currentColor" strokeWidth="1" className="text-slate-300 dark:text-slate-600" />
-              {vals.map((v, i) => <circle key={i} cx={x(v)} cy="11" r="3" fill="currentColor" className="text-slate-400/70 dark:text-slate-500/70" />)}
-              <circle cx={x(mine)} cy="11" r="6" fill={color} stroke="white" strokeWidth="2" />
-            </svg>
+          <div key={k} className="flex items-center gap-3 py-2.5 border-t first:border-0 border-slate-100 dark:border-slate-800">
+            <div className="w-10 shrink-0 text-[11px] font-extrabold text-slate-900 dark:text-white">{lbl}</div>
+            <div className="flex-1 relative h-3 rounded-full bg-slate-100 dark:bg-slate-800 overflow-visible">
+              <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: pct(mine) + "%", backgroundColor: color }} />
+              <div className="absolute -top-1 w-0.5 h-5 bg-slate-500 dark:bg-slate-300 rounded" style={{ left: `calc(${pct(avg)}% - 1px)` }} title="league avg" />
+            </div>
             <div className="w-12 shrink-0 text-right text-sm font-extrabold text-slate-900 dark:text-white tabular-nums">{kind === "pct" ? mine.toFixed(1) + "%" : mine.toFixed(1)}</div>
+            <div className="w-10 shrink-0 text-right text-[11px] font-extrabold" style={{ color: tone }}>{ordinal(rank)}</div>
           </div>
         );
       })}
@@ -2138,99 +2134,63 @@ function TeamProfile({ roster, abbr, teams, players }) {
 }
 
 function TeamStatsPanel({ roster, abbr, mode, setMode, onSelectPlayer }) {
+  // One stat at a time, drawn as bars: pick a stat pill, every player gets a
+  // bar scaled to the team leader, numbers kept small. Current season only.
   const set = STAT_SETS[mode] || STAT_SETS.leaders;
-  const [sortKey, setSortKey] = useState(set.cols[0][0]);
-  useEffect(() => { setSortKey(set.cols[0][0]); }, [mode]);
-  const rows = roster.map((p) => ({ p, s: latestStats(p) })).filter((x) => x.s && (x.s.gp ?? 0) > 0);
-  const yr = rows[0] ? String(rows[0].s.season || "") : "";
+  const [stat, setStat] = useState(set.cols[0][0]);
+  useEffect(() => { setStat(set.cols[0][0]); }, [mode]);
   const color = teamColor(abbr);
-  // value shown for a cell; rate stats below the attempt minimum read as "—"
-  const val = (s, k) => {
-    const g = set.gate && set.gate[k];
-    if (g && (s[g[0]] ?? 0) < g[1]) return null;
-    return s[k] == null ? null : s[k];
-  };
-  const ranges = {};
-  for (const [k] of set.cols) {
-    const vs = rows.map((r) => val(r.s, k)).filter((v) => v != null && v > 0);
-    ranges[k] = vs.length ? [Math.min(...vs), Math.max(...vs)] : [0, 0];
-  }
-  const sorted = rows.slice().sort((a, b) => (val(b.s, sortKey) ?? -1) - (val(a.s, sortKey) ?? -1) || a.p.name.localeCompare(b.p.name));
-  const tint = (k, v) => {
-    if (v == null) return "transparent";
-    const [lo, hi] = ranges[k];
-    const t = hi > lo ? (v - lo) / (hi - lo) : 0.5;
-    return color + Math.round(8 + t * 96).toString(16).padStart(2, "0"); // #rrggbbaa
-  };
-  const fmt = (k, v) => v == null ? "—" : (set.pct && set.pct.includes(k) ? Number(v).toFixed(1) : Number(v).toFixed(1));
-  const leaderOf = {};
-  for (const [k] of set.cols) { const top = rows.slice().sort((a, b) => (val(b.s, k) ?? -1) - (val(a.s, k) ?? -1))[0]; if (top && val(top.s, k) != null) leaderOf[k] = top.p.id; }
+  const isPct = (set.pct || []).includes(stat);
+  const gate = set.gate?.[stat];
+  const rows = roster.map((p) => ({ p, s: curStats(p) }))
+    .filter((x) => x.s && (x.s.gp ?? 0) > 0 && x.s[stat] != null && (!gate || (x.s[gate[0]] ?? 0) >= gate[1]))
+    .sort((a, b) => b.s[stat] - a.s[stat]);
+  const max = rows.length ? Math.max(...rows.map((x) => x.s[stat])) : 1;
+  const waiting = roster.filter((p) => !curStats(p) || !(curStats(p).gp > 0)).length;
+  const fmtV = (v) => (isPct ? Number(v).toFixed(1) + "%" : fmt1(v));
+  const label = set.cols.find(([k]) => k === stat)?.[1] || stat.toUpperCase();
   return (
-    <>
-      <div className="flex gap-2 mt-4">
+    <div>
+      <div className="flex gap-2 mb-2">
         {Object.entries(STAT_SETS).map(([k, v]) => (
           <button key={k} onClick={() => setMode(k)}
-            className={"flex-1 py-1.5 rounded-full text-[11px] font-bold " + (mode === k ? "text-white" : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800")}
+            className={"flex-1 py-1.5 rounded-full text-[11px] font-extrabold border " + (mode === k ? "text-white border-transparent" : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800")}
             style={mode === k ? { backgroundColor: color } : undefined}>{v.label}</button>
         ))}
       </div>
-      {!rows.length ? (
-        <div className="text-center text-xs text-slate-400 py-10">No season stats for this roster yet — add rows to the Stats table.</div>
-      ) : (
-        <div className="mt-4">
-          <div className="flex items-baseline justify-between px-1 mb-1.5">
-            <span className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase">{yr} per game</span>
-            <span className="text-[9px] font-semibold text-slate-400">tap a column to rank</span>
-          </div>
-          <style>{`@keyframes hrbRowIn { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: none; } }`}</style>
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-            <table key={sortKey} className="w-full border-collapse tabular-nums">
-              <thead>
-                <tr className="border-b border-slate-100 dark:border-slate-800">
-                  <th className="text-left text-[9px] font-semibold tracking-widest uppercase text-slate-400 pl-2 py-2">Player</th>
-                  {set.cols.map(([k, lbl]) => (
-                    <th key={k} onClick={() => setSortKey(k)}
-                      className={"text-right text-[8px] font-extrabold tracking-wide uppercase py-2 pr-1 cursor-pointer select-none whitespace-nowrap " + (sortKey === k ? "" : "text-slate-400")}
-                      style={sortKey === k ? { color } : undefined}>
-                      {lbl}{sortKey === k ? " ▾" : ""}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody key={sortKey}>
-                {sorted.map(({ p, s }, i) => (
-                  <tr key={p.id} onClick={() => onSelectPlayer(p)} className="border-b border-slate-50 dark:border-slate-800/60 last:border-0 active:bg-slate-50 dark:active:bg-slate-800"
-                    style={{ animation: `hrbRowIn .28s ease-out ${Math.min(i, 12) * 22}ms both` }}>
-                    <td className="pl-2 py-1 pr-0.5 min-w-0">
-                      <div className="flex items-center gap-1 min-w-0">
-                        <span className="w-3.5 text-[8px] font-bold text-slate-300 dark:text-slate-600 text-right shrink-0">{i + 1}</span>
-                        <span className="text-[10px] font-bold text-slate-800 dark:text-slate-100 truncate max-w-[64px]">{lastNameOf(p)}</span>
-                        <span className="text-[7px] font-semibold text-slate-400 shrink-0">{courtPos(p)}</span>
-                      </div>
-                    </td>
-                    {set.cols.map(([k]) => {
-                      const v = val(s, k);
-                      const lead = leaderOf[k] === p.id;
-                      return (
-                        <td key={k} className="text-right pr-1 py-1">
-                          <span className={"inline-block min-w-[30px] rounded px-0.5 py-0.5 text-[10px] text-right transition-colors duration-300 " + (lead ? "font-extrabold text-slate-900 dark:text-white ring-1 ring-inset" : "font-semibold text-slate-700 dark:text-slate-200")}
-                            style={{ backgroundColor: tint(k, v), ...(lead ? { "--tw-ring-color": color } : {}) }}>
-                            {fmt(k, v)}
-                          </span>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="text-[9px] text-slate-400 mt-2 px-1">
-            Darker cell = higher on this team. Outlined = team leader.{mode === "shooting" ? " Percentages hidden under 3 FGA / 1.5 3PA / 1.5 FTA per game." : ""}
-          </div>
-        </div>
-      )}
-    </>
+      <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1" style={{ scrollbarWidth: "none" }}>
+        {set.cols.map(([k, lbl]) => (
+          <button key={k} onClick={() => setStat(k)}
+            className={"shrink-0 px-3 py-1 rounded-full text-[10px] font-extrabold border " + (stat === k ? "text-white border-transparent" : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800")}
+            style={stat === k ? { backgroundColor: color } : undefined}>{lbl}</button>
+        ))}
+      </div>
+      <div className="flex items-baseline justify-between mt-3 mb-2 px-1">
+        <span className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase">{seasonTick({ season: CURRENT_SEASON })} · {label} per game</span>
+        {waiting > 0 && <span className="text-[10px] font-semibold text-slate-400">{waiting} yet to play</span>}
+      </div>
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
+        {rows.map(({ p, s }, i) => {
+          const w = Math.max(3, (s[stat] / max) * 100);
+          return (
+            <button key={p.id} onClick={() => onSelectPlayer(p)} className="w-full flex items-center gap-3 px-3 py-2.5 text-left active:bg-slate-50 dark:active:bg-slate-800">
+              <span className={"w-5 text-center text-[11px] font-extrabold tabular-nums " + (i < 3 ? "text-slate-900 dark:text-white" : "text-slate-400")}>{i + 1}</span>
+              <Avatar p={p} />
+              <span className="flex-1 min-w-0">
+                <span className="flex items-baseline justify-between">
+                  <span className="text-sm font-bold text-slate-900 dark:text-white truncate">{lastNameOf(p)}<span className="ml-1 text-[9px] font-semibold text-slate-400">{courtPos(p)}</span></span>
+                  <span className="text-sm font-extrabold text-slate-900 dark:text-white tabular-nums ml-2">{fmtV(s[stat])}</span>
+                </span>
+                <span className="block h-2 rounded-full bg-slate-100 dark:bg-slate-800 mt-1.5 overflow-hidden">
+                  <span className="block h-full rounded-full" style={{ width: w + "%", backgroundColor: color, opacity: i === 0 ? 1 : 0.75 }} />
+                </span>
+              </span>
+            </button>
+          );
+        })}
+        {rows.length === 0 && <div className="text-center text-xs text-slate-400 py-10">No {seasonTick({ season: CURRENT_SEASON })} games for this roster yet.</div>}
+      </div>
+    </div>
   );
 }
 
