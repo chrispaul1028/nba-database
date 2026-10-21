@@ -28,9 +28,33 @@ const BOX = { MIN: "min", PTS: "pts", REB: "reb", AST: "ast", STL: "stl", BLK: "
 const splitMade = (v) => { const m = String(v || "").match(/^(\d+)-(\d+)$/); return m ? [Number(m[1]), Number(m[2])] : [0, 0]; };
 const nrm = (s) => String(s || "").toLowerCase().replace(/[.'’-]/g, "").replace(/\s+/g, " ").trim();
 
+const TEAM_BOX = { PTS: "pts", REB: "reb", AST: "ast", STL: "stl", BLK: "blk", TO: "tov", FG: "fg_", "3PT": "p3_", FT: "ft_" };
+
 export default async function handler(req, res) {
   try {
     const now = new Date();
+    // ── per-player game log (one ESPN call) ──
+    if (req.query?.gamelog) {
+      const id = String(req.query.gamelog).replace(/\D/g, "");
+      const g = await getJson(`https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/${id}/gamelog?region=us&lang=en&contentorigin=espn`);
+      const names = g.names || g.labels || [];
+      const idx = (n) => names.indexOf(n);
+      const games = [];
+      for (const st of g.seasonTypes || []) {
+        if (!/regular/i.test(st.displayName || "") ) continue;
+        for (const cat of st.categories || []) for (const ev of cat.events || []) {
+          const meta = g.events?.[ev.eventId] || {};
+          const v = (n) => { const i = idx(n); return i >= 0 ? ev.stats?.[i] : null; };
+          const made = (n) => splitMade(v(n));
+          games.push({ id: ev.eventId, date: meta.gameDate || null, opp: meta.opponent?.abbreviation || "", home: meta.atVs === "vs", result: meta.gameResult || "", score: meta.score || "",
+            min: Number(v("MIN")) || 0, pts: Number(v("PTS")) || 0, reb: Number(v("REB")) || 0, ast: Number(v("AST")) || 0, stl: Number(v("STL")) || 0, blk: Number(v("BLK")) || 0, tov: Number(v("TO")) || 0,
+            fgm: made("FG")[0], fga: made("FG")[1], p3m: made("3PT")[0], p3a: made("3PT")[1], ftm: made("FT")[0], fta: made("FT")[1] });
+        }
+      }
+      games.sort((x, y) => new Date(x.date || 0) - new Date(y.date || 0));
+      res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
+      return res.status(200).json({ id, games, updatedAt: new Date().toISOString() });
+    }
     const season = Number(req.query?.season) || (now.getMonth() >= 8 ? now.getFullYear() + 1 : now.getFullYear());
     const seasontype = Number(req.query?.seasontype) || 2;
     const base = `https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byathlete?region=us&lang=en&contentorigin=espn&isqualified=false&season=${season}&seasontype=${seasontype}&limit=1000`;
@@ -81,6 +105,7 @@ export default async function handler(req, res) {
     const stale = Object.values(tot).some((r) => r.gp > maxTeamGP + 1) || (maxTeamGP > 0 && !Object.values(tot).some((r) => r.gp > 0));
     const fromBox = stale || young;             // early season: box scores are the ground truth anyway
     let gamesUsed = 0, gamesSeen = 0;
+    const teamTot = {};
     if (fromBox) {
       tot = {};
       const start = new Date(season - 1, 9, 14), end = new Date();
@@ -96,6 +121,21 @@ export default async function handler(req, res) {
       const done = events.filter((e) => (e.season?.type == null || e.season.type === 2) && e.competitions?.[0]?.status?.type?.completed);
       gamesUsed = done.length;
       const addGame = (s) => {
+        // team line for this game (REB/AST/STL/BLK/TO/FG from the team box, PTS from the header score)
+        for (const tb of s?.boxscore?.teams || []) {
+          const raw = String(tb.team?.abbreviation || "").toUpperCase(); const ab = ABBR_FIX[raw] || raw;
+          const T = teamTot[ab] || (teamTot[ab] = { gp: 0, pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0 });
+          T.gp += 1;
+          const comp = (s.header?.competitions || [])[0] || {};
+          const me = (comp.competitors || []).find((c) => String(c.team?.id) === String(tb.team?.id));
+          T.pts += Number(me?.score) || 0;
+          for (const st of tb.statistics || []) {
+            const k = TEAM_BOX[(st.abbreviation || st.name || "").toUpperCase()] || TEAM_BOX[String(st.label || "").toUpperCase()];
+            if (!k) continue;
+            if (k.endsWith("_")) { const [m, att] = splitMade(st.displayValue); const pfx = k.slice(0, -1); T[pfx + "m"] += m; T[pfx + "a"] += att; }
+            else T[k] += Number(st.displayValue) || 0;
+          }
+        }
         for (const tb of s?.boxscore?.players || []) {
           const grp = (tb.statistics || [])[0] || {}; const cols = grp.names || grp.labels || [];
           const raw = String(tb.team?.abbreviation || "").toUpperCase();
@@ -158,8 +198,13 @@ export default async function handler(req, res) {
         fgm: pg("fgm"), fga: pg("fga"), p3m: pg("p3m"), p3a: pg("p3a"), ftm: pg("ftm"), fta: pg("fta"),
         fg: pct("fgm", "fga"), p3: pct("p3m", "p3a"), ft: pct("ftm", "fta") };
     });
+    const teams = {};
+    for (const [ab, T] of Object.entries(teamTot)) {
+      const g = T.gp || 1; const pg = (k) => Math.round((T[k] / g) * 10) / 10; const pct = (m, at) => (T[at] ? Math.round((T[m] / T[at]) * 1000) / 10 : null);
+      teams[ab] = { gp: T.gp, pts: pg("pts"), reb: pg("reb"), ast: pg("ast"), stl: pg("stl"), blk: pg("blk"), tov: pg("tov"), fg: pct("fgm", "fga"), p3: pct("p3m", "p3a"), ft: pct("ftm", "fta") };
+    }
     res.setHeader("Cache-Control", "s-maxage=120, stale-while-revalidate=240"); // 2-minute window
-    return res.status(200).json({ season: `${season - 1}-${season}`, seasontype, source: fromBox ? "box scores" : "espn table", gamesSeen, gamesUsed, maxTeamGP, count: players.length, players, updatedAt: new Date().toISOString() });
+    return res.status(200).json({ season: `${season - 1}-${season}`, seasontype, source: fromBox ? "box scores" : "espn table", gamesSeen, gamesUsed, maxTeamGP, count: players.length, players, teams, updatedAt: new Date().toISOString() });
   } catch (e) {
     return res.status(502).json({ error: String(e.message || e) });
   }
