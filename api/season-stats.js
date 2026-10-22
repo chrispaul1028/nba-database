@@ -21,14 +21,15 @@ const KEYS = {
   avgThreePointFieldGoalsMade: "p3m", avgThreePointFieldGoalsAttempted: "p3a",
   avgFreeThrowsMade: "ftm", avgFreeThrowsAttempted: "fta",
   avgOffensiveRebounds: "oreb", avgDefensiveRebounds: "dreb", avgFouls: "pf", plusMinus: "pm",
+  offensiveRebounds: "oreb_t", defensiveRebounds: "dreb_t",
 };
 
 // Box-score column label → app key (for live overlay from in-progress games)
-const BOX = { MIN: "min", PTS: "pts", REB: "reb", AST: "ast", STL: "stl", BLK: "blk", TO: "tov", FG: "fg_", "3PT": "p3_", FT: "ft_" };
+const BOX = { MIN: "min", PTS: "pts", REB: "reb", OREB: "oreb", DREB: "dreb", AST: "ast", STL: "stl", BLK: "blk", TO: "tov", FG: "fg_", "3PT": "p3_", FT: "ft_" };
 const splitMade = (v) => { const m = String(v || "").match(/^(\d+)-(\d+)$/); return m ? [Number(m[1]), Number(m[2])] : [0, 0]; };
 const nrm = (s) => String(s || "").toLowerCase().replace(/[.'’-]/g, "").replace(/\s+/g, " ").trim();
 
-const TEAM_BOX = { PTS: "pts", REB: "reb", AST: "ast", STL: "stl", BLK: "blk", TO: "tov", FG: "fg_", "3PT": "p3_", FT: "ft_" };
+const TEAM_BOX = { PTS: "pts", REB: "reb", OREB: "oreb", DREB: "dreb", AST: "ast", STL: "stl", BLK: "blk", TO: "tov", FG: "fg_", "3PT": "p3_", FT: "ft_", FIELDGOALSMADE: "fgm", REBOUNDS: "reb", OFFENSIVEREBOUNDS: "oreb", DEFENSIVEREBOUNDS: "dreb", ASSISTS: "ast", STEALS: "stl", BLOCKS: "blk", TURNOVERS: "tov" };
 
 export default async function handler(req, res) {
   try {
@@ -92,7 +93,7 @@ export default async function handler(req, res) {
         const raw = String(ath.teamShortName || ath.team?.abbreviation || "").toUpperCase();
         const rec = { id: ath.id, name: ath.displayName || ath.name || "", team: ABBR_FIX[raw] || raw, pos: ath.position?.abbreviation || "", headshot: ath.headshot?.href || null, gp,
           tot: {}, live: false };
-        for (const k of ["min", "pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "p3m", "p3a", "ftm", "fta"]) rec.tot[k] = (avg[k] || 0) * gp;
+        for (const k of ["min", "pts", "reb", "oreb", "dreb", "ast", "stl", "blk", "tov", "fgm", "fga", "p3m", "p3a", "ftm", "fta"]) rec.tot[k] = (avg[k] || 0) * gp;
         tot[nrm(rec.name)] = rec;
       }
       const pg = d.pagination || {};
@@ -125,14 +126,15 @@ export default async function handler(req, res) {
         // team line for this game (REB/AST/STL/BLK/TO/FG from the team box, PTS from the header score)
         for (const tb of s?.boxscore?.teams || []) {
           const raw = String(tb.team?.abbreviation || "").toUpperCase(); const ab = ABBR_FIX[raw] || raw;
-          const T = teamTot[ab] || (teamTot[ab] = { gp: 0, pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0 });
+          const T = teamTot[ab] || (teamTot[ab] = { gp: 0, pts: 0, reb: 0, oreb: 0, dreb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0 });
           T.gp += 1;
           const comp = (s.header?.competitions || [])[0] || {};
           const me = (comp.competitors || []).find((c) => String(c.team?.id) === String(tb.team?.id));
           T.pts += Number(me?.score) || 0;
           for (const st of tb.statistics || []) {
-            const k = TEAM_BOX[(st.abbreviation || st.name || "").toUpperCase()] || TEAM_BOX[String(st.label || "").toUpperCase()];
+            const k = TEAM_BOX[(st.abbreviation || "").toUpperCase()] || TEAM_BOX[String(st.label || "").toUpperCase()] || TEAM_BOX[String(st.name || "").toUpperCase()];
             if (!k) continue;
+            if (k === "fgm") continue;   // ESPN's "fieldGoalsMade-fieldGoalsAttempted" comes through FG
             if (k.endsWith("_")) { const [m, att] = splitMade(st.displayValue); const pfx = k.slice(0, -1); T[pfx + "m"] += m; T[pfx + "a"] += att; }
             else T[k] += Number(st.displayValue) || 0;
           }
@@ -144,7 +146,7 @@ export default async function handler(req, res) {
             if (a.didNotPlay) continue;
             const name = a.athlete?.displayName || "";
             let rec = tot[nrm(name)];
-            if (!rec) { rec = { id: a.athlete?.id, name, team: ABBR_FIX[raw] || raw, pos: a.athlete?.position?.abbreviation || "", headshot: a.athlete?.headshot?.href || null, gp: 0, tot: Object.fromEntries(["min", "pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "p3m", "p3a", "ftm", "fta"].map((k) => [k, 0])), live: false }; tot[nrm(name)] = rec; }
+            if (!rec) { rec = { id: a.athlete?.id, name, team: ABBR_FIX[raw] || raw, pos: a.athlete?.position?.abbreviation || "", headshot: a.athlete?.headshot?.href || null, gp: 0, tot: Object.fromEntries(["min", "pts", "reb", "oreb", "dreb", "ast", "stl", "blk", "tov", "fgm", "fga", "p3m", "p3a", "ftm", "fta"].map((k) => [k, 0])), live: false }; tot[nrm(name)] = rec; }
             rec.gp += 1;
             cols.forEach((c, i) => {
               const k = BOX[c]; if (!k) return; const v = a.stats?.[i];
@@ -176,7 +178,7 @@ export default async function handler(req, res) {
             if (a.didNotPlay) continue;
             const name = a.athlete?.displayName || "";
             let rec = tot[nrm(name)];
-            if (!rec) { rec = { id: a.athlete?.id, name, team: ABBR_FIX[raw] || raw, pos: a.athlete?.position?.abbreviation || "", headshot: a.athlete?.headshot?.href || null, gp: 0, tot: Object.fromEntries(["min", "pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "p3m", "p3a", "ftm", "fta"].map((k) => [k, 0])), live: false }; tot[nrm(name)] = rec; }
+            if (!rec) { rec = { id: a.athlete?.id, name, team: ABBR_FIX[raw] || raw, pos: a.athlete?.position?.abbreviation || "", headshot: a.athlete?.headshot?.href || null, gp: 0, tot: Object.fromEntries(["min", "pts", "reb", "oreb", "dreb", "ast", "stl", "blk", "tov", "fgm", "fga", "p3m", "p3a", "ftm", "fta"].map((k) => [k, 0])), live: false }; tot[nrm(name)] = rec; }
             rec.gp += 1; rec.live = true;
             cols.forEach((c, i) => {
               const k = BOX[c]; if (!k) return;
@@ -195,14 +197,14 @@ export default async function handler(req, res) {
       const pg = (k) => Math.round((t[k] / g) * 10) / 10;
       const pct = (m, a) => (t[a] ? Math.round((t[m] / t[a]) * 1000) / 10 : null);
       return { id: r.id, name: r.name, team: r.team, pos: r.pos, headshot: r.headshot, gp: g, live: r.live,
-        min: pg("min"), pts: pg("pts"), reb: pg("reb"), ast: pg("ast"), stl: pg("stl"), blk: pg("blk"), tov: pg("tov"),
+        min: pg("min"), pts: pg("pts"), reb: pg("reb"), oreb: pg("oreb"), dreb: pg("dreb"), ast: pg("ast"), stl: pg("stl"), blk: pg("blk"), tov: pg("tov"),
         fgm: pg("fgm"), fga: pg("fga"), p3m: pg("p3m"), p3a: pg("p3a"), ftm: pg("ftm"), fta: pg("fta"),
         fg: pct("fgm", "fga"), p3: pct("p3m", "p3a"), ft: pct("ftm", "fta") };
     });
     const teams = {};
     for (const [ab, T] of Object.entries(teamTot)) {
       const g = T.gp || 1; const pg = (k) => Math.round((T[k] / g) * 10) / 10; const pct = (m, at) => (T[at] ? Math.round((T[m] / T[at]) * 1000) / 10 : null);
-      teams[ab] = { gp: T.gp, pts: pg("pts"), reb: pg("reb"), ast: pg("ast"), stl: pg("stl"), blk: pg("blk"), tov: pg("tov"), fg: pct("fgm", "fga"), p3: pct("p3m", "p3a"), ft: pct("ftm", "fta") };
+      teams[ab] = { gp: T.gp, pts: pg("pts"), reb: pg("reb"), oreb: pg("oreb"), dreb: pg("dreb"), ast: pg("ast"), stl: pg("stl"), blk: pg("blk"), tov: pg("tov"), fga: pg("fga"), p3a: pg("p3a"), fta: pg("fta"), fg: pct("fgm", "fga"), p3: pct("p3m", "p3a"), ft: pct("ftm", "fta") };
     }
     res.setHeader("Cache-Control", "s-maxage=120, stale-while-revalidate=240"); // 2-minute window
     return res.status(200).json({ season: `${season - 1}-${season}`, seasontype, source: fromBox ? "box scores" : "espn table", gamesSeen, gamesUsed, maxTeamGP, count: players.length, players, teams, updatedAt: new Date().toISOString() });
