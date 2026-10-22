@@ -82,8 +82,8 @@ const COURT_THEMES = {
   BOS: { lines: "#FFFFFF", ft: "#FFFFFF", half: "#FFFFFF", side: "#FFFFFF", threePt: "#FFFFFF", center: "none", centerStroke: "none",
          logoW: 34, apron: "#007A33", apronText: "#FFFFFF", courtLogo: "https://cdn.nba.com/logos/nba/1610612738/global/L/logo.svg",
          floorText: [[{ t: "TD", color: "#FFFFFF", box: "#3FA35B" }, { t: "GARDEN", color: "#111111" }]] },
-  MIA: { lines: "#111111", ft: "#111111", half: "#111111", side: "#111111", threePt: "#111111", center: "none", centerStroke: "none",
-         paint: "#FDB74A", paintSides: "#98002E", logoW: 30, apron: "#111111", apronText: "#FFFFFF", fs: 2.0,
+  MIA: { floor: "repeating-linear-gradient(90deg,#EBDCB8 0 6.5%,#E4D3AB 6.5% 13%)", lines: "#111111", ft: "#111111", half: "#111111", side: "#FFFFFF", sideW: 0.5, threePt: "#111111", center: "none", centerStroke: "none",
+         paint: "#F5A836", paintSides: "#9A1B32", logoW: 30, apron: "#111111", apronText: "#FFFFFF", fs: 2.4, weight: 800,
          floorText: [[{ t: "Kaseya", color: "#111111" }], [{ t: "Center", color: "#111111" }]] },
   BKN: { floor: "repeating-linear-gradient(90deg,#b9b3aa 0 6.5%,#aea79e 6.5% 13%)", paint: "#8f877d",
          lines: "#111111", ft: "#111111", half: "#111111", side: "#111111", threePt: "#111111", center: "none", centerStroke: "none",
@@ -1823,12 +1823,12 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
           </defs>
           {th.paint !== "none" && <rect x="17" y="28" width="16" height="19" fill={th.paint || color} opacity={th.paint ? 1 : 0.88} />}
           {th.paintSides && <>
-            <rect x="14.8" y="28" width="2.2" height="19" fill={th.paintSides} stroke={th.lines || "rgba(255,255,255,0.8)"} strokeWidth="0.35" />
-            <rect x="33" y="28" width="2.2" height="19" fill={th.paintSides} stroke={th.lines || "rgba(255,255,255,0.8)"} strokeWidth="0.35" />
+            <rect x="14.5" y="28" width="2.5" height="19" fill={th.paintSides} stroke={th.lines || "rgba(255,255,255,0.8)"} strokeWidth="0.35" />
+            <rect x="33" y="28" width="2.5" height="19" fill={th.paintSides} stroke={th.lines || "rgba(255,255,255,0.8)"} strokeWidth="0.35" />
             {[36, 39, 42, 44.5].map((y) => (
               <React.Fragment key={"ps" + y}>
-                <line x1="14.8" y1={y} x2="17" y2={y} stroke={th.lines || "rgba(255,255,255,0.8)"} strokeWidth="0.35" />
-                <line x1="33" y1={y} x2="35.2" y2={y} stroke={th.lines || "rgba(255,255,255,0.8)"} strokeWidth="0.35" />
+                <line x1="14.5" y1={y} x2="17" y2={y} stroke={th.lines || "rgba(255,255,255,0.8)"} strokeWidth="0.35" />
+                <line x1="33" y1={y} x2="35.5" y2={y} stroke={th.lines || "rgba(255,255,255,0.8)"} strokeWidth="0.35" />
               </React.Fragment>
             ))}
           </>}
@@ -1864,7 +1864,7 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
             fontFamily={th.apronScript ? "'Snell Roundhand', 'Brush Script MT', 'Segoe Script', cursive" : "system-ui, sans-serif"} fontStyle={th.apronScript ? "italic" : "normal"} letterSpacing={th.apronScript ? "0.05" : "0.45"}
             fill={th.apronText || "#FFFFFF"} textAnchor="middle">{th.apronLabel || String(team?.name || nick).toUpperCase()}</text>
           {/* baseline + sidelines */}
-          <rect x="0.15" y={-COURT_TOP_FT} width="49.7" height={47 + COURT_TOP_FT - 0.15} fill="none" stroke={th.side === "none" ? "transparent" : th.side || "rgba(255,255,255,0.7)"} strokeWidth="0.3" />
+          <rect x="0.15" y={-COURT_TOP_FT} width="49.7" height={47 + COURT_TOP_FT - 0.15} fill="none" stroke={th.side === "none" ? "transparent" : th.side || "rgba(255,255,255,0.7)"} strokeWidth={th.sideW || 0.3} />
           {/* floor lettering along the left sideline, just below half court (reads bottom → top) */}
           {th.floorText && (() => {
             const norm = th.floorText.map((ln) => (Array.isArray(ln) ? { parts: ln } : ln));
