@@ -1823,8 +1823,14 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
           </defs>
           {th.paint !== "none" && <rect x="17" y="28" width="16" height="19" fill={th.paint || color} opacity={th.paint ? 1 : 0.88} />}
           {th.paintSides && <>
-            <rect x="14.8" y="22" width="2.2" height="25" fill={th.paintSides} />
-            <rect x="33" y="22" width="2.2" height="25" fill={th.paintSides} />
+            <rect x="14.8" y="28" width="2.2" height="19" fill={th.paintSides} stroke={th.lines || "rgba(255,255,255,0.8)"} strokeWidth="0.35" />
+            <rect x="33" y="28" width="2.2" height="19" fill={th.paintSides} stroke={th.lines || "rgba(255,255,255,0.8)"} strokeWidth="0.35" />
+            {[36, 39, 42, 44.5].map((y) => (
+              <React.Fragment key={"ps" + y}>
+                <line x1="14.8" y1={y} x2="17" y2={y} stroke={th.lines || "rgba(255,255,255,0.8)"} strokeWidth="0.35" />
+                <line x1="33" y1={y} x2="35.2" y2={y} stroke={th.lines || "rgba(255,255,255,0.8)"} strokeWidth="0.35" />
+              </React.Fragment>
+            ))}
           </>}
           {th.paint !== "none" && <rect x="17" y="28" width="16" height="19" fill="url(#paintTex)" />}
           {/* half-court line + full center circle */}
@@ -3226,7 +3232,7 @@ function TonightTab({ players, teams, onSelect, onSelectTeam, onOpenGame }) {
                       </>
                     ) : (
                       <>
-                        <div className="text-2xl font-extrabold tabular-nums leading-none">{tip}</div>
+                        <div className="text-lg font-extrabold tabular-nums leading-none">{tip}</div>
                         {g.broadcast && <div className="text-xs font-semibold opacity-85 mt-1">{g.broadcast}</div>}
                       </>
                     )}
