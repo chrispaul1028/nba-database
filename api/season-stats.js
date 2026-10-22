@@ -37,8 +37,9 @@ export default async function handler(req, res) {
     if (req.query?.gamelog) {
       const id = String(req.query.gamelog).replace(/\D/g, "");
       const g = await getJson(`https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/${id}/gamelog?region=us&lang=en&contentorigin=espn`);
-      const names = g.names || g.labels || [];
-      const idx = (n) => names.indexOf(n);
+      const names = g.labels || g.displayNames || g.names || [];
+      const alias = { MIN: ["MIN", "minutes"], FG: ["FG", "fieldGoalsMade-fieldGoalsAttempted"], "3PT": ["3PT", "threePointFieldGoalsMade-threePointFieldGoalsAttempted"], FT: ["FT", "freeThrowsMade-freeThrowsAttempted"], REB: ["REB", "totalRebounds"], AST: ["AST", "assists"], BLK: ["BLK", "blocks"], STL: ["STL", "steals"], TO: ["TO", "turnovers"], PTS: ["PTS", "points"] };
+      const idx = (n) => { for (const k of alias[n] || [n]) { const i = names.indexOf(k); if (i >= 0) return i; } return -1; };
       const games = [];
       for (const st of g.seasonTypes || []) {
         if (!/regular/i.test(st.displayName || "") ) continue;
