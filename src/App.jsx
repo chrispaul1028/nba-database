@@ -82,8 +82,8 @@ const COURT_THEMES = {
   BOS: { lines: "#FFFFFF", ft: "#FFFFFF", half: "#FFFFFF", side: "#FFFFFF", threePt: "#FFFFFF", center: "none", centerStroke: "none",
          logoW: 34, apron: "#007A33", apronText: "#FFFFFF", courtLogo: "https://cdn.nba.com/logos/nba/1610612738/global/L/logo.svg",
          floorText: [[{ t: "TD", color: "#FFFFFF", box: "#3FA35B" }, { t: "GARDEN", color: "#111111" }]] },
-  MIA: { floor: "repeating-linear-gradient(90deg,#EBDCB8 0 6.5%,#E4D3AB 6.5% 13%)", lines: "#111111", ft: "#111111", half: "#111111", side: "#FFFFFF", sideW: 0.5, threePt: "#111111", center: "none", centerStroke: "none",
-         paint: "#F5A836", paintSides: "#9A1B32", logoW: 30, apron: "#111111", apronText: "#FFFFFF", fs: 2.4, weight: 800,
+  MIA: { lines: "#111111", ft: "#111111", half: "#111111", side: "#111111", threePt: "#111111", center: "none", centerStroke: "none",
+         paint: "#F9A01B", paintSides: "#98002E", logoW: 30, apron: "#111111", apronText: "#FFFFFF",
          floorText: [[{ t: "Kaseya", color: "#111111" }], [{ t: "Center", color: "#111111" }]] },
   BKN: { floor: "repeating-linear-gradient(90deg,#b9b3aa 0 6.5%,#aea79e 6.5% 13%)", paint: "#8f877d",
          lines: "#111111", ft: "#111111", half: "#111111", side: "#111111", threePt: "#111111", center: "none", centerStroke: "none",
@@ -1823,14 +1823,8 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
           </defs>
           {th.paint !== "none" && <rect x="17" y="28" width="16" height="19" fill={th.paint || color} opacity={th.paint ? 1 : 0.88} />}
           {th.paintSides && <>
-            <rect x="14.5" y="28" width="2.5" height="19" fill={th.paintSides} stroke={th.lines || "rgba(255,255,255,0.8)"} strokeWidth="0.35" />
-            <rect x="33" y="28" width="2.5" height="19" fill={th.paintSides} stroke={th.lines || "rgba(255,255,255,0.8)"} strokeWidth="0.35" />
-            {[36, 39, 42, 44.5].map((y) => (
-              <React.Fragment key={"ps" + y}>
-                <line x1="14.5" y1={y} x2="17" y2={y} stroke={th.lines || "rgba(255,255,255,0.8)"} strokeWidth="0.35" />
-                <line x1="33" y1={y} x2="35.5" y2={y} stroke={th.lines || "rgba(255,255,255,0.8)"} strokeWidth="0.35" />
-              </React.Fragment>
-            ))}
+            <rect x="15.6" y="28" width="1.4" height="19" fill={th.paintSides} />
+            <rect x="33" y="28" width="1.4" height="19" fill={th.paintSides} />
           </>}
           {th.paint !== "none" && <rect x="17" y="28" width="16" height="19" fill="url(#paintTex)" />}
           {/* half-court line + full center circle */}
@@ -1839,7 +1833,7 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
           {/* three-point line: corners + arc (23.75ft from the rim) */}
           <path d="M 3 47 L 3 33.3 A 23.75 23.75 0 0 1 47 33.3 L 47 47" fill="none" stroke={th.threePt || th.lines || color} strokeWidth="0.35" />
           {/* key outline in the team color, free-throw circle in the secondary color */}
-          <rect x="17" y="28" width="16" height="19" fill="none" stroke={th.lines || color} strokeWidth="0.55" />
+          <rect x="17" y="28" width="16" height="19" fill="none" stroke={th.lines || color} strokeWidth="0.35" />
           {th.ftFillTop && <path d="M 19 28 A 6 6 0 0 1 31 28 Z" fill={th.ftFillTop} />}
           {th.ftFillBottom && <path d="M 19 28 A 6 6 0 0 0 31 28 Z" fill={th.ftFillBottom} />}
           {th.ftTopFill && <path d="M 19 28 A 6 6 0 0 1 31 28 Z" fill={th.ftTopFill} />}
