@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 
 // ═══════════════ THEME (edit these to restyle the app) ═══════════
 // Player detail header color:
@@ -697,11 +697,11 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
           const ma = (m, a) => (st[m] != null && st[a] != null ? fmt1(st[m]) + "/" + fmt1(st[a]) : " ");
           // Grouped the way a scout reads a line: how he scores, how he passes, how he rebounds, how he defends, how much he plays
           const groups = [
-            ["Scoring", [["PTS", tot("pts"), pg("pts"), "pts"], ["FG%", pct("fg"), ma("fgm", "fga"), "fg"], ["3P%", pct("p3"), ma("p3m", "p3a"), "p3"], ["FT%", pct("ft"), ma("ftm", "fta"), "ft"]]],
+            ["Scoring", [["PTS", tot("pts"), pg("pts"), "pts"], ["FG%", pct("fg"), ma("fgm", "fga"), "fg"], ["3PM", tot("p3m"), pg("p3m"), "p3m"], ["3P%", pct("p3"), ma("p3m", "p3a"), "p3"], ["FT%", pct("ft"), ma("ftm", "fta"), "ft"]]],
             ["Playmaking", [["AST", tot("ast"), pg("ast"), "ast"], ["TOV", tot("tov"), pg("tov"), "tov"], ["AST/TO", st.tov > 0 ? fmt1(st.ast / st.tov) : (st.ast > 0 ? "∞" : null), "ratio", "ast"], ["MIN", tot("min"), pg("min"), "min"]]],
             ["Rebounding", [["REB", tot("reb"), pg("reb"), "reb"], ["OREB", st.oreb != null ? tot("oreb") : null, pg("oreb"), "oreb"], ["DREB", st.dreb != null ? tot("dreb") : null, pg("dreb"), "dreb"]]],
             ["Defense", [["STL", tot("stl"), pg("stl"), "stl"], ["BLK", tot("blk"), pg("blk"), "blk"]]],
-            ["Volume", [["FGA", tot("fga"), pg("fga"), "fga"], ["3PA", tot("p3a"), pg("p3a"), "p3a"], ["FTA", tot("fta"), pg("fta"), "fta"], ["3PM", tot("p3m"), pg("p3m"), "p3m"]]],
+            ["Volume", [["FGA", tot("fga"), pg("fga"), "fga"], ["3PA", tot("p3a"), pg("p3a"), "p3a"], ["FTA", tot("fta"), pg("fta"), "fta"]]],
           ].map(([g, t]) => [g, t.filter(([, v]) => v != null)]).filter(([, t]) => t.length);
           const tiles = groups.flatMap(([, t]) => t);
           return (
@@ -943,7 +943,13 @@ function GameView({ game, teams, players, onBack, onSelectTeam }) {
           const c = teamColor(t.abbr);
           const minIdx = bx.cols.indexOf("MIN");
           const mins = (r) => { const v = String(r.stats[minIdx] ?? "0"); const [m, sec] = v.split(":"); return Number(m) + (sec ? Number(sec) / 60 : 0); };
-          const rows = [...bx.rows.filter((r) => !r.dnp && r.starter), ...bx.rows.filter((r) => !r.dnp && !r.starter).sort((a, b) => mins(b) - mins(a))];
+          const LBL = { PG: 1, G: 1.5, SG: 2, "G-F": 2.5, SF: 3, F: 3.5, "F-G": 3, PF: 4, "F-C": 4.5, "C-F": 4.5, C: 5 };
+          const posScore = (r) => {
+            const nm = espnNrm(r.name); const last = nm.split(" ").pop();
+            const p = (players || []).find((q) => espnNrm(q.name) === nm) || (players || []).find((q) => { const qn = espnNrm(q.name); return qn.endsWith(" " + last) && qn[0] === nm[0]; });
+            return (p && (Number(p.sort) || LBL[courtPos(p)])) || LBL[String(r.pos || "").toUpperCase()] || 3;
+          };
+          const rows = [...bx.rows.filter((r) => !r.dnp && r.starter).sort((a, b) => posScore(a) - posScore(b)), ...bx.rows.filter((r) => !r.dnp && !r.starter).sort((a, b) => mins(b) - mins(a))];
           const dnp = bx.rows.filter((r) => r.dnp);
           return (
             <div>
@@ -2188,8 +2194,8 @@ function TeamLeaders({ roster, abbr, onSelectPlayer }) {
             {items.map(([k, l, x]) => (
               <button key={k} onClick={() => onSelectPlayer(x.p)} className="w-full flex items-center gap-3 px-4 py-2 text-left active:bg-slate-50 dark:active:bg-slate-800">
                 <Avatar p={x.p} />
-                <span className="flex-1 min-w-0"><span className="block text-sm font-bold text-slate-900 dark:text-white truncate">{x.p.name}</span><span className="block text-[10px] font-semibold tracking-wider uppercase text-slate-400">{l}</span></span>
-                <span className="text-2xl font-extrabold text-slate-900 dark:text-white tabular-nums">{fmt1(x.s[k])}</span>
+                <span className="flex-1 min-w-0"><span className="block text-[13px] font-bold text-slate-900 dark:text-white truncate">{x.p.name}</span><span className="block text-[9px] font-semibold tracking-wider uppercase text-slate-400">{l}</span></span>
+                <span className="text-lg font-extrabold text-slate-900 dark:text-white tabular-nums">{fmt1(x.s[k])}</span>
               </button>
             ))}
           </div>
@@ -2214,17 +2220,17 @@ function TeamBars({ roster, abbr, set, onSelectPlayer }) {
         const teamTotal = rows.reduce((a, x) => a + (x.s[k] || 0), 0) || 1;
         return (
           <div key={k}>
-            <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mb-2 px-1">{seasonTick({ season: CURRENT_SEASON })} {lbl}{set.share ? " · share of team" : " per game"}</div>
+            <div className="text-[11px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mb-2 px-1">{seasonTick({ season: CURRENT_SEASON })} {lbl}{set.share ? " · share of team" : " per game"}</div>
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm px-4 py-2">
               {list.map(({ p, s: st }) => {
                 const share = (st[k] / teamTotal) * 100;
                 return (
                   <button key={p.id} onClick={() => onSelectPlayer(p)} className="w-full py-2 text-left">
                     <span className="flex items-baseline justify-between">
-                      <span className="text-sm font-bold text-slate-900 dark:text-white truncate">{p.name} <span className="text-[10px] font-semibold text-slate-400 ml-1">{courtPos(p)}</span></span>
-                      <span className="text-sm font-extrabold text-slate-900 dark:text-white tabular-nums ml-2">{set.share ? Math.round(share) + "%" : isPct ? Number(st[k]).toFixed(1) + "%" : fmt1(st[k])}{set.share && <span className="text-[10px] font-semibold text-slate-400 ml-1">({fmt1(st[k])})</span>}</span>
+                      <span className="text-[12px] font-bold text-slate-900 dark:text-white truncate">{p.name} <span className="text-[9px] font-semibold text-slate-400 ml-1">{courtPos(p)}</span></span>
+                      <span className="text-[12px] font-extrabold text-slate-900 dark:text-white tabular-nums ml-2">{set.share ? Math.round(share) + "%" : isPct ? Number(st[k]).toFixed(1) + "%" : fmt1(st[k])}{set.share && <span className="text-[10px] font-semibold text-slate-400 ml-1">({fmt1(st[k])})</span>}</span>
                     </span>
-                    <span className="block h-2.5 rounded-full bg-slate-100 dark:bg-slate-800 mt-1.5 overflow-hidden">
+                    <span className="block h-2 rounded-full bg-slate-100 dark:bg-slate-800 mt-1 overflow-hidden">
                       <span className="block h-full rounded-full" style={{ width: Math.max(3, (set.share ? share / ((list[0].s[k] / teamTotal) * 100) : st[k] / max) * 100) + "%", backgroundColor: color }} />
                     </span>
                   </button>
@@ -2661,16 +2667,17 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
   const prevTeam = idx > 0 ? ordered[idx - 1] : null;
   // Swipe left: next team. Swipe right: previous team if you've been
   // flipping through teams, otherwise back to the list.
+  const [seg, setSeg] = useState("roster");
+  const segRef = useRef(seg); segRef.current = seg;
   const swipe = useSwipe(
-    () => { if (nextTeam && onSelectTeam) { SWIPE_DEPTH.n++; onSelectTeam(nextTeam); window.scrollTo(0, 0); } },
-    () => { if (SWIPE_DEPTH.n > 0 && prevTeam && onSelectTeam) { SWIPE_DEPTH.n--; onSelectTeam(prevTeam); window.scrollTo(0, 0); } else { SWIPE_DEPTH.n = 0; onBack(); } }
+    () => { if (segRef.current === "stats") return; if (nextTeam && onSelectTeam) { SWIPE_DEPTH.n++; onSelectTeam(nextTeam); window.scrollTo(0, 0); } },   // Stats has its own horizontal gestures — no team swipe there
+    () => { if (segRef.current === "stats") return; if (SWIPE_DEPTH.n > 0 && prevTeam && onSelectTeam) { SWIPE_DEPTH.n--; onSelectTeam(prevTeam); window.scrollTo(0, 0); } else { SWIPE_DEPTH.n = 0; onBack(); } }
   );
   useEffect(() => { window.scrollTo(0, 0); }, []);
   const abbr = team.abbr || toAbbr(team.name);
-  const [seg, setSeg] = useState("roster");
   const [rosterView, setRosterView] = useState("court"); // court | list
   const [statMode, setStatMode] = useState("leaders");
-  const [statsLayout, setStatsLayout] = useState("table");
+  const [statsLayout, setStatsLayout] = useState("profile");
   const [cView, setCView] = useState("list"); // list | cap | fa | bio  (which tile is pressed)
   const faOnly = cView === "fa";
   const toggleC = (k) => setCView((v) => (v === k ? "list" : k));
@@ -2780,10 +2787,10 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
         )}
         {seg === "stats" && (
           <>
-            <div className="flex gap-2 mt-3 mb-3 overflow-x-auto -mx-4 px-4" style={{ scrollbarWidth: "none" }}>
-              {[["table", "Matrix"], ["profile", "Profile"], ["leaders", "Leaders"], ...Object.entries(TEAM_BARS).map(([k, v]) => [k, v.label])].map(([k, lbl]) => (
+            <div className="grid grid-cols-4 gap-2 mt-3 mb-3">
+              {[["profile", "Profile"], ["table", "Matrix"], ["leaders", "Leaders"], ["volume", "Volume"], ["offense", "Offense"], ["playmaking", "Playmaking"], ["rebounds", "Rebounds"], ["defense", "Defense"]].map(([k, lbl]) => (
                 <button key={k} onClick={() => setStatsLayout(k)}
-                  className={"shrink-0 px-4 py-1.5 rounded-full text-[11px] font-extrabold border " + (statsLayout === k ? "text-white border-transparent" : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800")}
+                  className={"py-1.5 rounded-full text-[10px] font-extrabold border truncate " + (statsLayout === k ? "text-white border-transparent" : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800")}
                   style={statsLayout === k ? { backgroundColor: teamColor(abbr) } : undefined}>{lbl}</button>
               ))}
             </div>
