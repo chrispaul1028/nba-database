@@ -251,7 +251,11 @@ function faDeadline(c) {
   const dl = eventDeadline({ kind: String(y.type).toUpperCase(), season: y.season, deadline: y.deadline || null });
   return dl ? dl.label : null;
 }
-const activeOf = (p) => p.contracts.find((c) => c.status === "Active") || p.contracts[0] || null;
+// The contract in force: Status = Active. With none, the most recent one still
+// drives the card — unless it's been closed out (Expired / Terminated / Waived /
+// Bought out / Declined), in which case there is no active contract.
+const CLOSED = /expired|terminated|waived|bought|declined|void|released/i;
+const activeOf = (p) => p.contracts.find((c) => c.status === "Active") || (p.contracts[0] && !CLOSED.test(String(p.contracts[0].status || "")) ? p.contracts[0] : null);
 
 // Years in the league, computed from Draft Year vs the current season.
 function latestStats(p) {
@@ -1460,6 +1464,7 @@ function rosterOf(team, players) {
   return (players || []).filter((p) => {
     if (isRetired(p)) return false;
     if (p.teamId && p.teamId === team.id) return true;
+    if (p.teamId) return false;                                  // Airtable's Team link is the roster of record — a contract can't override it
     const t = teamOfPlayer(p);
     return t && (t === abbr || String(p.teamName).toLowerCase() === String(team.name).toLowerCase());
   });
