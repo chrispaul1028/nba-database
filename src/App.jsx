@@ -697,7 +697,7 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
           const ma = (m, a) => (st[m] != null && st[a] != null ? fmt1(st[m]) + "/" + fmt1(st[a]) : " ");
           // Grouped the way a scout reads a line: how he scores, how he passes, how he rebounds, how he defends, how much he plays
           const groups = [
-            ["Scoring", [["PTS", tot("pts"), pg("pts"), "pts"], ["FG%", pct("fg"), ma("fgm", "fga"), "fg"], ["3PM", tot("p3m"), pg("p3m"), "p3m"], ["3P%", pct("p3"), ma("p3m", "p3a"), "p3"], ["FT%", pct("ft"), ma("ftm", "fta"), "ft"]]],
+            ["Scoring", [["PTS", tot("pts"), pg("pts"), "pts"], ["FG%", pct("fg"), ma("fgm", "fga"), "fg"], ["3PM", tot("p3m"), pg("p3m"), "p3m"], ["3P%", pct("p3"), ma("p3m", "p3a"), "p3"], ["FTM", tot("ftm"), pg("ftm"), "ftm"], ["FT%", pct("ft"), ma("ftm", "fta"), "ft"]]],
             ["Playmaking", [["AST", tot("ast"), pg("ast"), "ast"], ["TOV", tot("tov"), pg("tov"), "tov"], ["AST/TO", st.tov > 0 ? fmt1(st.ast / st.tov) : (st.ast > 0 ? "∞" : null), "ratio", "ast"], ["MIN", tot("min"), pg("min"), "min"]]],
             ["Rebounding", [["REB", tot("reb"), pg("reb"), "reb"], ["OREB", st.oreb != null ? tot("oreb") : null, pg("oreb"), "oreb"], ["DREB", st.dreb != null ? tot("dreb") : null, pg("dreb"), "dreb"]]],
             ["Defense", [["STL", tot("stl"), pg("stl"), "stl"], ["BLK", tot("blk"), pg("blk"), "blk"]]],
@@ -2670,8 +2670,8 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
   const [seg, setSeg] = useState("roster");
   const segRef = useRef(seg); segRef.current = seg;
   const swipe = useSwipe(
-    () => { if (segRef.current === "stats") return; if (nextTeam && onSelectTeam) { SWIPE_DEPTH.n++; onSelectTeam(nextTeam); window.scrollTo(0, 0); } },   // Stats has its own horizontal gestures — no team swipe there
-    () => { if (segRef.current === "stats") return; if (SWIPE_DEPTH.n > 0 && prevTeam && onSelectTeam) { SWIPE_DEPTH.n--; onSelectTeam(prevTeam); window.scrollTo(0, 0); } else { SWIPE_DEPTH.n = 0; onBack(); } }
+    () => { if (nextTeam && onSelectTeam) { SWIPE_DEPTH.n++; onSelectTeam(nextTeam); window.scrollTo(0, 0); } },
+    () => { if (SWIPE_DEPTH.n > 0 && prevTeam && onSelectTeam) { SWIPE_DEPTH.n--; onSelectTeam(prevTeam); window.scrollTo(0, 0); } else { SWIPE_DEPTH.n = 0; onBack(); } }
   );
   useEffect(() => { window.scrollTo(0, 0); }, []);
   const abbr = team.abbr || toAbbr(team.name);
@@ -2790,8 +2790,11 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
             <div className="grid grid-cols-4 gap-2 mt-3 mb-3">
               {[["profile", "Profile"], ["table", "Matrix"], ["leaders", "Leaders"], ["volume", "Volume"], ["offense", "Offense"], ["playmaking", "Playmaking"], ["rebounds", "Rebounds"], ["defense", "Defense"]].map(([k, lbl]) => (
                 <button key={k} onClick={() => setStatsLayout(k)}
-                  className={"py-1.5 rounded-full text-[10px] font-extrabold border truncate " + (statsLayout === k ? "text-white border-transparent" : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800")}
-                  style={statsLayout === k ? { backgroundColor: teamColor(abbr) } : undefined}>{lbl}</button>
+                  className={"flex items-center gap-1.5 pl-2 pr-1 py-1.5 rounded-lg text-[10px] font-extrabold border truncate " + (statsLayout === k ? "text-slate-900 dark:text-white" : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800")}
+                  style={statsLayout === k ? { borderColor: teamColor(abbr), backgroundColor: teamColor(abbr) + "1A" } : undefined}>
+                  <span className="w-2.5 h-2.5 rounded-full border-2 shrink-0" style={{ borderColor: statsLayout === k ? teamColor(abbr) : "#94a3b8", backgroundColor: statsLayout === k ? teamColor(abbr) : "transparent" }} />
+                  <span className="truncate">{lbl}</span>
+                </button>
               ))}
             </div>
             {statsLayout === "profile" && <TeamProfile roster={roster} abbr={abbr} teams={teams} players={players} />}
