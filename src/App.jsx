@@ -2179,6 +2179,37 @@ function TeamSchedule({ team, abbr, teams, onSelectTeam }) {
   );
 }
 
+// ── Team Injuries: this roster's sidelined players, same data as the league Injury Report ──
+function TeamInjuries({ roster, abbr, onSelectPlayer }) {
+  const color = teamColor(abbr);
+  const order = (p) => { const st = String(effectiveStatus(p) || "").toLowerCase(); return /out|ir|injured reserve|suspend/.test(st) ? 0 : /doubt/.test(st) ? 1 : /quest|gtd|game.time|day/.test(st) ? 2 : /prob/.test(st) ? 3 : 4; };
+  const hurt = roster.filter((p) => isSidelined(p)).sort((a, b) => order(a) - order(b) || (mpgOf(b) - mpgOf(a)));
+  const counts = { out: hurt.filter((p) => order(p) === 0).length, gtd: hurt.filter((p) => order(p) > 0).length };
+  return (
+    <div className="mt-2">
+      <div className="flex items-center justify-between mb-2 px-1">
+        <span className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase">Injury report</span>
+        <span className="text-[11px] font-semibold text-slate-400">{hurt.length ? `${counts.out} out · ${counts.gtd} questionable` : "everyone available"}</span>
+      </div>
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
+        {hurt.map((p) => (
+          <button key={p.id} onClick={() => onSelectPlayer(p)} className="w-full flex items-start gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800" style={{ borderLeft: "3px solid " + color }}>
+            <Avatar p={p} />
+            <span className="flex-1 min-w-0">
+              <span className="block text-sm font-bold text-slate-900 dark:text-white truncate">{cleanNo(p.no) && <span className="text-slate-400 font-extrabold mr-1.5">#{cleanNo(p.no)}</span>}{p.name}<span className="ml-1.5 text-[10px] font-semibold text-slate-400">{courtPos(p)}</span></span>
+              <span className="mt-1 block"><StatusBadge status={effectiveStatus(p) || "Injured"} /></span>
+              {injuryDetailOf(p) && <span className="block text-[11px] font-semibold text-red-500 mt-1">({injuryDetailOf(p)})</span>}
+              {injuryReturnOf(p) && <span className="block text-[11px] font-semibold text-slate-900 dark:text-white mt-0.5">Estimated Return Date: {injuryReturnOf(p)}</span>}
+              {injuryCommentOf(p) && <span className="block text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">{injuryCommentOf(p)}</span>}
+            </span>
+          </button>
+        ))}
+        {hurt.length === 0 && <div className="text-center text-sm text-slate-400 py-10">No one on the injury report.</div>}
+      </div>
+    </div>
+  );
+}
+
 // ── Team Leaders: box-score-style leader rows, grouped ──
 function TeamLeaders({ roster, abbr, onSelectPlayer }) {
   const color = teamColor(abbr);
@@ -2778,7 +2809,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
 
         {seg === "roster" && !faTeam && (
           <div className="flex gap-2 mt-4">
-            {[["court", "Court"], ["list", "List"]].map(([k, lbl]) => (
+            {[["court", "Court"], ["list", "List"], ["injuries", "Injuries"]].map(([k, lbl]) => (
               <button key={k} onClick={() => setRosterView(k)}
                 className={"flex-1 py-1.5 rounded-full text-[11px] font-extrabold " + (rosterView === k
                   ? "text-white"
@@ -2789,6 +2820,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
             ))}
           </div>
         )}
+        {seg === "roster" && rosterView === "injuries" && <TeamInjuries roster={roster} abbr={abbr} onSelectPlayer={onSelectPlayer} />}
         {seg === "roster" && rosterView === "court" && !faTeam && (
           <CourtView roster={roster} abbr={abbr} team={team} teams={teams} onSelectPlayer={onSelectPlayer} />
         )}
