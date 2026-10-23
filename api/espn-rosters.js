@@ -28,7 +28,11 @@ async function lookupHeadshots(names) {
       const players = (d.results || []).filter((x) => x.type === "player").flatMap((x) => x.contents || []);
       // NBA players only (league id 46), best name match first
       const nba = players.filter((c) => /l:46\b/.test(String(c.uid || "")) || /nba/i.test(String(c.defaultLeagueSlug || "")));
-      const exact = nba.find((c) => norm(c.displayName) === norm(n)) || nba[0];
+      // Exact name only — "Gary Payton" must never resolve to "Gary Payton II".
+      const base = (x) => norm(x).replace(/\b(jr|sr|ii|iii|iv)\b/g, "").replace(/\s+/g, " ").trim();
+      const words = (x) => norm(x).split(" ").length;
+      const exact = nba.find((c) => norm(c.displayName) === norm(n))
+        || nba.find((c) => base(c.displayName) === base(n) && words(c.displayName) === words(n));
       if (!exact) return;
       const id = String(exact.uid || "").split("a:").pop() || exact.id;
       out[n] = exact.image?.default || (id ? `https://a.espncdn.com/i/headshots/nba/players/full/${id}.png` : null);
