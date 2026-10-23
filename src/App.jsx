@@ -697,12 +697,14 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
           const ma = (m, a) => (st[m] != null && st[a] != null ? fmt1(st[m]) + "/" + fmt1(st[a]) : " ");
           // Grouped the way a scout reads a line: how he scores, how he passes, how he rebounds, how he defends, how much he plays
           const groups = [
-            ["Scoring", [["PTS", tot("pts"), pg("pts"), "pts"], ["FG%", pct("fg"), ma("fgm", "fga"), "fg"], ["3PM", tot("p3m"), pg("p3m"), "p3m"], ["3P%", pct("p3"), ma("p3m", "p3a"), "p3"], ["FTM", tot("ftm"), pg("ftm"), "ftm"], ["FT%", pct("ft"), ma("ftm", "fta"), "ft"]]],
+            // Scoring is a 3×2: made on top, the matching percentage directly beneath
+            ["Scoring", [["PTS", tot("pts"), pg("pts"), "pts"], ["FTM", tot("ftm"), pg("ftm"), "ftm"], ["3PM", tot("p3m"), pg("p3m"), "p3m"],
+                         ["FG%", pct("fg"), ma("fgm", "fga"), "fg"], ["FT%", pct("ft"), ma("ftm", "fta"), "ft"], ["3P%", pct("p3"), ma("p3m", "p3a"), "p3"]], 3],
             ["Playmaking", [["AST", tot("ast"), pg("ast"), "ast"], ["TOV", tot("tov"), pg("tov"), "tov"], ["AST/TO", st.tov > 0 ? fmt1(st.ast / st.tov) : (st.ast > 0 ? "∞" : null), "ratio", "ast"], ["MIN", tot("min"), pg("min"), "min"]]],
             ["Rebounding", [["REB", tot("reb"), pg("reb"), "reb"], ["OREB", st.oreb != null ? tot("oreb") : null, pg("oreb"), "oreb"], ["DREB", st.dreb != null ? tot("dreb") : null, pg("dreb"), "dreb"]]],
             ["Defense", [["STL", tot("stl"), pg("stl"), "stl"], ["BLK", tot("blk"), pg("blk"), "blk"]]],
             ["Volume", [["FGA", tot("fga"), pg("fga"), "fga"], ["3PA", tot("p3a"), pg("p3a"), "p3a"], ["FTA", tot("fta"), pg("fta"), "fta"]]],
-          ].map(([g, t]) => [g, t.filter(([, v]) => v != null)]).filter(([, t]) => t.length);
+          ].map(([g, t, cols]) => [g, t.filter(([, v]) => v != null), cols || 4]).filter(([, t]) => t.length);
           const tiles = groups.flatMap(([, t]) => t);
           return (
             <>
@@ -710,10 +712,10 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
                 {seasonTick({ season: st.season }) || st.season} season{gp != null ? " · " + gp + " GP" : ""}
               </div>
               <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-3">
-                {groups.map(([g, t]) => (
+                {groups.map(([g, t, cols]) => (
                   <div key={g} className="mb-3 last:mb-0">
                     <div className="text-[10px] font-extrabold tracking-widest uppercase text-slate-400 mb-1.5">{g}</div>
-                    <div className="grid grid-cols-4 gap-2">
+                    <div className={"grid gap-2 " + (cols === 3 ? "grid-cols-3" : "grid-cols-4")}>
                   {t.map(([lbl, v, sub, key]) => (
                     <button key={lbl} onClick={onJumpToStats ? () => onJumpToStats(p, key) : undefined}
                       className="rounded-xl overflow-hidden border text-center active:opacity-80" style={{ borderColor: c }}>
