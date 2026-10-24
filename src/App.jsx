@@ -825,7 +825,7 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
               <div className="text-[11px] font-extrabold text-white mt-0.5">Estimated Return Date: {injuryReturnOf(p)}</div>
             )}
             {!isActiveStatus(p) && injuryCommentOf(p) && (
-              <div className="mt-1.5"><span className="inline-block text-[11px] font-semibold text-white bg-red-600 rounded-md px-2 py-1 leading-snug">{injuryCommentOf(p)}</span></div>
+              <div className="text-[11px] opacity-90 mt-1.5 leading-snug">{injuryCommentOf(p)}</div>
             )}
           </div>
         </div>
@@ -1205,7 +1205,8 @@ function GameView({ game, teams, players, onBack, onSelectTeam }) {
 const INJ_SEEN_KEY = "hrb_injury_seen_at";
 const readSeen = () => { try { return Number(localStorage.getItem(INJ_SEEN_KEY) || 0); } catch { return 0; } };
 const writeSeen = (t) => { try { localStorage.setItem(INJ_SEEN_KEY, String(t)); } catch {} };
-const INJ_BY_NAME = {}; // ESPN injury-feed record per player name (filled by useInjuryFeed)
+const INJ_BY_NAME = {};
+const INJ_UPDATED = { at: null }; // ESPN injury-feed record per player name (filled by useInjuryFeed)
 let INJ_LOADED = false;  // once the live feed is in, the 6-hour roster cache is no longer trusted for status
 const injOf = (p) => (p ? INJ_BY_NAME[espnNrm(p.name)] || null : null);
 function useInjuryFeed(players) {
@@ -1219,7 +1220,7 @@ function useInjuryFeed(players) {
         if (d && d.records) {
           for (const k of Object.keys(INJ_BY_NAME)) delete INJ_BY_NAME[k];         // rebuild: a player who dropped off the feed is healthy again
           for (const r of d.records) { const k = espnNrm(r.name); if (!INJ_BY_NAME[k]) INJ_BY_NAME[k] = r; }
-          INJ_LOADED = true;
+          INJ_LOADED = true; INJ_UPDATED.at = d.updatedAt || new Date().toISOString();
         }
         setFeed(d && d.records ? d : { records: [], error: d?.error || "unavailable" });
       })
@@ -2190,8 +2191,8 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
   const HealthBadge = ({ p, small }) => {
     const h = healthOf(p);
     if (h === "ok") return null;
-    const s = String(p.status || "").toUpperCase();
-    const txt = h === "out" ? (s.includes("IR") ? "IR" : "OUT") : (s.includes("GAME") ? "GTD" : s.includes("DOUBT") ? "DOUBTFUL" : s.includes("PROB") ? "PROBABLE" : "GTD");
+    const s = String(effectiveStatus(p) || "").toUpperCase();
+    const txt = h === "out" ? (s.includes("SEASON") ? "OUT · SEASON" : s === "IR" || s.includes("INJURED RESERVE") ? "IR" : "OUT") : (s.includes("GAME") ? "GTD" : s.includes("DOUBT") ? "DOUBTFUL" : s.includes("PROB") ? "PROBABLE" : "GTD");
     return (
       <span className={"absolute -top-2 left-1/2 -translate-x-1/2 px-1.5 rounded-full font-extrabold text-white border-2 border-white shadow whitespace-nowrap flex items-center justify-center " +
         (h === "out" ? "bg-red-600 " : "bg-amber-500 ") + (small ? "h-[13px] text-[6px] " : "h-[15px] text-[7px] ")}>
@@ -2594,7 +2595,7 @@ function TeamInjuries({ roster, abbr, onSelectPlayer }) {
     <div className="mt-2">
       <div className="flex items-center justify-between mb-2 px-1">
         <span className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase">Injury report</span>
-        <span className="text-[11px] font-semibold text-slate-400">{hurt.length ? `${counts.out} out · ${counts.gtd} questionable` : "everyone available"}</span>
+        <span className="text-[11px] font-semibold text-slate-400 text-right">{hurt.length ? `${counts.out} out · ${counts.gtd} questionable` : "everyone available"}{INJ_UPDATED.at && <span className="block text-[10px]">updated {new Date(INJ_UPDATED.at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>}</span>
       </div>
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
         {hurt.map((p) => (
@@ -2643,7 +2644,7 @@ function TeamLeaders({ roster, abbr, onSelectPlayer }) {
               <button key={k} onClick={() => onSelectPlayer(x.p)} className="w-full flex items-center gap-3 px-4 py-2 text-left active:bg-slate-50 dark:active:bg-slate-800">
                 <Avatar p={x.p} />
                 <span className="flex-1 min-w-0"><span className="block text-[13px] font-bold text-slate-900 dark:text-white truncate">{x.p.name}</span><span className="block text-[9px] font-semibold tracking-wider uppercase text-slate-400">{l}</span></span>
-                <span className="text-lg font-extrabold text-slate-900 dark:text-white tabular-nums">{fmt1(x.s[k])}</span>
+                <span className="text-right"><span className="block text-lg font-extrabold text-slate-900 dark:text-white tabular-nums leading-none">{Math.round(x.s[k] * (x.s.gp || 1)).toLocaleString()}</span><span className="block text-[10px] font-semibold text-slate-400 tabular-nums mt-0.5">{fmt1(x.s[k])}/g</span></span>
               </button>
             ))}
           </div>
@@ -3280,8 +3281,8 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
                         {!isActiveStatus(p) && <StatusBadge status={/game\s*time|gtd/i.test(effectiveStatus(p)) ? "GTD" : effectiveStatus(p)} />}
                         <span className="flex-1" />
                         {(() => {
-                          const st = latestStats(p), pv = prevStats(p);
-                          if (!st || (st.pts == null && st.reb == null && st.ast == null)) return null;
+                          const st = curStats(p); const pv = (p.stats || []).find((x) => startYear(x.season) === startYear(CURRENT_SEASON) - 1) || null;   // arrows: vs last season
+                          if (!st || !(st.gp > 0) || (st.pts == null && st.reb == null && st.ast == null)) return null;
                           const Arrow = ({ k }) => {
                             if (!pv || st[k] == null || pv[k] == null) return null;
                             const d = st[k] - pv[k];
