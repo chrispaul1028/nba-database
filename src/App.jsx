@@ -55,6 +55,9 @@ function mixHex(a, b, t) {
   return "#" + m(r1, r2) + m(g1, g2) + m(b1, b2);
 }
 const teamColor2 = (abbr) => TEAM_COLORS2[String(abbr || "").toUpperCase()] || "#F59E0B";
+// Border color for headline tiles: the secondary color, unless it's too light to
+// show against a white card (Brooklyn, Spurs…) — then the primary.
+const tileBorder = (abbr) => { const c = teamColor2(abbr); const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(c); if (!m) return c; const lum = (0.299 * parseInt(m[1], 16) + 0.587 * parseInt(m[2], 16) + 0.114 * parseInt(m[3], 16)) / 255; return lum > 0.85 ? teamColor(abbr) : c; };
 // Teams whose logo is mostly the primary color — the center circle uses the
 // secondary color for them so the logo doesn't disappear into it.
 const FLIP_CENTER = new Set(["HOU", "CHI", "MIA", "TOR", "ATL", "POR", "WSH", "IND", "NOP", "NO", "DAL", "ORL", "MEM", "CLE", "LAC", "DET", "MIN", "UTAH", "UTA", "BKN", "SAS", "SA"]);
@@ -383,6 +386,7 @@ function heightIn(p) {
 }
 
 const SWIPE_DEPTH = { n: 0 }; // how many teams deep the swipe trail goes
+const TEAM_VIEW_MEMORY = {};   // per team: which tab / sub-view was open, so "back" returns to it
 function useSwipe(onLeft, onRight) {
   const start = React.useRef(null);
   return {
@@ -462,7 +466,7 @@ function Tile({ value, label, sub, accent, valueClass, onClick, active, activeCo
   const Tag = onClick ? "button" : "div";
   return (
     <Tag onClick={onClick} className={"relative bg-white dark:bg-slate-900 rounded-2xl border px-2 py-4 text-center shadow-sm flex flex-col items-center justify-center w-full " + (active || borderColor ? "border-2" : "border-slate-200 dark:border-slate-800")}
-      style={active ? { borderColor: activeColor || "#2563eb" } : borderColor ? { borderColor } : undefined}>
+      style={active ? { borderColor: activeColor || "#2563eb", boxShadow: `0 0 0 2px ${activeColor || "#2563eb"}33` } : borderColor ? { borderColor } : undefined}>
       {onClick && (
         <svg viewBox="0 0 12 12" className={"absolute top-2 right-2 w-3 h-3 transition-transform " + (active ? "rotate-180" : "")} style={{ color: active ? (activeColor || "#2563eb") : "#cbd5e1" }} aria-hidden="true">
           <path d="M2.5 4.5 L6 8 L9.5 4.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
@@ -823,7 +827,7 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
             const cls = r ? (r.rank <= 10 ? "text-green-600 dark:text-green-400" : r.rank <= 50 ? "text-yellow-600 dark:text-yellow-400" : "text-slate-400") : null;
             const c0 = playerHeaderColor(p);
             return (
-              <button key={k} onClick={onJumpToStats && v != null ? () => onJumpToStats(p, k) : undefined} className="rounded-2xl text-center bg-white dark:bg-slate-900 shadow-md border-2 py-3" style={{ borderColor: teamColor2(teamOfPlayer(p) || toAbbr(activeOf(p)?.team)) }}>
+              <button key={k} onClick={onJumpToStats && v != null ? () => onJumpToStats(p, k) : undefined} className="rounded-2xl text-center bg-white dark:bg-slate-900 shadow-md border-2 py-3" style={{ borderColor: tileBorder(teamOfPlayer(p) || toAbbr(activeOf(p)?.team)) }}>
                 <div className="text-[10px] font-extrabold tracking-widest uppercase" style={{ color: c0 }}>{lbl}</div>
                 <div className="text-2xl font-extrabold text-slate-900 dark:text-white tabular-nums leading-none mt-1">{v != null ? fmt1(v) : "—"}</div>
                 <div className={"text-[10px] font-semibold mt-1 tabular-nums " + (cls || "text-slate-400")}>{r ? r.label : (st ? "per game" : "no games yet")}</div>
@@ -2479,17 +2483,18 @@ function TeamSchedule({ team, abbr, teams, onSelectTeam, onOpenGame }) {
   const tiles = [
     { lbl: "Last 10", big: played.length ? rec(last10) : "—", bigCls: margin(last10) == null ? "text-slate-400" : margin(last10) > 0 ? "text-green-600" : margin(last10) < 0 ? "text-red-500" : "text-amber-600", sub: margin(last10) != null ? `${fmtNet(margin(last10))} margin` : "no games yet" },
     { lbl: "Next 5", big: next5.length ? fmtNet(n5) : "—", bigCls: netCls(n5), sub: next5.length ? `opp net · ${next5Home} home, ${next5.length - next5Home} away` : "season over" },
-    { lbl: "Home / Road", big: played.length ? `${rec(homeP)} · ${rec(roadP)}` : "—", bigCls: "text-slate-900 dark:text-white", sub: played.length ? `home ${fmtNet(margin(homeP))} · road ${fmtNet(margin(roadP))}` : "no games yet" },
+    { lbl: "Home", big: homeP.length ? rec(homeP) : "—", bigCls: margin(homeP) == null ? "text-slate-400" : margin(homeP) > 0 ? "text-green-600" : margin(homeP) < 0 ? "text-red-500" : "text-amber-600", sub: homeP.length ? `${fmtNet(margin(homeP))} margin` : "no home games yet" },
+    { lbl: "Away", big: roadP.length ? rec(roadP) : "—", bigCls: margin(roadP) == null ? "text-slate-400" : margin(roadP) > 0 ? "text-green-600" : margin(roadP) < 0 ? "text-red-500" : "text-amber-600", sub: roadP.length ? `${fmtNet(margin(roadP))} margin` : "no road games yet" },
   ];
   let w = 0, l = 0;
   return (
     <div className="mt-2">
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-4 gap-1.5">
         {tiles.map((t) => (
-          <div key={t.lbl} className="bg-white dark:bg-slate-900 rounded-2xl border-2 px-2 py-3 text-center shadow-sm flex flex-col items-center justify-center" style={{ borderColor: teamColor(abbr) }}>
-            <div className="text-[9px] font-bold tracking-widest uppercase text-slate-500 dark:text-slate-400 leading-tight">{t.lbl}</div>
-            <div className={"text-xl font-extrabold mt-1 tabular-nums whitespace-nowrap " + t.bigCls}>{t.big}</div>
-            <div className="text-[9px] font-semibold text-slate-400 mt-0.5 leading-tight">{t.sub}</div>
+          <div key={t.lbl} className="bg-white dark:bg-slate-900 rounded-2xl border-2 px-1 py-2.5 text-center shadow-sm flex flex-col items-center justify-center" style={{ borderColor: tileBorder(abbr) }}>
+            <div className="text-[8px] font-extrabold tracking-widest uppercase leading-tight" style={{ color: teamColor(abbr) }}>{t.lbl}</div>
+            <div className={"text-base font-extrabold mt-1 tabular-nums whitespace-nowrap " + t.bigCls}>{t.big}</div>
+            <div className="text-[8px] font-semibold text-slate-400 mt-0.5 leading-tight">{t.sub}</div>
           </div>
         ))}
       </div>
@@ -2972,9 +2977,9 @@ function CapOutlook({ roster, color, onSelectPlayer }) {
       {cur && (
         <>
           <div className="grid grid-cols-3 gap-2 mt-3">
-            <Tile value={cur.total ? fmtM(cur.total) : "—"} label={seasonLabel(cur.yr) + " Payroll"} sub={cur.rows.length + " under contract"} />
-            <Tile value={(room >= 0 ? "+" : "−") + fmtM(Math.abs(room)).slice(1)} label="vs Cap" valueClass={room >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-slate-900 dark:text-slate-100"} sub={room >= 0 ? "cap space" : "over the cap"} />
-            <Tile value={(vsTax >= 0 ? "+" : "−") + fmtM(Math.abs(vsTax)).slice(1)} label="vs Tax" valueClass={vsTax > 0 ? "text-red-500" : "text-emerald-600 dark:text-emerald-400"} sub={{ label: status, cls: statusCls }} />
+            <Tile borderColor={tileBorder(abbr)} labelColor={teamColor(abbr)} value={cur.total ? fmtM(cur.total) : "—"} label={seasonLabel(cur.yr) + " Payroll"} sub={cur.rows.length + " under contract"} />
+            <Tile borderColor={tileBorder(abbr)} labelColor={teamColor(abbr)} value={(room >= 0 ? "+" : "−") + fmtM(Math.abs(room)).slice(1)} label="vs Cap" valueClass={room >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-slate-900 dark:text-slate-100"} sub={room >= 0 ? "cap space" : "over the cap"} />
+            <Tile borderColor={tileBorder(abbr)} labelColor={teamColor(abbr)} value={(vsTax >= 0 ? "+" : "−") + fmtM(Math.abs(vsTax)).slice(1)} label="vs Tax" valueClass={vsTax > 0 ? "text-red-500" : "text-emerald-600 dark:text-emerald-400"} sub={{ label: status, cls: statusCls }} />
           </div>
           <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mt-5 mb-1.5 px-1">{seasonLabel(cur.yr)} on the books</div>
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
@@ -3036,9 +3041,9 @@ function BioPanel({ roster, abbr, teams, players, color, onSelectPlayer }) {
   return (
     <div className="mt-4">
       <div className="grid grid-cols-3 gap-2">
-        <Tile value={avgExp != null ? avgExp.toFixed(1) : "—"} label="Avg Exp" sub={expRank ? { label: ordinal(expRank.rank), cls: expRank.rank <= 10 ? "text-green-600 dark:text-green-400" : expRank.rank <= 20 ? "text-yellow-600 dark:text-yellow-400" : "text-red-500 dark:text-red-400" } : "seasons"} />
-        <Tile value={rookies} label="Rookies" />
-        <Tile value={roster.length ? Math.round((drafted / roster.length) * 100) + "%" : "—"} label="Drafted" sub={drafted + " drafted by " + abbr} />
+        <Tile borderColor={tileBorder(abbr)} labelColor={teamColor(abbr)} value={avgExp != null ? avgExp.toFixed(1) : "—"} label="Avg Exp" sub={expRank ? { label: ordinal(expRank.rank), cls: expRank.rank <= 10 ? "text-green-600 dark:text-green-400" : expRank.rank <= 20 ? "text-yellow-600 dark:text-yellow-400" : "text-red-500 dark:text-red-400" } : "seasons"} />
+        <Tile borderColor={tileBorder(abbr)} labelColor={teamColor(abbr)} value={rookies} label="Rookies" />
+        <Tile borderColor={tileBorder(abbr)} labelColor={teamColor(abbr)} value={roster.length ? Math.round((drafted / roster.length) * 100) + "%" : "—"} label="Drafted" sub={drafted + " drafted by " + abbr} />
       </div>
       <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mt-5 mb-1.5 px-1">Age profile</div>
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm px-4 py-3">
@@ -3086,7 +3091,9 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
   const prevTeam = idx > 0 ? ordered[idx - 1] : null;
   // Swipe left: next team. Swipe right: previous team if you've been
   // flipping through teams, otherwise back to the list.
-  const [seg, setSeg] = useState("roster");
+  const mem = TEAM_VIEW_MEMORY[team.id] || (TEAM_VIEW_MEMORY[team.id] = {});
+  const [seg, setSeg_] = useState(mem.seg || "roster");
+  const setSeg = (k) => { mem.seg = k; setSeg_(k); };
   const segRef = useRef(seg); segRef.current = seg;
   const swipe = useSwipe(
     () => { if (nextTeam && onSelectTeam) { SWIPE_DEPTH.n++; onSelectTeam(nextTeam); window.scrollTo(0, 0); } },
@@ -3094,10 +3101,13 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
   );
   useEffect(() => { window.scrollTo(0, 0); }, []);
   const abbr = team.abbr || toAbbr(team.name);
-  const [rosterView, setRosterView] = useState("court"); // court | list
+  const [rosterView, setRosterView_] = useState(mem.rosterView || "court"); // court | list | injuries
+  const setRosterView = (k) => { mem.rosterView = k; setRosterView_(k); };
   const [statMode, setStatMode] = useState("leaders");
-  const [statsLayout, setStatsLayout] = useState("profile");
-  const [cView, setCView] = useState("list"); // list | cap | fa | bio  (which tile is pressed)
+  const [statsLayout, setStatsLayout_] = useState(mem.statsLayout || "profile");
+  const setStatsLayout = (k) => { mem.statsLayout = k; setStatsLayout_(k); };
+  const [cView, setCView_] = useState(mem.cView || "list"); // list | cap | fa | bio | moves
+  const setCView = (k) => { mem.cView = k; setCView_(k); };
   const faOnly = cView === "fa";
   const toggleC = (k) => setCView((v) => (v === k ? "list" : k));
   const faTeam = isFaTeam(team);
@@ -3162,16 +3172,16 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
             const ageCls = ageRank ? (ageRank <= 10 ? "text-green-600 dark:text-green-400" : ageRank <= 20 ? "text-yellow-600 dark:text-yellow-400" : "text-red-500 dark:text-red-400") : null;
             return (
               <>
-                <Tile value={payroll ? fmtM(payroll) : "—"} label="Payroll" sub={roster.length + " players"} onClick={() => toggleC("cap")} active={cView === "cap"} activeColor={teamColor(abbr)} />
-                <Tile value={fa} label="Free Agents" sub={"(Summer " + (startYear(CURRENT_SEASON) + 1) + ")"} onClick={() => toggleC("fa")} active={faOnly} activeColor={teamColor(abbr)} />
-                <Tile value={avgAge != null ? avgAge.toFixed(1) : "—"} label="Avg Age" sub={ageRank ? { label: ordinal(ageRank) + (ageRank <= 3 ? " youngest" : ageRank >= ageRanked.length - 2 ? " oldest" : ""), cls: ageCls } : null} onClick={() => toggleC("bio")} active={cView === "bio"} activeColor={teamColor(abbr)} />
+                <Tile borderColor={tileBorder(abbr)} labelColor={teamColor(abbr)} value={payroll ? fmtM(payroll) : "—"} label="Payroll" sub={roster.length + " players"} onClick={() => toggleC("cap")} active={cView === "cap"} activeColor={teamColor(abbr)} />
+                <Tile borderColor={tileBorder(abbr)} labelColor={teamColor(abbr)} value={fa} label="Free Agents" sub={"(Summer " + (startYear(CURRENT_SEASON) + 1) + ")"} onClick={() => toggleC("fa")} active={faOnly} activeColor={teamColor(abbr)} />
+                <Tile borderColor={tileBorder(abbr)} labelColor={teamColor(abbr)} value={avgAge != null ? avgAge.toFixed(1) : "—"} label="Avg Age" sub={ageRank ? { label: ordinal(ageRank) + (ageRank <= 3 ? " youngest" : ageRank >= ageRanked.length - 2 ? " oldest" : ""), cls: ageCls } : null} onClick={() => toggleC("bio")} active={cView === "bio"} activeColor={teamColor(abbr)} />
               </>
             );
           })() : (
             <>
-              <Tile value={(team.wins ?? 0) + "-" + (team.losses ?? 0)} label="Record" borderColor={teamColor2(abbr)} labelColor={teamColor(abbr)} />
-              <Tile value={team.ppg != null ? team.ppg.toFixed(1) : "—"} label={STANDINGS_PHASE.v === "preseason" ? "PPG · Pre" : "PPG"} sub={rankOf(teams, team, "ppg", "desc")} borderColor={teamColor2(abbr)} labelColor={teamColor(abbr)} onClick={onJumpToTeamStats ? () => onJumpToTeamStats(team, "ppg") : undefined} />
-              <Tile value={team.oppPpg != null ? team.oppPpg.toFixed(1) : "—"} label={STANDINGS_PHASE.v === "preseason" ? "Opp PPG · Pre" : "Opp PPG"} sub={rankOf(teams, team, "oppPpg", "asc")} borderColor={teamColor2(abbr)} labelColor={teamColor(abbr)} onClick={onJumpToTeamStats ? () => onJumpToTeamStats(team, "oppPpg") : undefined} />
+              <Tile value={(team.wins ?? 0) + "-" + (team.losses ?? 0)} label="Record" borderColor={tileBorder(abbr)} labelColor={teamColor(abbr)} />
+              <Tile value={team.ppg != null ? team.ppg.toFixed(1) : "—"} label={STANDINGS_PHASE.v === "preseason" ? "PPG · Pre" : "PPG"} sub={rankOf(teams, team, "ppg", "desc")} borderColor={tileBorder(abbr)} labelColor={teamColor(abbr)} onClick={onJumpToTeamStats ? () => onJumpToTeamStats(team, "ppg") : undefined} />
+              <Tile value={team.oppPpg != null ? team.oppPpg.toFixed(1) : "—"} label={STANDINGS_PHASE.v === "preseason" ? "Opp PPG · Pre" : "Opp PPG"} sub={rankOf(teams, team, "oppPpg", "asc")} borderColor={tileBorder(abbr)} labelColor={teamColor(abbr)} onClick={onJumpToTeamStats ? () => onJumpToTeamStats(team, "oppPpg") : undefined} />
             </>
           )}
         </div>
@@ -3318,7 +3328,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
                           <span className="block mt-1"><EventPill ev={nextEvent(p)} withDate={!faOnly} noYear={faOnly} /></span>
                         )}
                       </span>
-                      <span className={faOnly ? "w-24 text-center shrink-0" : "text-right shrink-0"}>
+                      <span className={faOnly ? "w-24 text-center shrink-0" : "text-right shrink-0 self-center"}>
                         {faOnly ? (() => { const ev = nextEvent(p); const dl = ev ? eventDeadline(ev) : null; return dl ? (
                           <span className={"block text-xs font-extrabold tabular-nums " + (hot ? "text-slate-900 dark:text-white" : "text-slate-400")}>{dl.label}</span>
                         ) : <span className="text-xs font-extrabold text-slate-400">—</span>; })()
@@ -3953,7 +3963,7 @@ export default function App() {
         {TABS.map((t) => (
           <button
             key={t.id}
-            onClick={() => { if (t.id !== "stats") setStatsFocus(null); setTab(t.id); setSel(null); setSelTeam(null); setSelGame(null); }}
+            onClick={() => { if (t.id !== "stats") setStatsFocus(null); for (const k of Object.keys(TEAM_VIEW_MEMORY)) delete TEAM_VIEW_MEMORY[k]; setTab(t.id); setSel(null); setSelTeam(null); setSelGame(null); }}
             className={"flex-1 py-2.5 text-center " + (tab === t.id ? "text-blue-600" : "text-slate-400")}
           >
             <div className="text-lg leading-none relative inline-block">{t.icon}{t.id === "players" && <Badge n={injury.unseen} />}</div>
