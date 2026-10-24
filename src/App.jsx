@@ -1677,8 +1677,14 @@ const bySort = (a, b) => (a.sort ?? 9999) - (b.sort ?? 9999) || currentSalary(b)
 // OUT badge on the bench strip. A game-time decision stays on the court.
 // abbr -> { starters: [{name,pos}], date, opp, result } from /api/lineups
 const LINEUPS = {};
+// Lineup lookup tolerant of every spelling of a team code (SA / SAS, NO / NOP, GS / GSW …)
+function lineupFor(abbr) {
+  const u = String(abbr || "").toUpperCase(); const m = modernAbbr(u);
+  for (const k of [u, m, ...(ABBR_VARIANTS[m] || []), ...Object.entries(ABBR_VARIANTS).filter(([, v]) => v.includes(u)).flatMap(([k, v]) => [k, ...v])]) if (LINEUPS[k]) return LINEUPS[k];
+  return undefined;
+}
 function espnStartersFor(roster, abbr) {
-  const lu = LINEUPS[String(abbr || "").toUpperCase()];
+  const lu = lineupFor(abbr);
   if (!lu) return null;
   const names = new Set(lu.starters.map((a) => espnNrm(a.name)));
   const lastKey = (n) => espnNrm(n).split(" ").pop();
@@ -1714,7 +1720,7 @@ function pickStartingFive(roster, abbr) {
     // he actually played, so it beats the Airtable label: the C goes to C,
     // forwards to SF/PF, guards to PG/SG. Ties inside a group break on the
     // Airtable number, then height (taller → PF / C).
-    const lu = LINEUPS[String(abbr || "").toUpperCase()];
+    const lu = lineupFor(abbr);
     const espnPos = (p) => { const hit = (lu?.starters || []).find((a) => espnNrm(a.name) === espnNrm(p.name) || espnNrm(a.name).split(" ").pop() === espnNrm(p.name).split(" ").pop()); return String(hit?.pos || "").toUpperCase(); };
     // Position score: Sort Priority (1 PG … 5 C) if set, else the Airtable
     // label, else height. Luka is a 1 no matter how tall he is.
@@ -1796,8 +1802,8 @@ function lineupOf(roster, abbr) {
 }
 
 function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
-  const { assigned, nextUp, used, automated, source, benchGroups, bench } = useMemo(() => lineupOf(roster, abbr), [roster, abbr, LINEUPS[abbr]]);
-  const lineup = LINEUPS[String(abbr || "").toUpperCase()];
+  const { assigned, nextUp, used, automated, source, benchGroups, bench } = useMemo(() => lineupOf(roster, abbr), [roster, abbr, lineupFor(abbr)]);
+  const lineup = lineupFor(abbr);
   const mpg = (p) => latestStats(p)?.min ?? -1;
   const color = teamColor(abbr);
   const th = courtTheme(abbr);
@@ -2747,7 +2753,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
     if (isFaTeam(team)) return [["Free Agents", roster.slice().sort(byMinutes)]];   // one list, by minutes
     const lu = lineupOf(roster, abbr);
     return [["Starters", lu.starters.map((x) => Object.assign(Object.create(x.p), { _slot: x.slot }))], ...lu.benchGroups];
-  }, [roster, abbr, team, LINEUPS[abbr]]);
+  }, [roster, abbr, team, lineupFor(abbr)]);
 
   return (
     <div className="min-h-screen bg-slate-100 dark:bg-slate-950 pb-24" {...swipe}>
