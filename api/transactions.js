@@ -42,6 +42,19 @@ export default async function handler(req, res) {
       d = { transactions: (all.transactions || []).filter((t) => String(t.team?.id) === String(id) || String(t.team?.abbreviation || "").toUpperCase() === team) };
     }
     if (year) d.transactions = (d.transactions || []).filter((t) => !t.date || new Date(t.date).getFullYear() === year);
+    if (team && req.query?.history) {
+      // Full history: this year plus the previous five calendar years, merged and de-duplicated
+      const thisYear = new Date().getFullYear(); const seen = new Set((d.transactions || []).map((t) => t.id || t.date + t.description));
+      for (let y = thisYear; y >= thisYear - 5; y--) {
+        const r = `&dates=${y}0101-${y}1231`;
+        let more = await getJson(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/${TEAM_IDS[team]}/transactions?limit=1000${r}`).catch(() => ({ transactions: [] }));
+        if (!(more.transactions || []).length) {
+          const all = await getJson(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/transactions?limit=1000${r}`).catch(() => ({ transactions: [] }));
+          more = { transactions: (all.transactions || []).filter((t) => String(t.team?.id) === String(TEAM_IDS[team]) || String(t.team?.abbreviation || "").toUpperCase() === team) };
+        }
+        for (const t of more.transactions || []) { const key = t.id || t.date + t.description; if (!seen.has(key)) { seen.add(key); d.transactions.push(t); } }
+      }
+    }
     // ESPN bundles a team's moves for the day into one description
     // ("Signed X. Waived Y. Converted Z…"). Split into one record per move so
     // each gets the right tag.
@@ -61,7 +74,7 @@ export default async function handler(req, res) {
       }
     }
     out.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-    res.setHeader("Cache-Control", year && year < new Date().getFullYear() ? "s-maxage=86400, stale-while-revalidate=172800" : "s-maxage=600, stale-while-revalidate=1200");
+    res.setHeader("Cache-Control", req.query?.history ? "s-maxage=3600, stale-while-revalidate=7200" : year && year < new Date().getFullYear() ? "s-maxage=86400, stale-while-revalidate=172800" : "s-maxage=600, stale-while-revalidate=1200");
     return res.status(200).json({ count: out.length, records: out, updatedAt: new Date().toISOString() });
   } catch (e) {
     return res.status(502).json({ error: String(e.message || e) });
