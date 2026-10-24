@@ -610,6 +610,121 @@ function GameLogChart({ espnId, color }) {
   );
 }
 
+// ── Tonight strip: tonight's starters, one card per player, with tip time, opponent and status ──
+function TonightStrip({ players, teams, onSelect }) {
+  const [sb, setSb] = useState(null);
+  useEffect(() => { let alive = true; const load = () => fetch("/api/scoreboard").then((r) => r.json()).then((d) => alive && setSb(d && d.games ? d.games : [])).catch(() => alive && setSb([])); load(); const t = setInterval(load, 2 * 60 * 1000); return () => { alive = false; clearInterval(t); }; }, []);
+  const games = (sb || []).filter((g) => g.state !== "post");
+  if (!sb || !games.length) return null;
+  const cards = [];
+  for (const g of games) {
+    for (const side of ["away", "home"]) {
+      const t = g[side], opp = g[side === "away" ? "home" : "away"];
+      const team = (teams || []).find((x) => modernAbbr(x.abbr || toAbbr(x.name)) === modernAbbr(t.abbr));
+      if (!team) continue;
+      const roster = rosterOf(team, players);
+      const lu = lineupOf(roster, team.abbr || toAbbr(team.name));
+      const five = lu.starters.map((x) => x.p).filter(Boolean);
+      for (const p of five) cards.push({ p, g, t, opp, home: side === "home", team });
+    }
+  }
+  if (!cards.length) return null;
+  return (
+    <div className="pt-3">
+      <div className="flex items-center justify-between px-4 mb-2">
+        <span className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase">Tonight</span>
+        <span className="text-[10px] font-semibold text-slate-400">{games.length} game{games.length === 1 ? "" : "s"} · starters</span>
+      </div>
+      <div className="flex gap-2 overflow-x-auto px-4 pb-2" style={{ scrollbarWidth: "none" }}>
+        {cards.map(({ p, g, t, opp, home, team }) => {
+          const ab = team.abbr || toAbbr(team.name); const live = g.state === "in";
+          const st = effectiveStatus(p); const hurt = isSidelined(p);
+          const cur = curStats(p);
+          return (
+            <button key={p.id + g.id} onClick={() => onSelect(p)} className="shrink-0 w-[108px] rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden text-center flex flex-col items-center justify-start" style={{ borderTop: "3px solid " + teamColor(ab) }}>
+              <div className="pt-2 flex justify-center"><Avatar p={p} /></div>
+              <div className="px-1.5 mt-1 text-[11px] font-bold text-slate-900 dark:text-white truncate">{lastNameOf(p)}</div>
+              <div className="text-[9px] font-semibold text-slate-400 truncate">{cur ? `${fmt1(cur.pts)} PPG` : courtPos(p)}</div>
+              <div className="mt-1.5 flex items-center justify-center gap-1 text-[9px] font-extrabold text-slate-500">
+                <img src={TEAM_LOGOS[ab] || ""} alt="" className="w-4 h-4 object-contain" style={logoTrim(ab)} />
+                <span>{home ? "vs" : "@"}</span>
+                <img src={TEAM_LOGOS[opp.abbr] || ""} alt="" className="w-4 h-4 object-contain" style={logoTrim(opp.abbr)} />
+              </div>
+              <div className={"mt-1 mb-2 text-[9px] font-extrabold " + (live ? "text-red-500" : "text-slate-400")}>{live ? "LIVE " + (t.score ?? 0) + "-" + (opp.score ?? 0) : new Date(g.date).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</div>
+              {hurt && <div className="pb-2 -mt-1"><StatusBadge status={st} /></div>}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Player comparison ──
+function ComparePicker({ players, exclude, onPick, color }) {
+  const [q, setQ] = useState("");
+  const list = q.trim().length < 2 ? [] : players.filter((x) => x.id !== exclude.id && !isRetired(x) && x.name.toLowerCase().includes(q.toLowerCase())).slice(0, 8);
+  return (
+    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-3 mb-3">
+      <div className="text-[10px] font-extrabold tracking-widest uppercase mb-2" style={{ color }}>Compare with…</div>
+      <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Type a player's name" className="w-full rounded-xl bg-slate-100 dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-white outline-none" />
+      <div className="mt-2 divide-y divide-slate-100 dark:divide-slate-800">
+        {list.map((x) => (
+          <button key={x.id} onClick={() => onPick(x)} className="w-full flex items-center gap-3 py-2 text-left">
+            <Avatar p={x} />
+            <span className="flex-1 min-w-0"><span className="block text-sm font-bold text-slate-900 dark:text-white truncate">{x.name}</span><span className="block text-[10px] text-slate-400">{teamOfPlayer(x) || "Free Agent"} · {courtPos(x)}</span></span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+function CompareView({ a, b, color, onSwap }) {
+  const sa = curStats(a) || {}, sb = curStats(b) || {};
+  const cb = playerHeaderColor(b);
+  const KEYS = [["pts", "PTS"], ["reb", "REB"], ["ast", "AST"], ["stl", "STL"], ["blk", "BLK"], ["p3m", "3PM"]];
+  const ROWS = [["Points", "pts"], ["Rebounds", "reb"], ["Assists", "ast"], ["Steals", "stl"], ["Blocks", "blk"], ["Turnovers", "tov", true], ["3PM", "p3m"], ["FG%", "fg", false, true], ["3P%", "p3", false, true], ["FT%", "ft", false, true], ["Minutes", "min"]];
+  const max = {}; for (const [k] of KEYS) max[k] = Math.max(0.1, sa[k] ?? 0, sb[k] ?? 0);
+  const cx = 70, cy = 70, r = 50, n = KEYS.length;
+  const pt = (i, f) => { const ang = -Math.PI / 2 + (i / n) * 2 * Math.PI; return [cx + r * f * Math.cos(ang), cy + r * f * Math.sin(ang)]; };
+  const poly = (st) => KEYS.map(([k], i) => pt(i, Math.min(1, (st[k] ?? 0) / max[k])).join(",")).join(" ");
+  const ring = (f) => KEYS.map((_, i) => pt(i, f).join(",")).join(" ");
+  const Head = ({ p, col, right }) => (
+    <div className={"flex items-center gap-2 min-w-0 " + (right ? "flex-row-reverse text-right" : "")}>
+      <Avatar p={p} />
+      <div className="min-w-0"><div className="text-[12px] font-extrabold truncate" style={{ color: col }}>{lastNameOf(p)}</div><div className="text-[9px] text-slate-400">{teamOfPlayer(p) || "FA"} · {curStats(p)?.gp ?? 0} GP</div></div>
+    </div>
+  );
+  return (
+    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-3 mb-3">
+      <div className="flex items-center justify-between gap-2">
+        <Head p={a} col={color} />
+        <button onClick={onSwap} className="shrink-0 text-[10px] font-extrabold text-slate-400 px-2 py-1 rounded-full border border-slate-200 dark:border-slate-700">swap</button>
+        <Head p={b} col={cb} right />
+      </div>
+      <svg viewBox="0 0 140 140" className="w-40 h-40 mx-auto my-2">
+        {[0.33, 0.66, 1].map((f) => <polygon key={f} points={ring(f)} fill="none" stroke="currentColor" className="text-slate-200 dark:text-slate-700" strokeWidth="1" />)}
+        {KEYS.map(([, l], i) => { const [x, y] = pt(i, 1.18); return <text key={l} x={x} y={y + 3} fontSize="8" fontWeight="700" textAnchor="middle" fill="currentColor" className="text-slate-500 dark:text-slate-400">{l}</text>; })}
+        <polygon points={poly(sa)} fill={color} opacity="0.3" stroke={color} strokeWidth="2" strokeLinejoin="round" />
+        <polygon points={poly(sb)} fill={cb} opacity="0.3" stroke={cb} strokeWidth="2" strokeLinejoin="round" />
+      </svg>
+      <div className="divide-y divide-slate-100 dark:divide-slate-800">
+        {ROWS.map(([lbl, k, lower, pct]) => {
+          const va = sa[k], vb = sb[k]; const f = (v) => (v == null ? "—" : pct ? Number(v).toFixed(1) + "%" : fmt1(v));
+          const aWins = va != null && vb != null && (lower ? va < vb : va > vb), bWins = va != null && vb != null && (lower ? vb < va : vb > va);
+          return (
+            <div key={k} className="flex items-center py-1.5 text-[12px] tabular-nums">
+              <span className={"w-16 text-left font-extrabold " + (aWins ? "" : "text-slate-400")} style={aWins ? { color } : undefined}>{f(va)}</span>
+              <span className="flex-1 text-center text-[10px] font-bold uppercase tracking-wider text-slate-400">{lbl}</span>
+              <span className={"w-16 text-right font-extrabold " + (bWins ? "" : "text-slate-400")} style={bWins ? { color: cb } : undefined}>{f(vb)}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // Game-by-game table (ESPN game log)
 function GameLogTable({ espnId, color }) {
   const [log, setLog] = useState(null);
@@ -659,6 +774,7 @@ function BioRow({ k, v }) {
 // ═══════════════ PLAYER DETAIL ═══════════════════════════════════
 function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJumpToStats }) {
   const [showLog, setShowLog] = useState(false);
+  const [compare, setCompare] = useState(null);   // null | "pick" | player
   useEffect(() => { window.scrollTo(0, 0); }, []);
   const swipe = useSwipe(null, onBack);
   const act = activeOf(p);
@@ -743,22 +859,26 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
           const line = (k) => (st[k] != null ? { tot: tot(k), pg: pg(k) } : null);
           const sheet = [
             ["Scoring", [["Field goals", shoot("fgm", "fga", "fg"), "fg"], ["3-pointers", shoot("p3m", "p3a", "p3"), "p3"], ["Free throws", shoot("ftm", "fta", "ft"), "ft"]]],
-            ["Playmaking", [["Assists", line("ast"), "ast"], ["Turnovers", line("tov"), "tov"], ["AST / TO", st.tov > 0 ? { tot: fmt1(st.ast / st.tov), pg: "ratio" } : (st.ast > 0 ? { tot: "∞", pg: "no turnovers" } : null), "ast"]]],
+            ["Playmaking", [["Minutes", line("min"), "min"], ["Assists", line("ast"), "ast"], ["Turnovers", line("tov"), "tov"], ["AST / TO", st.tov > 0 ? { tot: fmt1(st.ast / st.tov), pg: "ratio" } : (st.ast > 0 ? { tot: "∞", pg: "no turnovers" } : null), "ast"]]],
             ["Rebounding", [["Rebounds", line("reb"), "reb"], ["Offensive", line("oreb"), "oreb"], ["Defensive", line("dreb"), "dreb"]]],
             ["Defense", [["Steals", line("stl"), "stl"], ["Blocks", line("blk"), "blk"]]],
-            ["Minutes", [["Minutes", line("min"), "min"]]],
           ].map(([g, rows]) => [g, rows.filter(([, v]) => v)]).filter(([, rows]) => rows.length);
           return (
             <>
               <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mt-6 mb-2 px-1">
                 {seasonTick({ season: st.season }) || st.season} season{gp != null ? " · " + gp + " GP" : ""}
-                {st.espnId && <button onClick={() => setShowLog((v) => !v)} className="float-right text-[11px] font-extrabold normal-case tracking-normal px-2.5 py-0.5 rounded-full border" style={{ color: c, borderColor: c, backgroundColor: showLog ? c + "1A" : "transparent" }}>{showLog ? "Hide game log" : "Game log ›"}</button>}
+                <span className="float-right flex gap-1.5">
+                  {players && <button onClick={() => setCompare(compare ? null : "pick")} className="text-[11px] font-extrabold normal-case tracking-normal px-2.5 py-0.5 rounded-full border" style={{ color: c, borderColor: c, backgroundColor: compare ? c + "1A" : "transparent" }}>{compare ? "Close" : "Compare"}</button>}
+                  {st.espnId && <button onClick={() => setShowLog((v) => !v)} className="text-[11px] font-extrabold normal-case tracking-normal px-2.5 py-0.5 rounded-full border" style={{ color: c, borderColor: c, backgroundColor: showLog ? c + "1A" : "transparent" }}>{showLog ? "Hide log" : "Game log ›"}</button>}
+                </span>
               </div>
+              {compare === "pick" && <ComparePicker players={players} exclude={p} onPick={(q) => setCompare(q)} color={c} />}
+              {compare && compare !== "pick" && <CompareView a={p} b={compare} color={c} onSwap={() => setCompare("pick")} />}
               {showLog && st.espnId && <GameLogTable espnId={st.espnId} color={c} />}
               <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
                 {sheet.map(([g, rows]) => (
                   <div key={g}>
-                    <div className="px-4 pt-3 pb-1 text-[10px] font-extrabold tracking-widest uppercase" style={{ color: c }}>{g}</div>
+                    <div className="px-4 py-1.5 text-[10px] font-extrabold tracking-widest uppercase text-white" style={{ backgroundColor: c }}>{g}</div>
                     {rows.map(([lbl, v, key]) => (
                       <button key={lbl} onClick={onJumpToStats && key !== "min" ? () => onJumpToStats(p, key) : undefined} className="w-full flex items-center justify-between px-4 py-2 text-left border-b border-slate-100 dark:border-slate-800 last:border-0 active:bg-slate-50 dark:active:bg-slate-800">
                         <span className="text-[13px] font-semibold text-slate-600 dark:text-slate-300">{lbl}</span>
@@ -882,7 +1002,7 @@ function PlayersHub({ players, teams, onSelect, injury }) {
       : <InjuryFeed players={players} teams={teams} onSelect={onSelect} pills={sub} feed={injury.feed} markSeen={injury.markSeen} />;
   }
   if (view === "retired") return <PlayersTab players={players.filter(isRetired)} onSelect={onSelect} pills={pills} title="Retired / Overseas" key={view} />;
-  return <PlayersTab players={players.filter((p) => !isRetired(p))} onSelect={onSelect} pills={pills} title="Active Players" key={view} />;
+  return <PlayersTab tonight={<TonightStrip players={players} teams={teams} onSelect={onSelect} />} players={players.filter((p) => !isRetired(p))} onSelect={onSelect} pills={pills} title="Active Players" key={view} />;
 }
 
 // ═══════════════ GAME VIEW (live) ════════════════════════════════
@@ -912,7 +1032,7 @@ function GameView({ game, teams, players, onBack, onSelectTeam }) {
     <button onClick={() => { const tm = teamByAbbr(t.abbr); if (tm && onSelectTeam) onSelectTeam(tm); }} className={"flex flex-col items-center w-28 " + (right ? "items-end" : "items-start")}>
       <img src={t.logo || TEAM_LOGOS[t.abbr] || ""} alt="" className="w-24 h-24 object-contain" style={{ filter: "drop-shadow(0 3px 6px rgba(0,0,0,0.45))", ...logoOnColor(t.abbr) }} />
       <div className="mt-1 text-xl font-extrabold text-white tracking-wide">{t.abbr}</div>
-      <div className="text-xs font-semibold text-white/75 tabular-nums">{t.record || ""}</div>
+      <div className="text-xs font-semibold text-white/75 tabular-nums">{t.record || (() => { const tm = teamByAbbr(t.abbr); return tm && tm.wins != null ? `${tm.wins}-${tm.losses}` : ""; })()}</div>
     </button>
   );
   return (
@@ -1107,14 +1227,13 @@ function Badge({ n }) {
 function TransactionsFeed({ players, teams, onSelect, pills, onlyTeam, embedded }) {
   const [q, setQ] = useState("");
   const [feed, setFeed] = useState(null);
-  const [year, setYear] = useState(null);                         // null = recent; a year = that calendar year's history
-  const thisYear = new Date().getFullYear();
+  const year = null;
   useEffect(() => {
     let alive = true; setFeed(null);
-    const qs = [onlyTeam ? "team=" + encodeURIComponent(modernAbbr(onlyTeam)) : "", year ? "year=" + year : ""].filter(Boolean).join("&");
+    const qs = [onlyTeam ? "team=" + encodeURIComponent(modernAbbr(onlyTeam)) : "", onlyTeam ? "history=1" : ""].filter(Boolean).join("&");
     fetch("/api/transactions" + (qs ? "?" + qs : "")).then((r) => r.json()).then((d) => alive && setFeed(d && d.records ? d : { records: [], error: d?.error || "unavailable" })).catch(() => alive && setFeed({ records: [], error: "unreachable" }));
     return () => { alive = false; };
-  }, [onlyTeam, year]);
+  }, [onlyTeam]);
   const KIND_CLS = { "Signing": "bg-green-600 text-white", "Option exercised": "bg-green-600 text-white", "Option declined": "bg-red-600 text-white", "Waived": "bg-red-600 text-white", "Trade": "bg-blue-600 text-white", "Two-way": "bg-purple-600 text-white", "G League": "bg-slate-500 text-white", "Transaction": "bg-slate-500 text-white" };
   const s0 = q.toLowerCase().trim();
   const same = (a, b) => modernAbbr(a) === modernAbbr(b) || (ABBR_VARIANTS[modernAbbr(a)] || []).includes(String(b).toUpperCase()) || (ABBR_VARIANTS[modernAbbr(b)] || []).includes(String(a).toUpperCase());
@@ -1134,14 +1253,7 @@ function TransactionsFeed({ players, teams, onSelect, pills, onlyTeam, embedded 
       <div className={embedded ? "px-4 pb-6 mt-4" : "px-4 pb-28 mt-4"}>
         {!feed && <div className="text-center text-xs text-slate-400 py-10">Loading ESPN feed…</div>}
         {feed && feed.error && <div className="text-center text-xs text-slate-400 py-10">Couldn't reach ESPN's transactions feed. Try again in a minute.</div>}
-        {onlyTeam && (
-          <div className="flex gap-1.5 overflow-x-auto pb-2 mb-1" style={{ scrollbarWidth: "none" }}>
-            {[[null, "Recent"], ...[0, 1, 2, 3, 4].map((i) => [thisYear - i, String(thisYear - i)])].map(([y, lbl]) => (
-              <button key={lbl} onClick={() => setYear(y)} className={"shrink-0 px-3 py-1 rounded-full text-[10px] font-extrabold border " + (year === y ? "text-white border-transparent" : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800")} style={year === y ? { backgroundColor: teamColor(onlyTeam) } : undefined}>{lbl}</button>
-            ))}
-          </div>
-        )}
-        {feed && !feed.error && <div className="text-[11px] font-semibold text-slate-400 mb-3">ESPN feed · {recs.length} transactions{year ? " in " + year : ""} · newest first</div>}
+        {feed && !feed.error && <div className="text-[11px] font-semibold text-slate-400 mb-3">ESPN feed · {recs.length} transactions{onlyTeam ? " · full history" : ""} · newest first</div>}
         {groups.map((g) => (
           <div key={g.key}>
             <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mb-2 px-1">{g.key}</div>
@@ -1248,7 +1360,7 @@ const isHurt = (p) => {
 // their full profile; they just leave every roster, lineup, and leaderboard.
 const isOverseas = (p) => /overseas|abroad|euro|international/i.test(String(p.status || "")) || /overseas/i.test(String(p.role || ""));
 const isRetired = (p) => /retire/i.test(String(p.status || "")) || /retire/i.test(String(p.role || "")) || isOverseas(p);
-function PlayersTab({ players, onSelect, pills, forceInj, title }) {
+function PlayersTab({ players, onSelect, pills, forceInj, title, tonight }) {
   const [q, setQ] = useState("");
   const list = useMemo(() => {
     const base = players.filter((p) => matchesQuery(p, q));
@@ -1260,6 +1372,7 @@ function PlayersTab({ players, onSelect, pills, forceInj, title }) {
   return (
     <div>
       <ListHeader title={forceInj ? "Injury Report" : (title || "Players")} q={q} setQ={setQ} pills={pills} />
+      {tonight && !q && tonight}
       <div className="px-4 pb-28 mt-4">
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
           {list.map((p) => (
@@ -1527,8 +1640,26 @@ function StandingsTable({ teams, onSelect }) {
   return (
     <div className="mt-4 space-y-4">
       {confs.map(([k, title]) => {
-        const rows = (teams || []).filter((t) => !isFaTeam(t) && confKey(t) === k).sort((a, b) => winPct(b) - winPct(a) || (b.wins ?? 0) - (a.wins ?? 0) || ((b.ppg ?? 0) - (b.oppPpg ?? 0)) - ((a.ppg ?? 0) - (a.oppPpg ?? 0)));
+        // Sort: win % → NBA tiebreak order where the feed allows: division winner → net rating
+        // (head-to-head isn't in the feed). Tied rows are marked TB.
+        const divLeaders = new Set();
+        const byDiv = {};
+        for (const t of (teams || []).filter((t) => !isFaTeam(t) && confKey(t) === k)) (byDiv[t.division] ||= []).push(t);
+        for (const list of Object.values(byDiv)) divLeaders.add(list.slice().sort((a, b) => winPct(b) - winPct(a))[0]?.id);
+        const net = (t) => (t.ppg ?? 0) - (t.oppPpg ?? 0);
+        const rows = (teams || []).filter((t) => !isFaTeam(t) && confKey(t) === k).sort((a, b) => winPct(b) - winPct(a) || (divLeaders.has(b.id) - divLeaders.has(a.id)) || net(b) - net(a));
         const leader = rows[0];
+        // Clinch / elimination (x = playoffs, p = play-in or better, e = eliminated)
+        const played = (t) => (t.wins ?? 0) + (t.losses ?? 0), left = (t) => Math.max(0, 82 - played(t)), maxW = (t) => (t.wins ?? 0) + left(t);
+        const clinch = {};
+        rows.forEach((t) => {
+          const seventh = rows[6], eleventh = rows[10], tenth = rows[9];
+          if (seventh && (t.wins ?? 0) > maxW(seventh)) clinch[t.id] = "x";
+          else if (eleventh && (t.wins ?? 0) > maxW(eleventh)) clinch[t.id] = "p";
+          else if (tenth && maxW(t) < (tenth.wins ?? 0)) clinch[t.id] = "e";
+        });
+        const tied = (i) => rows[i - 1] && winPct(rows[i - 1]) === winPct(rows[i]);
+        const abOf = (t) => t.abbr || toAbbr(t.name);
         return (
           <div key={k} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
             <div className="px-4 py-2.5 text-[11px] font-extrabold tracking-widest uppercase text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
@@ -1540,10 +1671,11 @@ function StandingsTable({ teams, onSelect }) {
                 {rows.map((t, i) => {
                   const ab = t.abbr || toAbbr(t.name);
                   const line = i === 6 ? "border-t-2 border-green-500" : i === 10 ? "border-t-2 border-red-400" : "border-t border-slate-100 dark:border-slate-800";
+                  const mark = clinch[t.id];
                   return (
                     <tr key={t.id} onClick={() => onSelect(t)} className={"text-slate-900 dark:text-white active:bg-slate-50 dark:active:bg-slate-800 " + line}>
-                      <td className="pl-3 py-2 font-extrabold text-slate-400">{i + 1}</td>
-                      <td className="py-2"><span className="flex items-center gap-2"><img src={t.logo || TEAM_LOGOS[ab] || ""} alt="" className="w-6 h-6 object-contain" style={logoTrim(ab)} /><span className="font-bold">{ab}</span></span></td>
+                      <td className="pl-3 py-2 font-extrabold text-slate-400">{i + 1}{mark && <span className={"ml-0.5 text-[9px] " + (mark === "e" ? "text-red-400" : "text-green-600")}>{mark}</span>}</td>
+                      <td className="py-2"><span className="flex items-center gap-2"><img src={t.logo || TEAM_LOGOS[ab] || ""} alt="" className="w-6 h-6 object-contain" style={logoTrim(ab)} /><span className="font-bold">{ab}</span>{tied(i) && <span className="text-[8px] font-bold text-slate-400">TB</span>}{divLeaders.has(t.id) && <span className="text-[8px] font-bold text-amber-500">★</span>}</span></td>
                       <td className="py-2 text-center font-extrabold">{t.wins ?? 0}-{t.losses ?? 0}</td>
                       <td className="py-2 text-center text-slate-500">{leader ? gbOf(t, leader) : "—"}</td>
                       <td className="py-2 text-center text-slate-500">{t.l10 || "—"}</td>
@@ -1553,6 +1685,20 @@ function StandingsTable({ teams, onSelect }) {
                 })}
               </tbody>
             </table>
+            {rows.length >= 10 && (
+              <div className="px-4 py-3 border-t border-slate-100 dark:border-slate-800">
+                <div className="text-[10px] font-extrabold tracking-widest uppercase text-slate-400 mb-1.5">Playoff picture · if the season ended today</div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-slate-900 dark:text-white">
+                  {[[0, 7], [1, 6], [2, 5], [3, 4]].map(([a, b]) => <div key={a} className="flex justify-between"><span className="font-bold">{a + 1} {abOf(rows[a])}</span><span className="text-slate-400">vs</span><span className="font-bold">{b + 1} {abOf(rows[b])}</span></div>)}
+                </div>
+                <div className="mt-2 text-[10px] font-extrabold tracking-widest uppercase text-slate-400 mb-1">Play-in</div>
+                <div className="text-[11px] text-slate-700 dark:text-slate-300 leading-relaxed">
+                  <span className="font-bold">7 {abOf(rows[6])}</span> vs <span className="font-bold">8 {abOf(rows[7])}</span> <span className="text-slate-400">→ winner takes the 7 seed</span><br />
+                  <span className="font-bold">9 {abOf(rows[8])}</span> vs <span className="font-bold">10 {abOf(rows[9])}</span> <span className="text-slate-400">→ winner meets the 7/8 loser for the 8 seed</span>
+                </div>
+                <div className="mt-2 text-[9px] text-slate-400 leading-relaxed">x clinched playoffs · p clinched play-in or better · e eliminated · ★ division leader · TB tied record, ordered by tiebreaker (division winner, then net rating)</div>
+              </div>
+            )}
           </div>
         );
       })}
@@ -2324,8 +2470,8 @@ function TeamLeaders({ roster, abbr, onSelectPlayer }) {
         const items = cats.map(([k, l]) => [k, l, top(k)]).filter(([, , x]) => x);
         if (!items.length) return null;
         return (
-          <div key={g} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden" style={{ borderTop: "4px solid " + color }}>
-            <div className="px-4 pt-3 pb-1 text-[11px] font-extrabold tracking-widest uppercase text-slate-400">{g}</div>
+          <div key={g} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+            <div className="px-4 py-1.5 text-[10px] font-extrabold tracking-widest uppercase text-white" style={{ backgroundColor: color }}>{g}</div>
             {items.map(([k, l, x]) => (
               <button key={k} onClick={() => onSelectPlayer(x.p)} className="w-full flex items-center gap-3 px-4 py-2 text-left active:bg-slate-50 dark:active:bg-slate-800">
                 <Avatar p={x.p} />
