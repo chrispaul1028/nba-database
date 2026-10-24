@@ -458,7 +458,7 @@ function ordinal(n) {
   return n + suffix;
 }
 
-function Tile({ value, label, sub, accent, valueClass, onClick, active, activeColor, borderColor }) {
+function Tile({ value, label, sub, accent, valueClass, onClick, active, activeColor, borderColor, labelColor }) {
   const Tag = onClick ? "button" : "div";
   return (
     <Tag onClick={onClick} className={"relative bg-white dark:bg-slate-900 rounded-2xl border px-2 py-4 text-center shadow-sm flex flex-col items-center justify-center w-full " + (active || borderColor ? "border-2" : "border-slate-200 dark:border-slate-800")}
@@ -468,7 +468,7 @@ function Tile({ value, label, sub, accent, valueClass, onClick, active, activeCo
           <path d="M2.5 4.5 L6 8 L9.5 4.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       )}
-      <div className="text-[10px] font-semibold text-slate-400 tracking-widest uppercase mb-1">{label}</div>
+      <div className={"text-[10px] tracking-widest uppercase mb-1 " + (labelColor ? "font-extrabold" : "font-semibold text-slate-400")} style={labelColor ? { color: labelColor } : undefined}>{label}</div>
       <div className={"text-2xl font-extrabold tracking-tight " + (valueClass ? valueClass : accent ? ACCENT_TEXT : "text-slate-900 dark:text-slate-100")}>{value}</div>
       {sub && (
         <div className={"text-[10px] font-bold mt-0.5 " + (typeof sub === "object" && sub.cls ? sub.cls : "text-blue-600 dark:text-blue-400")}>
@@ -1728,12 +1728,12 @@ function PlayoffBracket({ teams, onSelect }) {
     // Projected: the higher seed advances (what "if the season ended today" means for later rounds)
     const col2 = (
       <div className="flex flex-col justify-around gap-2 w-[112px] shrink-0">
-        <Pair a={S(1)} b={S(4)} sa={1} sb={4} right={right} proj /><Pair a={S(2)} b={S(3)} sa={2} sb={3} right={right} proj />
+        <Pair a={null} b={null} sa="" sb="" right={right} /><Pair a={null} b={null} sa="" sb="" right={right} />
       </div>
     );
     const col3 = (
       <div className="flex flex-col justify-around w-[112px] shrink-0">
-        <Pair a={S(1)} b={S(2)} sa={1} sb={2} right={right} proj />
+        <Pair a={null} b={null} sa="" sb="" right={right} />
       </div>
     );
     const cols = [col1, <Join key="j1" right={right} />, col2, <Join key="j2" right={right} />, col3];
@@ -1752,13 +1752,13 @@ function PlayoffBracket({ teams, onSelect }) {
   };
   return (
     <div className="mt-4 space-y-5">
-      <div className="text-[10px] font-semibold text-slate-400 px-1">Seeding if the season ended today · 7 and 8 are the current 7th and 8th pending the play-in · dashed rounds project the higher seed advancing</div>
+      <div className="text-[10px] font-semibold text-slate-400 px-1">Seeding if the season ended today · 7 and 8 are the current 7th and 8th pending the play-in</div>
       <Conf k="east" title="Eastern Conference" />
       <div className="flex items-center gap-3">
         <div className="flex-1 border-t border-slate-200 dark:border-slate-700" />
         <div className="rounded-2xl border-2 border-amber-400 bg-white dark:bg-slate-900 px-5 py-2 text-center shadow-sm">
           <div className="text-[9px] font-extrabold tracking-widest uppercase text-amber-500">NBA Finals</div>
-          <div className="text-[11px] font-extrabold text-slate-500 dark:text-slate-300 mt-0.5">{(() => { const e = seedsOf("east")[0], w = seedsOf("west")[0]; return e && w ? `${e.abbr || toAbbr(e.name)} · ${w.abbr || toAbbr(w.name)}` : "East champ · West champ"; })()} <span className="text-[9px] font-semibold text-slate-400">proj.</span></div>
+          <div className="text-[11px] font-extrabold text-slate-400 mt-0.5">East champ · West champ</div>
         </div>
         <div className="flex-1 border-t border-slate-200 dark:border-slate-700" />
       </div>
@@ -1830,7 +1830,7 @@ function StandingsTable({ teams, onSelect }) {
 
 function TeamsTab({ teams, players, onSelect }) {
   const [q, setQ] = useState("");
-  const [conf, setConf] = useState("standings"); // standings | all | east | west | playoffs
+  const [conf, setConf] = useState("all"); // all | east | west | standings | playoffs
   const [div, setDiv] = useState(null);    // division name or null
   const s = q.toLowerCase().trim();
   // Direct team-name matches, plus teams of any player whose name matches -
@@ -1878,7 +1878,7 @@ function TeamsTab({ teams, players, onSelect }) {
     <div>
       <div className="px-4 pb-28" style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.75rem)" }}>
         <div className="flex gap-2 mt-1">
-          {[["standings", "Standings"], ["all", "Teams"], ["east", "East"], ["west", "West"], ["playoffs", "Playoffs"]].map(([k, lbl]) => (
+          {[["all", "Teams"], ["east", "East"], ["west", "West"], ["standings", "Standings"], ["playoffs", "Playoffs"]].map(([k, lbl]) => (
             <button key={k} onClick={() => pickConf(k)}
               className={"flex-1 py-2 rounded-full text-[11px] font-bold transition-colors " + (conf === k
                 ? "bg-blue-600 text-white"
@@ -1888,10 +1888,10 @@ function TeamsTab({ teams, players, onSelect }) {
           ))}
         </div>
         {divisions.length > 0 && (
-          <div className="flex gap-2 mt-2 overflow-x-auto no-scrollbar justify-center">
+          <div className="flex gap-2 mt-2">
             {divisions.map((d) => (
               <button key={d} onClick={() => setDiv(div === d ? null : d)}
-                className={"px-3 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap transition-colors " + (div === d
+                className={"flex-1 px-3 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap text-center transition-colors " + (div === d
                   ? "bg-blue-600 text-white"
                   : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800")}>
                 {d}
@@ -3169,9 +3169,9 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
             );
           })() : (
             <>
-              <Tile value={(team.wins ?? 0) + "-" + (team.losses ?? 0)} label="Record" />
-              <Tile value={team.ppg != null ? team.ppg.toFixed(1) : "—"} label={STANDINGS_PHASE.v === "preseason" ? "PPG · Pre" : "PPG"} sub={rankOf(teams, team, "ppg", "desc")} onClick={onJumpToTeamStats ? () => onJumpToTeamStats(team, "ppg") : undefined} />
-              <Tile value={team.oppPpg != null ? team.oppPpg.toFixed(1) : "—"} label={STANDINGS_PHASE.v === "preseason" ? "Opp PPG · Pre" : "Opp PPG"} sub={rankOf(teams, team, "oppPpg", "asc")} onClick={onJumpToTeamStats ? () => onJumpToTeamStats(team, "oppPpg") : undefined} />
+              <Tile value={(team.wins ?? 0) + "-" + (team.losses ?? 0)} label="Record" borderColor={teamColor2(abbr)} labelColor={teamColor(abbr)} />
+              <Tile value={team.ppg != null ? team.ppg.toFixed(1) : "—"} label={STANDINGS_PHASE.v === "preseason" ? "PPG · Pre" : "PPG"} sub={rankOf(teams, team, "ppg", "desc")} borderColor={teamColor2(abbr)} labelColor={teamColor(abbr)} onClick={onJumpToTeamStats ? () => onJumpToTeamStats(team, "ppg") : undefined} />
+              <Tile value={team.oppPpg != null ? team.oppPpg.toFixed(1) : "—"} label={STANDINGS_PHASE.v === "preseason" ? "Opp PPG · Pre" : "Opp PPG"} sub={rankOf(teams, team, "oppPpg", "asc")} borderColor={teamColor2(abbr)} labelColor={teamColor(abbr)} onClick={onJumpToTeamStats ? () => onJumpToTeamStats(team, "oppPpg") : undefined} />
             </>
           )}
         </div>
@@ -3801,6 +3801,16 @@ function LoadingScreen() {
   );
 }
 
+// One rule for every pill in the app: unselected pills get a visible edge and a
+// hairline shadow so they read as buttons; selected pills get a soft lift.
+const PILL_CSS = `
+button.rounded-full { -webkit-tap-highlight-color: transparent; transition: transform .08s ease, box-shadow .12s ease; }
+button.rounded-full:active { transform: scale(.97); }
+button.rounded-full.border-slate-200 { border-color: #cbd5e1; box-shadow: 0 1px 2px rgba(15,23,42,.06); }
+.dark button.rounded-full.border-slate-800, button.rounded-full.dark\:border-slate-800 { }
+@media (prefers-color-scheme: dark) { button.rounded-full.border-slate-200 { border-color: #334155; box-shadow: 0 1px 2px rgba(0,0,0,.4); } }
+button.rounded-full.text-white { box-shadow: 0 2px 6px rgba(15,23,42,.18); }
+`;
 export default function App() {
   const [tab, setTab] = useState("tonight"); // land on tonight's games
   const [sel, setSel] = useState(null);
@@ -3888,7 +3898,8 @@ export default function App() {
   }, []);
 
   if (sel) {
-    return (
+    return (<>
+      <style>{PILL_CSS}</style>
       <PlayerDetail
         p={sel}
         teams={teams}
@@ -3898,11 +3909,12 @@ export default function App() {
         mode="full"
         onJumpToStats={(pl, cat) => { setStatsFocus({ id: pl.id, cat, n: Date.now(), from: { tab, team: selTeam } }); setSel(null); setSelTeam(null); setTab("stats"); }}
       />
-    );
+    </>);
   }
 
   return (
     <div className="min-h-screen bg-slate-100 dark:bg-slate-950">
+      <style>{PILL_CSS}</style>
       {error && (
         <div className="m-4 bg-rose-50 border border-rose-200 text-rose-700 text-sm rounded-2xl px-4 py-3">
           Couldn't load data: {error}
