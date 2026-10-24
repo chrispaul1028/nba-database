@@ -348,10 +348,19 @@ function injuryLine(p) {
 //         ESPN's estimate. Always shown as "Estimated Return Date: Oct 2".
 // Freshest source first: the live injury feed (5-min cache, re-polled on wake).
 // The roster feed is only a stopgap before the live feed has loaded.
+// Season-ending language in the injury write-up, or Airtable's own IR / "season" status
+const SEASON_RE = /season[- ]ending|out for the (rest of the |remainder of the )?season|for the season|miss(es|ing)? the (entire |rest of the |remainder of the )?season|year (is )?(already )?(over|finished|done)|remainder of the (season|year)|rest of the (season|year)|out for the year/i;
+function outForSeason(p) {
+  const st = String(p?.status || "").toLowerCase();
+  if (st === "ir" || st.includes("injured reserve") || st.includes("season")) return true;
+  const txt = [injOf(p)?.comment, injOf(p)?.longComment, espnOf(p)?.injuryComment, p?.injuryNotes].filter(Boolean).join(" ");
+  return SEASON_RE.test(txt);
+}
 function effectiveStatus(p) {
   const e = INJ_LOADED ? injOf(p)?.status : (espnOf(p)?.injury || injOf(p)?.status);
-  if (e && !/active|available/i.test(String(e))) return String(e);
-  return p.status || "";
+  const base = (e && !/active|available/i.test(String(e))) ? String(e) : (p.status || "");
+  if (base && /out|ir/i.test(base) && outForSeason(p)) return "Out for Season";
+  return base;
 }
 const injuryCommentOf = (p) => espnOf(p)?.injuryComment || injOf(p)?.comment || null;
 function splitNotes(raw) {
@@ -365,7 +374,7 @@ const fmtRet = (v) => { if (!v) return null; const d = new Date(/\d{4}/.test(Str
 // "(right ankle sprain)" — Airtable notes first, else ESPN's write-up
 const tidyInjury = (t) => { const x = String(t || "").toLowerCase().replace(/[()]/g, "").trim(); return !x ? "" : /\s/.test(x) || /injur|sprain|strain|surgery|fracture|tear|soreness|illness|rest|contusion|bruise|concussion|tendin|manage/.test(x) ? x : x + " injury"; };
 const injuryDetailOf = (p) => tidyInjury(splitNotes(p.injuryNotes).note || espnOf(p)?.injuryDetail || injOf(p)?.detail || "");
-const injuryReturnOf = (p) => fmtRet(p.returnDate) || fmtRet(splitNotes(p.injuryNotes).ret) || fmtRet(espnOf(p)?.injuryReturn) || fmtRet(injOf(p)?.returnDate);
+const injuryReturnOf = (p) => (outForSeason(p) ? null : (fmtRet(p.returnDate) || fmtRet(splitNotes(p.injuryNotes).ret) || fmtRet(espnOf(p)?.injuryReturn) || fmtRet(injOf(p)?.returnDate)));
 const isActiveStatus = (p) => { const st = String(effectiveStatus(p)).toLowerCase(); return !st || st.includes("active") || st.includes("available"); };
 // Retired / Overseas aren't injuries: no notes, no return date, just the tag
 const isSidelined = (p) => !isActiveStatus(p) && !isRetired(p);
@@ -812,7 +821,7 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
               <div className="text-[11px] font-extrabold text-white mt-0.5">Estimated Return Date: {injuryReturnOf(p)}</div>
             )}
             {!isActiveStatus(p) && injuryCommentOf(p) && (
-              <div className="text-[11px] opacity-85 mt-1.5 leading-snug">{injuryCommentOf(p)}</div>
+              <div className="mt-1.5"><span className="inline-block text-[11px] font-semibold text-red-600 bg-white/95 rounded-md px-2 py-1 leading-snug">{injuryCommentOf(p)}</span></div>
             )}
           </div>
         </div>
@@ -1950,7 +1959,8 @@ function StatusBadge({ status }) {
   if (!status) return null;
   const s = String(status).toLowerCase().trim();
   let cls = "bg-slate-100 text-slate-500 dark:text-slate-400";
-  if (s === "ir" || s.includes("injured reserve") || s.includes("out") || s.includes("suspend")) cls = "bg-red-600 text-white";
+  if (s.includes("season")) cls = "bg-red-900 text-white";
+  else if (s === "ir" || s.includes("injured reserve") || s.includes("out") || s.includes("suspend")) cls = "bg-red-600 text-white";
   else if (s.includes("active") || s.includes("available")) cls = "bg-green-600 text-white";
   else if (/overseas|abroad|retire/.test(s)) cls = "bg-slate-700 text-white";
   else if (s.includes("game time") || s === "gtd" || s.includes("injur") || s.includes("day") || s.includes("question") || s.includes("doubt") || s.includes("probable")) cls = "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300";
@@ -2403,7 +2413,7 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
                 <span className="mt-2 text-[9px] font-bold text-slate-600 dark:text-slate-300 max-w-full truncate">
                   {(cleanNo(p.no) ? "#" + cleanNo(p.no) + " " : "") + lastNameOf(p)}
                 </span>
-                <span className="text-[8px] font-semibold text-slate-400">{mpg(p) >= 0 ? fmt1(mpg(p)) + " min" : "—"}</span>
+                <span className="text-[8px] font-semibold text-slate-400">{curStats(p)?.min != null && curStats(p).gp > 0 ? fmt1(curStats(p).min) + " min" : "\u00a0"}</span>
               </button>
             ))}
             </div>
