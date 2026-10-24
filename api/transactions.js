@@ -28,16 +28,20 @@ const TEAM_IDS = { ATL: 1, BOS: 2, NOP: 3, NO: 3, CHI: 4, CLE: 5, DAL: 6, DEN: 7
 export default async function handler(req, res) {
   try {
     const team = String(req.query?.team || "").toUpperCase();
+    // ?year=2025 → that calendar year's transactions (history); default = ESPN's recent window
+    const year = Number(req.query?.year) || null;
+    const range = year ? `&dates=${year}0101-${year}1231` : "";
     const url = team && TEAM_IDS[team]
-      ? `https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/${TEAM_IDS[team]}/transactions?limit=500`
-      : "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/transactions?limit=1000";
+      ? `https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/${TEAM_IDS[team]}/transactions?limit=1000${range}`
+      : `https://site.api.espn.com/apis/site/v2/sports/basketball/nba/transactions?limit=1000${range}`;
     let d = await getJson(url).catch(() => ({ transactions: [] }));
     if (team && !(d.transactions || []).length) {
       // ESPN's per-team feed is sometimes empty — fall back to the league feed filtered to this team
-      const all = await getJson("https://site.api.espn.com/apis/site/v2/sports/basketball/nba/transactions?limit=1000").catch(() => ({ transactions: [] }));
+      const all = await getJson(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/transactions?limit=1000${range}`).catch(() => ({ transactions: [] }));
       const id = TEAM_IDS[team];
       d = { transactions: (all.transactions || []).filter((t) => String(t.team?.id) === String(id) || String(t.team?.abbreviation || "").toUpperCase() === team) };
     }
+    if (year) d.transactions = (d.transactions || []).filter((t) => !t.date || new Date(t.date).getFullYear() === year);
     // ESPN bundles a team's moves for the day into one description
     // ("Signed X. Waived Y. Converted Z…"). Split into one record per move so
     // each gets the right tag.
@@ -57,7 +61,7 @@ export default async function handler(req, res) {
       }
     }
     out.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-    res.setHeader("Cache-Control", "s-maxage=900, stale-while-revalidate=1800");
+    res.setHeader("Cache-Control", year && year < new Date().getFullYear() ? "s-maxage=86400, stale-while-revalidate=172800" : "s-maxage=600, stale-while-revalidate=1200");
     return res.status(200).json({ count: out.length, records: out, updatedAt: new Date().toISOString() });
   } catch (e) {
     return res.status(502).json({ error: String(e.message || e) });

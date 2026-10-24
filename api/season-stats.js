@@ -170,6 +170,21 @@ export default async function handler(req, res) {
       const live = (sb.events || []).filter((e) => e.competitions?.[0]?.status?.type?.state === "in");
       const sums = await Promise.all(live.map((e) => getJson(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=${e.id}`).catch(() => null)));
       for (const s of sums) {
+        // team line for the game in progress (so the Profile and PPG move during the game too)
+        for (const tb of s?.boxscore?.teams || []) {
+          const raw = String(tb.team?.abbreviation || "").toUpperCase(); const ab = ABBR_FIX[raw] || raw;
+          const T = teamTot[ab] || (teamTot[ab] = { gp: 0, pts: 0, reb: 0, oreb: 0, dreb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0 });
+          T.gp += 1; T.live = true;
+          const comp = (s.header?.competitions || [])[0] || {};
+          const me = (comp.competitors || []).find((c) => String(c.team?.id) === String(tb.team?.id));
+          T.pts += Number(me?.score) || 0;
+          for (const st of tb.statistics || []) {
+            const k = TEAM_BOX[(st.abbreviation || "").toUpperCase()] || TEAM_BOX[String(st.label || "").toUpperCase()] || TEAM_BOX[String(st.name || "").toUpperCase()];
+            if (!k || k === "fgm") continue;
+            if (k.endsWith("_")) { const [m, att] = splitMade(st.displayValue); const pfx = k.slice(0, -1); T[pfx + "m"] += m; T[pfx + "a"] += att; }
+            else T[k] += Number(st.displayValue) || 0;
+          }
+        }
         for (const tb of s?.boxscore?.players || []) {
           const grp = (tb.statistics || [])[0] || {};
           const cols = grp.names || grp.labels || [];
@@ -204,7 +219,7 @@ export default async function handler(req, res) {
     const teams = {};
     for (const [ab, T] of Object.entries(teamTot)) {
       const g = T.gp || 1; const pg = (k) => Math.round((T[k] / g) * 10) / 10; const pct = (m, at) => (T[at] ? Math.round((T[m] / T[at]) * 1000) / 10 : null);
-      teams[ab] = { gp: T.gp, pts: pg("pts"), reb: pg("reb"), oreb: pg("oreb"), dreb: pg("dreb"), ast: pg("ast"), stl: pg("stl"), blk: pg("blk"), tov: pg("tov"), fga: pg("fga"), p3a: pg("p3a"), fta: pg("fta"), fg: pct("fgm", "fga"), p3: pct("p3m", "p3a"), ft: pct("ftm", "fta") };
+      teams[ab] = { gp: T.gp, live: !!T.live, pts: pg("pts"), reb: pg("reb"), oreb: pg("oreb"), dreb: pg("dreb"), ast: pg("ast"), stl: pg("stl"), blk: pg("blk"), tov: pg("tov"), fga: pg("fga"), p3a: pg("p3a"), fta: pg("fta"), fg: pct("fgm", "fga"), p3: pct("p3m", "p3a"), ft: pct("ftm", "fta") };
     }
     res.setHeader("Cache-Control", "s-maxage=120, stale-while-revalidate=240"); // 2-minute window
     return res.status(200).json({ season: `${season - 1}-${season}`, seasontype, source: fromBox ? "box scores" : "espn table", gamesSeen, gamesUsed, maxTeamGP, count: players.length, players, teams, updatedAt: new Date().toISOString() });
