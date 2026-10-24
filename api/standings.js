@@ -28,6 +28,10 @@ function parse(d) {
         ppg: stat("avgPointsFor"), oppPpg: stat("avgPointsAgainst"),
         diff: stat("pointDifferential") ?? stat("differential"),
         streak: (e.stats || []).find((x) => x.name === "streak")?.displayValue || null,
+        gb: (e.stats || []).find((x) => x.name === "gamesBehind")?.displayValue ?? null,
+        l10: (e.stats || []).find((x) => /lastten|last ten|L10/i.test(x.name || "") || x.abbreviation === "L10")?.displayValue || null,
+        home: (e.stats || []).find((x) => x.name === "Home" || x.abbreviation === "HOME")?.displayValue || null,
+        road: (e.stats || []).find((x) => x.name === "Road" || x.abbreviation === "AWAY" || x.abbreviation === "ROAD")?.displayValue || null,
         conference: g.name || g.abbreviation || null,
       });
     }
