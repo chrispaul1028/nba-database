@@ -31,9 +31,69 @@ const nrm = (s) => String(s || "").toLowerCase().replace(/[.'’-]/g, "").replac
 
 const TEAM_BOX = { PTS: "pts", REB: "reb", OREB: "oreb", DREB: "dreb", AST: "ast", STL: "stl", BLK: "blk", TO: "tov", FG: "fg_", "3PT": "p3_", FT: "ft_", FIELDGOALSMADE: "fgm", REBOUNDS: "reb", OFFENSIVEREBOUNDS: "oreb", DEFENSIVEREBOUNDS: "dreb", ASSISTS: "ast", STEALS: "stl", BLOCKS: "blk", TURNOVERS: "tov" };
 
+// ── ?recap=7 → digest of the last N days: team records/margins, top performers, big games ──
+async function recap(days) {
+  const to = new Date(); const from = new Date(to.getTime() - days * 86400000);
+  const ymd = (d) => d.toISOString().slice(0, 10).replace(/-/g, "");
+  let events = [];
+  try { events = (await getJson(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${ymd(from)}-${ymd(to)}&limit=1000`)).events || []; } catch {}
+  const done = events.filter((e) => (e.season?.type == null || e.season.type === 2) && e.competitions?.[0]?.status?.type?.completed);
+  const T = {}, P = {}, games = [];
+  const team = (ab) => T[ab] || (T[ab] = { team: ab, w: 0, l: 0, pf: 0, pa: 0, gp: 0 });
+  for (const e of done) {
+    const c = e.competitions?.[0] || {};
+    const [x, y] = c.competitors || [];
+    if (!x || !y) continue;
+    for (const [me, them] of [[x, y], [y, x]]) {
+      const raw = String(me.team?.abbreviation || "").toUpperCase(); const ab = ABBR_FIX[raw] || raw;
+      const t = team(ab); t.gp++; t.pf += Number(me.score) || 0; t.pa += Number(them.score) || 0; if (me.winner) t.w++; else t.l++;
+    }
+  }
+  for (let i = 0; i < done.length; i += 8) {
+    const sums = await Promise.all(done.slice(i, i + 8).map((e) => getJson(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=${e.id}`).catch(() => null)));
+    sums.forEach((s, j) => {
+      const e = done[i + j]; const comp = (e.competitions || [])[0] || {};
+      for (const tb of s?.boxscore?.players || []) {
+        const grp = (tb.statistics || [])[0] || {}; const cols = grp.names || grp.labels || [];
+        const raw = String(tb.team?.abbreviation || "").toUpperCase(); const ab = ABBR_FIX[raw] || raw;
+        const mine = (comp.competitors || []).find((cc) => String(cc.team?.id) === String(tb.team?.id)); const opp = (comp.competitors || []).find((cc) => String(cc.team?.id) !== String(tb.team?.id));
+        const oraw = String(opp?.team?.abbreviation || "").toUpperCase();
+        for (const a of grp.athletes || []) {
+          if (a.didNotPlay) continue;
+          const name = a.athlete?.displayName || ""; const v = (k) => { const ix = cols.indexOf(k); return ix >= 0 ? a.stats?.[ix] : null; };
+          const line = { pts: Number(v("PTS")) || 0, reb: Number(v("REB")) || 0, ast: Number(v("AST")) || 0, p3: splitMade(v("3PT")), stl: Number(v("STL")) || 0, blk: Number(v("BLK")) || 0 };
+          const rec = P[nrm(name)] || (P[nrm(name)] = { name, team: ab, gp: 0, pts: 0, reb: 0, ast: 0, p3m: 0, p3a: 0 });
+          rec.gp++; rec.pts += line.pts; rec.reb += line.reb; rec.ast += line.ast; rec.p3m += line.p3[0]; rec.p3a += line.p3[1]; rec.team = ab;
+          games.push({ name, team: ab, opp: ABBR_FIX[oraw] || oraw, home: mine?.homeAway === "home", date: e.date, ...line });
+        }
+      }
+    });
+  }
+  const teams = Object.values(T).map((t) => ({ ...t, ppg: t.pf / (t.gp || 1), oppPpg: t.pa / (t.gp || 1), margin: (t.pf - t.pa) / (t.gp || 1) })).filter((t) => t.gp > 0);
+  const byMargin = teams.slice().sort((a, b) => (b.w - b.l) - (a.w - a.l) || b.margin - a.margin);
+  const players = Object.values(P).filter((r) => r.gp >= Math.max(1, Math.floor(days / 7)));
+  const top = (k, n = 5) => players.slice().sort((a, b) => b[k] - a[k]).slice(0, n);
+  const per = (r) => ({ ...r, ppg: r.pts / r.gp, rpg: r.reb / r.gp, apg: r.ast / r.gp, p3pg: r.p3m / r.gp, p3pct: r.p3a ? Math.round((r.p3m / r.p3a) * 1000) / 10 : 0 });
+  return {
+    days, from: from.toISOString(), to: to.toISOString(), games: done.length,
+    teamsBest: byMargin.slice(0, 5), teamsWorst: byMargin.slice(-5).reverse(),
+    topScorers: players.map(per).sort((a, b) => b.ppg - a.ppg).slice(0, 8),
+    topRebounders: players.map(per).sort((a, b) => b.rpg - a.rpg).slice(0, 5),
+    topPassers: players.map(per).sort((a, b) => b.apg - a.apg).slice(0, 5),
+    topShooters: players.map(per).filter((r) => r.p3a / r.gp >= 4).sort((a, b) => b.p3pg - a.p3pg).slice(0, 5),
+    bigGames: games.slice().sort((a, b) => b.pts - a.pts).slice(0, 8),
+    tripleDoubles: games.filter((g) => [g.pts, g.reb, g.ast, g.stl, g.blk].filter((x) => x >= 10).length >= 3).sort((a, b) => new Date(b.date) - new Date(a.date)),
+  };
+}
+
 export default async function handler(req, res) {
   try {
     const now = new Date();
+    if (req.query?.recap) {
+      const out = await recap(Math.min(60, Math.max(1, Number(req.query.recap) || 7)));
+      res.setHeader("Cache-Control", "s-maxage=1800, stale-while-revalidate=3600");
+      return res.status(200).json(out);
+    }
     // ── per-player game log (one ESPN call) ──
     if (req.query?.gamelog) {
       const id = String(req.query.gamelog).replace(/\D/g, "");
