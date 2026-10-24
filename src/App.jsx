@@ -764,7 +764,7 @@ function GameLogTable({ espnId, color }) {
                     <span className="ml-1.5 text-[10px] text-slate-400">{g.date ? new Date(g.date).toLocaleDateString([], { month: "numeric", day: "numeric" }) : ""}</span>
                     {g.result && <span className={"ml-1.5 text-[10px] font-extrabold " + (g.result === "W" ? "text-green-600" : "text-red-500")}>{g.result}</span>}
                   </td>
-                  {cols.map((c) => <td key={c} className={"px-2 py-2 text-center whitespace-nowrap " + (c === "PTS" ? "font-extrabold" : "font-medium")}>{cell(g, c)}</td>)}
+                  {cols.map((c) => <td key={c} className="px-2 py-2 text-center whitespace-nowrap font-medium">{cell(g, c)}</td>)}
                 </tr>
               ))}
             </tbody>
@@ -2063,10 +2063,10 @@ function espnStartersFor(roster, abbr) {
 // player with the same position number (most minutes first) takes his spot.
 const SLOT_OF_SORT = { 1: "PG", 2: "SG", 3: "SF", 4: "PF", 5: "C" };
 const roleOf = (p) => { const r = String(p.role || "").toLowerCase(); return r.includes("start") ? "Starter" : r.includes("bench") ? "Bench" : r.includes("reserve") ? "Reserves" : /two\s*-?\s*way/.test(r) ? "Two-Way" : "Reserves"; };
-const mpgOf = (p) => latestStats(p)?.min ?? -1;
+const mpgOf = (p) => { const c = curStats(p); if (c && c.gp > 0 && c.min != null) return c.min; return -1; };   // this season only; no game yet = bottom
 const isTwoWay = (p) => roleOf(p) === "Two-Way" || /two\s*-?\s*way/i.test(String(activeOf(p)?.kind || ""));
 const slotOfPlayer = (p) => SLOT_OF_SORT[Number(p.sort)] || (POS_ALIASES.PG.includes(courtPos(p)) && courtPos(p) === "PG" ? "PG" : courtPos(p));
-const byMinutes = (a, b) => mpgOf(b) - mpgOf(a) || (Number(a.sort) || 99) - (Number(b.sort) || 99);
+const byMinutes = (a, b) => mpgOf(b) - mpgOf(a) || ((latestStats(b)?.min ?? -1) - (latestStats(a)?.min ?? -1)) || (Number(a.sort) || 99) - (Number(b.sort) || 99);
 
 function pickStartingFive(roster, abbr) {
   const used = new Set();
@@ -2167,7 +2167,7 @@ function lineupOf(roster, abbr) {
 function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
   const { assigned, nextUp, used, automated, source, benchGroups, bench } = useMemo(() => lineupOf(roster, abbr), [roster, abbr, lineupFor(abbr)]);
   const lineup = lineupFor(abbr);
-  const mpg = (p) => latestStats(p)?.min ?? -1;
+  const mpg = (p) => mpgOf(p);
   const color = teamColor(abbr);
   const th = courtTheme(abbr);
   // Net rating (PPG − opp PPG) ranked against the league — the NBA version
