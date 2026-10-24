@@ -858,7 +858,7 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
           const shoot = (m, a, pk) => (st[m] != null && st[a] != null ? { tot: `${Math.round(st[m] * (gp || 1))}/${Math.round(st[a] * (gp || 1))}`, pg: `${fmt1(st[m])}/${fmt1(st[a])}`, pct: pct(pk) } : null);
           const line = (k) => (st[k] != null ? { tot: tot(k), pg: pg(k) } : null);
           const sheet = [
-            ["Scoring", [["Field goals", shoot("fgm", "fga", "fg"), "fg"], ["3-pointers", shoot("p3m", "p3a", "p3"), "p3"], ["Free throws", shoot("ftm", "fta", "ft"), "ft"]]],
+            ["Scoring", [["Field Goals", shoot("fgm", "fga", "fg"), "fg"], ["3-Pointers", shoot("p3m", "p3a", "p3"), "p3"], ["Free Throws", shoot("ftm", "fta", "ft"), "ft"]]],
             ["Playmaking", [["Minutes", line("min"), "min"], ["Assists", line("ast"), "ast"], ["Turnovers", line("tov"), "tov"], ["AST / TO", st.tov > 0 ? { tot: fmt1(st.ast / st.tov), pg: "ratio" } : (st.ast > 0 ? { tot: "∞", pg: "no turnovers" } : null), "ast"]]],
             ["Rebounding", [["Rebounds", line("reb"), "reb"], ["Offensive", line("oreb"), "oreb"], ["Defensive", line("dreb"), "dreb"]]],
             ["Defense", [["Steals", line("stl"), "stl"], ["Blocks", line("blk"), "blk"]]],
@@ -868,8 +868,8 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
               <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mt-6 mb-2 px-1">
                 {seasonTick({ season: st.season }) || st.season} season{gp != null ? " · " + gp + " GP" : ""}
                 <span className="float-right flex gap-1.5">
-                  {players && <button onClick={() => setCompare(compare ? null : "pick")} className="text-[11px] font-extrabold normal-case tracking-normal px-2.5 py-0.5 rounded-full border" style={{ color: c, borderColor: c, backgroundColor: compare ? c + "1A" : "transparent" }}>{compare ? "Close" : "Compare"}</button>}
                   {st.espnId && <button onClick={() => setShowLog((v) => !v)} className="text-[11px] font-extrabold normal-case tracking-normal px-2.5 py-0.5 rounded-full border" style={{ color: c, borderColor: c, backgroundColor: showLog ? c + "1A" : "transparent" }}>{showLog ? "Hide log" : "Game log ›"}</button>}
+                  {players && <button onClick={() => setCompare(compare ? null : "pick")} className="text-[11px] font-extrabold normal-case tracking-normal px-2.5 py-0.5 rounded-full border" style={{ color: c, borderColor: c, backgroundColor: compare ? c + "1A" : "transparent" }}>{compare ? "Close" : "Compare"}</button>}
                 </span>
               </div>
               {compare === "pick" && <ComparePicker players={players} exclude={p} onPick={(q) => setCompare(q)} color={c} />}
@@ -1241,7 +1241,7 @@ function TransactionsFeed({ players, teams, onSelect, pills, onlyTeam, embedded 
   const groups = [];
   for (const r of recs) {
     const d = r.date ? new Date(r.date) : null;
-    const key = d && !isNaN(d) ? d.toLocaleDateString([], { month: "short", day: "numeric" }).toUpperCase() : "UNDATED";
+    const key = d && !isNaN(d) ? d.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }).toUpperCase() : "UNDATED";
     let g = groups[groups.length - 1]; if (!g || g.key !== key) { g = { key, items: [] }; groups.push(g); }
     g.items.push(r);
   }
@@ -1632,6 +1632,82 @@ function rosterOf(team, players) {
 }
 const isFaTeam = (t) => !!t && (/free\s*agent/i.test(String(t.name || "")) || String(t.abbr || "").toUpperCase() === "FA");
 
+// ── Playoff bracket: East builds left→right on top, West right→left below, Finals in the middle ──
+function PlayoffBracket({ teams, onSelect }) {
+  const seedsOf = (k) => (teams || []).filter((t) => !isFaTeam(t) && confKey(t) === k).sort((a, b) => winPct(b) - winPct(a) || (b.wins ?? 0) - (a.wins ?? 0) || ((b.ppg ?? 0) - (b.oppPpg ?? 0)) - ((a.ppg ?? 0) - (a.oppPpg ?? 0))).slice(0, 10);
+  const Team = ({ t, seed, right }) => {
+    const ab = t ? (t.abbr || toAbbr(t.name)) : "";
+    return (
+      <button onClick={() => t && onSelect(t)} className={"flex items-center gap-1 h-8 px-1.5 w-full " + (right ? "flex-row-reverse text-right" : "")}>
+        {t ? <img src={t.logo || TEAM_LOGOS[ab] || ""} alt="" className="w-5 h-5 object-contain shrink-0" style={logoTrim(ab)} /> : <span className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-700 shrink-0" />}
+        <span className="text-[9px] font-extrabold text-slate-400 w-3">{seed}</span>
+        <span className="text-[11px] font-extrabold text-slate-900 dark:text-white truncate">{t ? ab : "TBD"}</span>
+        {t && <span className="text-[9px] font-semibold text-slate-400 tabular-nums">{t.wins ?? 0}-{t.losses ?? 0}</span>}
+      </button>
+    );
+  };
+  const Pair = ({ a, b, sa, sb, right }) => (
+    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 divide-y divide-slate-100 dark:divide-slate-800 shadow-sm">
+      <Team t={a} seed={sa} right={right} /><Team t={b} seed={sb} right={right} />
+    </div>
+  );
+  // connector between two stacked pairs and the next-round slot
+  const Join = ({ right }) => (
+    <div className={"w-4 shrink-0 self-stretch flex flex-col " + (right ? "items-end" : "items-start")}>
+      <div className={"flex-1 w-1/2 border-slate-300 dark:border-slate-600 " + (right ? "border-l-2 border-b-2 rounded-bl-md" : "border-r-2 border-b-2 rounded-br-md")} style={{ marginTop: 32 }} />
+      <div className={"flex-1 w-1/2 border-slate-300 dark:border-slate-600 " + (right ? "border-l-2 border-t-2 rounded-tl-md" : "border-r-2 border-t-2 rounded-tr-md")} style={{ marginBottom: 32 }} />
+    </div>
+  );
+  const Conf = ({ k, title, right }) => {
+    const seeds = seedsOf(k);
+    const S = (n) => seeds[n - 1] || null;
+    const r1 = [[1, 8], [4, 5], [3, 6], [2, 7]];
+    const col1 = (
+      <div className="flex flex-col justify-around gap-2 w-[112px] shrink-0">
+        {r1.map(([a, b]) => <Pair key={a} a={S(a)} b={S(b)} sa={a} sb={b} right={right} />)}
+      </div>
+    );
+    const col2 = (
+      <div className="flex flex-col justify-around gap-2 w-[112px] shrink-0">
+        <Pair a={null} b={null} sa="" sb="" right={right} /><Pair a={null} b={null} sa="" sb="" right={right} />
+      </div>
+    );
+    const col3 = (
+      <div className="flex flex-col justify-around w-[112px] shrink-0">
+        <Pair a={null} b={null} sa="" sb="" right={right} />
+      </div>
+    );
+    const cols = [col1, <Join key="j1" right={right} />, col2, <Join key="j2" right={right} />, col3];
+    return (
+      <div>
+        <div className={"flex items-center justify-between px-1 mb-2 " + (right ? "flex-row-reverse" : "")}>
+          <span className="text-[11px] font-extrabold tracking-widest uppercase text-slate-900 dark:text-white">{title}</span>
+          <span className="text-[9px] font-semibold text-slate-400">First round · Conf. semis · Conf. finals</span>
+        </div>
+        <div className={"flex items-stretch " + (right ? "flex-row-reverse" : "")}>{cols}</div>
+        <div className={"mt-2 text-[9px] text-slate-400 " + (right ? "text-right" : "")}>
+          Play-in: <span className="font-bold text-slate-600 dark:text-slate-300">7 {S(7) ? (S(7).abbr || toAbbr(S(7).name)) : "—"}</span> v <span className="font-bold text-slate-600 dark:text-slate-300">8 {S(8) ? (S(8).abbr || toAbbr(S(8).name)) : "—"}</span> for the 7 seed · <span className="font-bold text-slate-600 dark:text-slate-300">9 {S(9) ? (S(9).abbr || toAbbr(S(9).name)) : "—"}</span> v <span className="font-bold text-slate-600 dark:text-slate-300">10 {S(10) ? (S(10).abbr || toAbbr(S(10).name)) : "—"}</span>, winner meets the 7/8 loser for the 8 seed
+        </div>
+      </div>
+    );
+  };
+  return (
+    <div className="mt-4 space-y-5">
+      <div className="text-[10px] font-semibold text-slate-400 px-1">Seeding if the season ended today · 7 and 8 shown as current 7th and 8th pending the play-in</div>
+      <Conf k="east" title="Eastern Conference" />
+      <div className="flex items-center gap-3">
+        <div className="flex-1 border-t border-slate-200 dark:border-slate-700" />
+        <div className="rounded-2xl border-2 border-amber-400 bg-white dark:bg-slate-900 px-5 py-2 text-center shadow-sm">
+          <div className="text-[9px] font-extrabold tracking-widest uppercase text-amber-500">NBA Finals</div>
+          <div className="text-[11px] font-extrabold text-slate-400 mt-0.5">East champ · West champ</div>
+        </div>
+        <div className="flex-1 border-t border-slate-200 dark:border-slate-700" />
+      </div>
+      <Conf k="west" title="Western Conference" right />
+    </div>
+  );
+}
+
 // Conference standings tables with the playoff (1–6) and play-in (7–10) lines
 const confKey = (t) => { const c = String(t.conference || "").toLowerCase(); return c.startsWith("east") ? "east" : c.startsWith("west") ? "west" : "other"; };
 function StandingsTable({ teams, onSelect }) {
@@ -1685,20 +1761,7 @@ function StandingsTable({ teams, onSelect }) {
                 })}
               </tbody>
             </table>
-            {rows.length >= 10 && (
-              <div className="px-4 py-3 border-t border-slate-100 dark:border-slate-800">
-                <div className="text-[10px] font-extrabold tracking-widest uppercase text-slate-400 mb-1.5">Playoff picture · if the season ended today</div>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-slate-900 dark:text-white">
-                  {[[0, 7], [1, 6], [2, 5], [3, 4]].map(([a, b]) => <div key={a} className="flex justify-between"><span className="font-bold">{a + 1} {abOf(rows[a])}</span><span className="text-slate-400">vs</span><span className="font-bold">{b + 1} {abOf(rows[b])}</span></div>)}
-                </div>
-                <div className="mt-2 text-[10px] font-extrabold tracking-widest uppercase text-slate-400 mb-1">Play-in</div>
-                <div className="text-[11px] text-slate-700 dark:text-slate-300 leading-relaxed">
-                  <span className="font-bold">7 {abOf(rows[6])}</span> vs <span className="font-bold">8 {abOf(rows[7])}</span> <span className="text-slate-400">→ winner takes the 7 seed</span><br />
-                  <span className="font-bold">9 {abOf(rows[8])}</span> vs <span className="font-bold">10 {abOf(rows[9])}</span> <span className="text-slate-400">→ winner meets the 7/8 loser for the 8 seed</span>
-                </div>
-                <div className="mt-2 text-[9px] text-slate-400 leading-relaxed">x clinched playoffs · p clinched play-in or better · e eliminated · ★ division leader · TB tied record, ordered by tiebreaker (division winner, then net rating)</div>
-              </div>
-            )}
+            <div className="px-4 py-2 text-[9px] text-slate-400 border-t border-slate-100 dark:border-slate-800">x clinched playoffs · p clinched play-in or better · e eliminated · ★ division leader · TB tied record, ordered by tiebreaker (division winner, then net rating)</div>
           </div>
         );
       })}
@@ -1708,7 +1771,7 @@ function StandingsTable({ teams, onSelect }) {
 
 function TeamsTab({ teams, players, onSelect }) {
   const [q, setQ] = useState("");
-  const [conf, setConf] = useState("all"); // all | east | west
+  const [conf, setConf] = useState("standings"); // standings | all | east | west | playoffs
   const [div, setDiv] = useState(null);    // division name or null
   const s = q.toLowerCase().trim();
   // Direct team-name matches, plus teams of any player whose name matches -
@@ -1738,7 +1801,7 @@ function TeamsTab({ teams, players, onSelect }) {
   const divisions = conf === "all" ? [] :
     [...new Set(teams.filter((t) => confOf(t) === conf).map((t) => t.division).filter(Boolean))].sort();
   let list = teams.filter((t) => {
-    if (conf !== "all" && conf !== "standings" && confOf(t) !== conf) return false;
+    if (conf !== "all" && conf !== "standings" && conf !== "playoffs" && confOf(t) !== conf) return false;
     if (div && t.division !== div) return false;
     if (!s) return true;
     if ((t.name + " " + t.abbr).toLowerCase().includes(s)) return true;
@@ -1756,9 +1819,9 @@ function TeamsTab({ teams, players, onSelect }) {
     <div>
       <div className="px-4 pb-28" style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.75rem)" }}>
         <div className="flex gap-2 mt-1">
-          {[["all", "All"], ["east", "East"], ["west", "West"], ["standings", "Standings"]].map(([k, lbl]) => (
+          {[["standings", "Standings"], ["all", "Teams"], ["east", "East"], ["west", "West"], ["playoffs", "Playoffs"]].map(([k, lbl]) => (
             <button key={k} onClick={() => pickConf(k)}
-              className={"flex-1 py-2 rounded-full text-xs font-bold transition-colors " + (conf === k
+              className={"flex-1 py-2 rounded-full text-[11px] font-bold transition-colors " + (conf === k
                 ? "bg-blue-600 text-white"
                 : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800")}>
               {lbl}
@@ -1778,7 +1841,8 @@ function TeamsTab({ teams, players, onSelect }) {
           </div>
         )}
         {conf === "standings" && <StandingsTable teams={teams} onSelect={onSelect} />}
-        <div className={"space-y-2.5 mt-4" + (conf === "standings" ? " hidden" : "")}>
+        {conf === "playoffs" && <PlayoffBracket teams={teams} onSelect={onSelect} />}
+        <div className={"space-y-2.5 mt-4" + (conf === "standings" || conf === "playoffs" ? " hidden" : "")}>
           {list.map((t) => {
             const abbr = t.abbr || toAbbr(t.name);
             const c1 = teamColor(abbr), c2 = teamColor2(abbr);
@@ -2330,7 +2394,7 @@ const STAT_SETS = {
 };
 // ── Team Schedule: every game with results, plus opponent-strength tiles ──
 // Opponent strength = net rating (PPG − Opp PPG) from live standings.
-function TeamSchedule({ team, abbr, teams, onSelectTeam }) {
+function TeamSchedule({ team, abbr, teams, onSelectTeam, onOpenGame }) {
   const [d, setD] = useState(null);
   useEffect(() => {
     let alive = true;
@@ -2383,7 +2447,14 @@ function TeamSchedule({ team, abbr, teams, onSelectTeam }) {
           const dt = new Date(g.date);
           const oppT = byAbbr(g.opp);
           return (
-            <button key={g.id} onClick={() => { if (oppT && onSelectTeam) onSelectTeam(oppT); }} className="w-full text-left px-4 py-3 active:bg-slate-50 dark:active:bg-slate-800">
+            <button key={g.id} onClick={() => {
+                if ((g.completed || g.state === "in") && onOpenGame) {
+                  // open the game view (box score) for played / live games; upcoming games open the opponent
+                  const me = { abbr, score: g.my, record: `${team.wins ?? 0}-${team.losses ?? 0}`, winner: g.win === true, logo: team.logo };
+                  const them = { abbr: g.opp, score: g.their, record: oppT ? `${oppT.wins ?? 0}-${oppT.losses ?? 0}` : "", winner: g.win === false, logo: oppT?.logo || g.oppLogo };
+                  onOpenGame({ id: g.id, date: g.date, state: g.state, seasonType: 2, detail: g.detail, away: g.home ? them : me, home: g.home ? me : them, broadcast: g.broadcast });
+                } else if (oppT && onSelectTeam) onSelectTeam(oppT);
+              }} className="w-full text-left px-4 py-3 active:bg-slate-50 dark:active:bg-slate-800">
               <div className="flex items-center gap-3">
                 <span className="w-11 shrink-0 text-center leading-tight self-center"><span className="block text-[10px] font-bold text-slate-400 uppercase">{dt.toLocaleDateString([], { month: "short" })}</span><span className="block text-sm font-extrabold text-slate-900 dark:text-white tabular-nums">{dt.getDate()}</span></span>
                 <span className="flex-1 min-w-0">
@@ -2441,9 +2512,14 @@ function TeamInjuries({ roster, abbr, onSelectPlayer }) {
             <span className="flex-1 min-w-0">
               <span className="block text-sm font-bold text-slate-900 dark:text-white truncate">{cleanNo(p.no) && <span className="text-slate-400 font-extrabold mr-1.5">#{cleanNo(p.no)}</span>}{p.name}<span className="ml-1.5 text-[10px] font-semibold text-slate-400">{courtPos(p)}</span></span>
               <span className="mt-1 block"><StatusBadge status={effectiveStatus(p) || "Injured"} /></span>
-              {injuryDetailOf(p) && <span className="block text-[11px] font-semibold text-red-500 mt-1">({injuryDetailOf(p)})</span>}
-              {injuryReturnOf(p) && <span className="block text-[11px] font-semibold text-slate-900 dark:text-white mt-0.5">Estimated Return Date: {injuryReturnOf(p)}</span>}
-              {injuryCommentOf(p) && <span className="block text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">{injuryCommentOf(p)}</span>}
+              {(() => { const r = injOf(p); const detail = injuryDetailOf(p) || r?.detail || espnOf(p)?.injuryDetail; const ret = injuryReturnOf(p) || fmtRet(r?.returnDate); const note = injuryCommentOf(p) || r?.comment || r?.longComment; return (
+                <>
+                  {detail && <span className="block text-[11px] font-semibold text-red-500 mt-1">({detail})</span>}
+                  {ret && <span className="block text-[11px] font-semibold text-slate-900 dark:text-white mt-0.5">Estimated Return Date: {ret}</span>}
+                  {note && <span className="block text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">{note}</span>}
+                  {!detail && !ret && !note && <span className="block text-[10px] text-slate-400 mt-1">No details on the ESPN report yet</span>}
+                </>
+              ); })()}
             </span>
           </button>
         ))}
@@ -2943,7 +3019,7 @@ function BioPanel({ roster, abbr, teams, players, color, onSelectPlayer }) {
 
 // Horizontal swipe detector. Fires only on a clear sideways flick so
 // vertical scrolling never triggers it.
-function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam, backLabel, onJumpToTeamStats }) {
+function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam, backLabel, onJumpToTeamStats, onOpenGame }) {
   // swipe right = back; swipe left = next team alphabetically
   const ordered = useMemo(() => (teams || []).filter((t) => !isFaTeam(t)).slice().sort((a, b) => String(a.name).localeCompare(String(b.name))), [teams]);
   const idx = ordered.findIndex((t) => t.id === team.id);
@@ -3141,7 +3217,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
         ))}
         {seg === "contracts" && cView === "cap" && <CapOutlook roster={roster} color={teamColor(abbr)} onSelectPlayer={onSelectPlayer} />}
         {seg === "contracts" && cView === "bio" && <BioPanel roster={roster} abbr={abbr} teams={teams} players={players} color={teamColor(abbr)} onSelectPlayer={onSelectPlayer} />}
-        {seg === "schedule" && <TeamSchedule team={team} abbr={abbr} teams={teams} onSelectTeam={onSelectTeam} />}
+        {seg === "schedule" && <TeamSchedule team={team} abbr={abbr} teams={teams} onSelectTeam={onSelectTeam} onOpenGame={onOpenGame} />}
         {seg === "contracts" && (
           <div className="flex gap-2 mt-3">
             {[["list", "Contracts"], ["moves", "Transactions"]].map(([k, lbl]) => (
@@ -3784,10 +3860,14 @@ export default function App() {
       {players && tab === "teams" && !selTeam && (
         <TeamsTab teams={teams} players={players} onSelect={(t) => { SWIPE_DEPTH.n = 0; setSelTeam(t); }} />
       )}
-      {players && (tab === "teams" || tab === "tonight") && selTeam && (
+      {players && (tab === "teams" || tab === "tonight") && selTeam && selGame && (
+        <GameView game={selGame} teams={teams} players={players} onBack={() => setSelGame(null)} onSelectTeam={(t) => { setSelGame(null); setSelTeam(t); }} />
+      )}
+      {players && (tab === "teams" || tab === "tonight") && selTeam && !selGame && (
         <TeamDetail
           team={selTeam} teams={teams}
           players={players}
+          onOpenGame={setSelGame}
           onBack={() => setSelTeam(null)}
           onSelectPlayer={setSel}
           onSelectTeam={setSelTeam}
