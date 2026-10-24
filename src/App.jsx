@@ -699,19 +699,17 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
 
       <div className="px-4 -mt-3">
         {(() => { const cur = (p.stats || []).find((x) => x.season === CURRENT_SEASON); return (
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-2 relative z-10 -mt-2">
           {[["pts", "PTS"], ["reb", "REB"], ["ast", "AST"]].map(([k, lbl]) => {
             const st = cur; const v = st?.[k];
             const r = players ? leagueRank(players, p, k) : null;
             const cls = r ? (r.rank <= 10 ? "text-green-600 dark:text-green-400" : r.rank <= 50 ? "text-yellow-600 dark:text-yellow-400" : "text-slate-400") : null;
             const c0 = playerHeaderColor(p);
             return (
-              <button key={k} onClick={onJumpToStats && v != null ? () => onJumpToStats(p, k) : undefined} className="rounded-xl overflow-hidden border text-center bg-slate-50 dark:bg-slate-800/60 shadow-sm" style={{ borderColor: c0 }}>
-                <div className="text-[11px] font-extrabold tracking-widest uppercase text-white py-1.5" style={{ backgroundColor: c0 }}>{lbl}</div>
-                <div className="py-2.5">
-                  <div className="text-2xl font-extrabold text-slate-900 dark:text-white tabular-nums leading-none">{v != null ? fmt1(v) : "—"}</div>
-                  <div className={"text-[10px] font-semibold mt-1 tabular-nums " + (cls || "text-slate-400")}>{r ? r.label : (st ? "per game" : "no games yet")}</div>
-                </div>
+              <button key={k} onClick={onJumpToStats && v != null ? () => onJumpToStats(p, k) : undefined} className="rounded-2xl text-center bg-white dark:bg-slate-900 shadow-md border border-slate-200 dark:border-slate-800 py-3">
+                <div className="text-[10px] font-extrabold tracking-widest uppercase" style={{ color: c0 }}>{lbl}</div>
+                <div className="text-2xl font-extrabold text-slate-900 dark:text-white tabular-nums leading-none mt-1">{v != null ? fmt1(v) : "—"}</div>
+                <div className={"text-[10px] font-semibold mt-1 tabular-nums " + (cls || "text-slate-400")}>{r ? r.label : (st ? "per game" : "no games yet")}</div>
               </button>
             );
           })}
@@ -739,17 +737,17 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
           const tot = (k) => (st[k] == null ? null : gp ? Math.round(st[k] * gp).toLocaleString() : fmt1(st[k]));
           const pg = (k) => (st[k] == null ? null : fmt1(st[k]) + "/g");
           const pct = (k) => (st[k] == null ? null : Number(st[k]).toFixed(1) + "%");
-          const ma = (m, a) => (st[m] != null && st[a] != null ? fmt1(st[m]) + "/" + fmt1(st[a]) : " ");
-          // Grouped the way a scout reads a line: how he scores, how he passes, how he rebounds, how he defends, how much he plays
-          const groups = [
-            // Scoring is a 3×2: made on top, the matching percentage directly beneath
-            ["Scoring", [["FTM", tot("ftm"), pg("ftm"), "ftm"], ["3PM", tot("p3m"), pg("p3m"), "p3m"], ["FG%", pct("fg"), ma("fgm", "fga"), "fg"], ["FT%", pct("ft"), ma("ftm", "fta"), "ft"], ["3P%", pct("p3"), ma("p3m", "p3a"), "p3"]]],
-            ["Playmaking", [["MIN", tot("min"), pg("min"), "min"], ["TO", tot("tov"), pg("tov"), "tov"], ["AST/TO", st.tov > 0 ? fmt1(st.ast / st.tov) : (st.ast > 0 ? "∞" : null), "ratio", "ast"]]],
-            ["Rebounding", [["OREB", st.oreb != null ? tot("oreb") : null, pg("oreb"), "oreb"], ["DREB", st.dreb != null ? tot("dreb") : null, pg("dreb"), "dreb"]]],
-            ["Defense", [["STL", tot("stl"), pg("stl"), "stl"], ["BLK", tot("blk"), pg("blk"), "blk"]]],
-            ["Volume", [["FGA", tot("fga"), pg("fga"), "fga"], ["3PA", tot("p3a"), pg("p3a"), "p3a"], ["FTA", tot("fta"), pg("fta"), "fta"]]],
-          ].map(([g, t, cols]) => [g, t.filter(([, v]) => v != null), cols || 4]).filter(([, t]) => t.length);
-          const tiles = groups.flatMap(([, t]) => t);
+          // A stat sheet: one row per line, total on the right with per game in gray.
+          // Shooting rows read made/attempted and the percentage together.
+          const shoot = (m, a, pk) => (st[m] != null && st[a] != null ? { tot: `${Math.round(st[m] * (gp || 1))}/${Math.round(st[a] * (gp || 1))}`, pg: `${fmt1(st[m])}/${fmt1(st[a])}`, pct: pct(pk) } : null);
+          const line = (k) => (st[k] != null ? { tot: tot(k), pg: pg(k) } : null);
+          const sheet = [
+            ["Scoring", [["Field goals", shoot("fgm", "fga", "fg"), "fg"], ["3-pointers", shoot("p3m", "p3a", "p3"), "p3"], ["Free throws", shoot("ftm", "fta", "ft"), "ft"]]],
+            ["Playmaking", [["Assists", line("ast"), "ast"], ["Turnovers", line("tov"), "tov"], ["AST / TO", st.tov > 0 ? { tot: fmt1(st.ast / st.tov), pg: "ratio" } : (st.ast > 0 ? { tot: "∞", pg: "no turnovers" } : null), "ast"]]],
+            ["Rebounding", [["Rebounds", line("reb"), "reb"], ["Offensive", line("oreb"), "oreb"], ["Defensive", line("dreb"), "dreb"]]],
+            ["Defense", [["Steals", line("stl"), "stl"], ["Blocks", line("blk"), "blk"]]],
+            ["Minutes", [["Minutes", line("min"), "min"]]],
+          ].map(([g, rows]) => [g, rows.filter(([, v]) => v)]).filter(([, rows]) => rows.length);
           return (
             <>
               <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mt-6 mb-2 px-1">
@@ -757,25 +755,23 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
                 {st.espnId && <button onClick={() => setShowLog((v) => !v)} className="float-right text-[11px] font-extrabold normal-case tracking-normal px-2.5 py-0.5 rounded-full border" style={{ color: c, borderColor: c, backgroundColor: showLog ? c + "1A" : "transparent" }}>{showLog ? "Hide game log" : "Game log ›"}</button>}
               </div>
               {showLog && st.espnId && <GameLogTable espnId={st.espnId} color={c} />}
-              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-3">
-                {groups.map(([g, t, cols]) => (
-                  <div key={g} className="mb-3 last:mb-0">
-                    <div className="text-[10px] font-extrabold tracking-widest uppercase text-slate-400 mb-1.5">{g}</div>
-                    <div className="grid grid-cols-4 gap-2">
-                  {t.map(([lbl, v, sub, key]) => (
-                    <button key={lbl} onClick={onJumpToStats ? () => onJumpToStats(p, key) : undefined}
-                      className="rounded-xl overflow-hidden border text-center active:opacity-80" style={{ borderColor: c }}>
-                      <div className="text-[9px] font-extrabold text-white uppercase tracking-wider py-1" style={{ backgroundColor: c }}>{lbl}</div>
-                      <div className="bg-slate-50 dark:bg-slate-800 py-2">
-                        <div className="text-lg font-extrabold text-slate-900 dark:text-slate-100 tabular-nums leading-none">{v}</div>
-                        <div className="text-[10px] font-semibold text-slate-400 mt-1 tabular-nums min-h-[14px]">{sub || " "}</div>
-                      </div>
-                    </button>
-                  ))}
-                    </div>
+              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+                {sheet.map(([g, rows]) => (
+                  <div key={g}>
+                    <div className="px-4 pt-3 pb-1 text-[10px] font-extrabold tracking-widest uppercase" style={{ color: c }}>{g}</div>
+                    {rows.map(([lbl, v, key]) => (
+                      <button key={lbl} onClick={onJumpToStats && key !== "min" ? () => onJumpToStats(p, key) : undefined} className="w-full flex items-center justify-between px-4 py-2 text-left border-b border-slate-100 dark:border-slate-800 last:border-0 active:bg-slate-50 dark:active:bg-slate-800">
+                        <span className="text-[13px] font-semibold text-slate-600 dark:text-slate-300">{lbl}</span>
+                        <span className="text-right">
+                          <span className="text-[15px] font-extrabold text-slate-900 dark:text-white tabular-nums">{typeof v.tot === "number" ? v.tot.toLocaleString() : v.tot}{v.pct != null && <span className="ml-2 text-[12px] font-bold" style={{ color: c }}>{v.pct}</span>}</span>
+                        <span className="block text-[10px] font-semibold text-slate-400 tabular-nums">{v.pg}{v.pct != null ? " per game" : ""}</span>
+                        </span>
+                      </button>
+                    ))}
                   </div>
                 ))}
-                {st.espnId && <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800"><GameLogChart espnId={st.espnId} color={c} /></div>}
+                <div className="p-3">                {st.espnId && <div className="pt-3 border-t border-slate-100 dark:border-slate-800"><GameLogChart espnId={st.espnId} color={c} /></div>}
+                </div>
               </div>
             </>
           );
@@ -1523,6 +1519,47 @@ function rosterOf(team, players) {
 }
 const isFaTeam = (t) => !!t && (/free\s*agent/i.test(String(t.name || "")) || String(t.abbr || "").toUpperCase() === "FA");
 
+// Conference standings tables with the playoff (1–6) and play-in (7–10) lines
+const confKey = (t) => { const c = String(t.conference || "").toLowerCase(); return c.startsWith("east") ? "east" : c.startsWith("west") ? "west" : "other"; };
+function StandingsTable({ teams, onSelect }) {
+  const confs = [["east", "Eastern Conference"], ["west", "Western Conference"]];
+  const gbOf = (t, leader) => { if (t.gb != null && t.gb !== "") return t.gb; const d = ((leader.wins - t.wins) + (t.losses - leader.losses)) / 2; return d === 0 ? "—" : d.toFixed(1); };
+  return (
+    <div className="mt-4 space-y-4">
+      {confs.map(([k, title]) => {
+        const rows = (teams || []).filter((t) => !isFaTeam(t) && confKey(t) === k).sort((a, b) => winPct(b) - winPct(a) || (b.wins ?? 0) - (a.wins ?? 0) || ((b.ppg ?? 0) - (b.oppPpg ?? 0)) - ((a.ppg ?? 0) - (a.oppPpg ?? 0)));
+        const leader = rows[0];
+        return (
+          <div key={k} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+            <div className="px-4 py-2.5 text-[11px] font-extrabold tracking-widest uppercase text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <span>{title}</span><span className="text-slate-400 font-semibold normal-case tracking-normal text-[10px] text-right">1–6 playoffs · 7–10 play-in</span>
+            </div>
+            <table className="w-full text-[11px] tabular-nums">
+              <thead><tr className="text-slate-400 text-[9px] font-extrabold uppercase"><th className="text-left pl-3 py-1.5 w-7">#</th><th className="text-left py-1.5">Team</th><th className="py-1.5">W-L</th><th className="py-1.5">GB</th><th className="py-1.5">L10</th><th className="py-1.5 pr-3">Strk</th></tr></thead>
+              <tbody>
+                {rows.map((t, i) => {
+                  const ab = t.abbr || toAbbr(t.name);
+                  const line = i === 6 ? "border-t-2 border-green-500" : i === 10 ? "border-t-2 border-red-400" : "border-t border-slate-100 dark:border-slate-800";
+                  return (
+                    <tr key={t.id} onClick={() => onSelect(t)} className={"text-slate-900 dark:text-white active:bg-slate-50 dark:active:bg-slate-800 " + line}>
+                      <td className="pl-3 py-2 font-extrabold text-slate-400">{i + 1}</td>
+                      <td className="py-2"><span className="flex items-center gap-2"><img src={t.logo || TEAM_LOGOS[ab] || ""} alt="" className="w-6 h-6 object-contain" style={logoTrim(ab)} /><span className="font-bold">{ab}</span></span></td>
+                      <td className="py-2 text-center font-extrabold">{t.wins ?? 0}-{t.losses ?? 0}</td>
+                      <td className="py-2 text-center text-slate-500">{leader ? gbOf(t, leader) : "—"}</td>
+                      <td className="py-2 text-center text-slate-500">{t.l10 || "—"}</td>
+                      <td className={"py-2 pr-3 text-center font-bold " + (/^W/.test(t.streak || "") ? "text-green-600" : /^L/.test(t.streak || "") ? "text-red-500" : "text-slate-400")}>{t.streak || "—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function TeamsTab({ teams, players, onSelect }) {
   const [q, setQ] = useState("");
   const [conf, setConf] = useState("all"); // all | east | west
@@ -1555,7 +1592,7 @@ function TeamsTab({ teams, players, onSelect }) {
   const divisions = conf === "all" ? [] :
     [...new Set(teams.filter((t) => confOf(t) === conf).map((t) => t.division).filter(Boolean))].sort();
   let list = teams.filter((t) => {
-    if (conf !== "all" && confOf(t) !== conf) return false;
+    if (conf !== "all" && conf !== "standings" && confOf(t) !== conf) return false;
     if (div && t.division !== div) return false;
     if (!s) return true;
     if ((t.name + " " + t.abbr).toLowerCase().includes(s)) return true;
@@ -1573,7 +1610,7 @@ function TeamsTab({ teams, players, onSelect }) {
     <div>
       <div className="px-4 pb-28" style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.75rem)" }}>
         <div className="flex gap-2 mt-1">
-          {[["all", "All"], ["east", "East"], ["west", "West"]].map(([k, lbl]) => (
+          {[["all", "All"], ["east", "East"], ["west", "West"], ["standings", "Standings"]].map(([k, lbl]) => (
             <button key={k} onClick={() => pickConf(k)}
               className={"flex-1 py-2 rounded-full text-xs font-bold transition-colors " + (conf === k
                 ? "bg-blue-600 text-white"
@@ -1594,7 +1631,8 @@ function TeamsTab({ teams, players, onSelect }) {
             ))}
           </div>
         )}
-        <div className="space-y-2.5 mt-4">
+        {conf === "standings" && <StandingsTable teams={teams} onSelect={onSelect} />}
+        <div className={"space-y-2.5 mt-4" + (conf === "standings" ? " hidden" : "")}>
           {list.map((t) => {
             const abbr = t.abbr || toAbbr(t.name);
             const c1 = teamColor(abbr), c2 = teamColor2(abbr);
@@ -2131,16 +2169,17 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
 // One table per pill. Tap a column header to rank the whole roster by it;
 // cells are tinted by where that value sits between the team's low and
 // high, so a row's strengths jump out without reading numbers.
+const STAT_NAMES = { pts: "Points", fgm: "Field goals made", fg: "Field goal %", p3m: "3-pointers made", p3: "3-point %", ftm: "Free throws made", ft: "Free throw %", ast: "Assists", tov: "Turnovers", min: "Minutes", reb: "Rebounds", oreb: "Offensive rebounds", dreb: "Defensive rebounds", stl: "Steals", blk: "Blocks", fga: "Field goal attempts", p3a: "3-point attempts", fta: "Free throw attempts" };
 const TEAM_BARS = {
-  offense:    { label: "Offense",    cols: [["pts", "PTS"], ["fgm", "FGM"], ["fg", "FG%"], ["p3m", "3PM"], ["p3", "3P%"], ["ftm", "FTM"], ["ft", "FT%"]], pct: ["fg", "p3", "ft"], gate: { fg: ["fga", 3], p3: ["p3a", 1.5], ft: ["fta", 1] } },
-  playmaking: { label: "Playmaking", cols: [["ast", "AST"], ["tov", "TOV"], ["min", "MIN"]] },
-  rebounds:   { label: "Rebounds",   cols: [["reb", "REB"], ["oreb", "OREB"], ["dreb", "DREB"]] },
-  defense:    { label: "Defense",    cols: [["stl", "STL"], ["blk", "BLK"], ["dreb", "DREB"]] },
-  volume:     { label: "Volume",     cols: [["fga", "FGA"], ["p3a", "3PA"], ["fta", "FTA"], ["min", "MIN"], ["tov", "TOV"]], share: true },
+  offense:    { label: "Offense",    cols: [["pts", "PTS"], ["fgm", "FGM"], ["fg", "FG%"], ["p3m", "3PM"], ["p3", "3P%"], ["ftm", "FTM"], ["ft", "FT%"]], pct: ["fg", "p3", "ft"], gate: { fg: ["fga", 3], p3: ["p3a", 1.5], ft: ["fta", 1] }, names: STAT_NAMES },
+  defense:    { label: "Defense",    cols: [["stl", "STL"], ["blk", "BLK"], ["dreb", "DREB"]], names: STAT_NAMES },
+  rebounds:   { label: "Rebounds",   cols: [["reb", "REB"], ["oreb", "OREB"], ["dreb", "DREB"]], names: STAT_NAMES },
+  playmaking: { label: "Playmaking", cols: [["ast", "AST"], ["tov", "TO"], ["min", "MIN"]], names: STAT_NAMES },
+  volume:     { label: "Volume",     cols: [["fga", "FGA"], ["p3a", "3PA"], ["fta", "FTA"], ["min", "MIN"], ["tov", "TO"]], share: true, names: STAT_NAMES },
 };
 const STAT_SETS = {
   leaders:  { label: "Leaders",  cols: [["pts", "PTS"], ["reb", "REB"], ["ast", "AST"], ["stl", "STL"], ["blk", "BLK"], ["p3m", "3PM"]] },
-  volume:   { label: "Volume",   cols: [["min", "MIN"], ["fga", "FGA"], ["p3a", "3PA"], ["fta", "FTA"], ["tov", "TOV"]] },
+  volume:   { label: "Volume",   cols: [["min", "MIN"], ["fga", "FGA"], ["p3a", "3PA"], ["fta", "FTA"], ["tov", "TO"]] },
   shooting: { label: "Shooting", cols: [["fg", "FG%"], ["p3", "3P%"], ["ft", "FT%"], ["fga", "FGA"], ["p3a", "3PA"], ["fta", "FTA"]], pct: ["fg", "p3", "ft"], gate: { fg: ["fga", 3], p3: ["p3a", 1.5], ft: ["fta", 1.5] } },
 };
 // ── Team Schedule: every game with results, plus opponent-strength tiles ──
@@ -2316,7 +2355,7 @@ function TeamBars({ roster, abbr, set, onSelectPlayer }) {
         const teamTotal = rows.reduce((a, x) => a + (x.s[k] || 0), 0) || 1;
         return (
           <div key={k}>
-            <div className="text-[11px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mb-2 px-1">{seasonTick({ season: CURRENT_SEASON })} {lbl}{set.share ? " · share of team" : (set.pct || []).includes(k) ? "" : " · season total"}</div>
+            <div className="text-[11px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mb-2 px-1">{set.names?.[k] || lbl}{set.share ? " · share of team" : (set.pct || []).includes(k) ? "" : " · season total"}</div>
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm px-4 py-2">
               {list.map(({ p, s: st }) => {
                 const share = (st[k] / teamTotal) * 100;
@@ -2350,7 +2389,7 @@ function TeamTrends({ roster, abbr, onSelectPlayer }) {
   // circle sized by that player's share of the team leader in that stat — no
   // digits. Tap a column to sort by it; tap a player to open a radar of his
   // profile vs the team. Current season only.
-  const COLS = [["pts", "PTS"], ["reb", "REB"], ["ast", "AST"], ["stl", "STL"], ["blk", "BLK"], ["p3m", "3PM"], ["tov", "TOV"], ["min", "MIN"]];
+  const COLS = [["pts", "PTS"], ["reb", "REB"], ["ast", "AST"], ["stl", "STL"], ["blk", "BLK"], ["p3m", "3PM"], ["tov", "TO"], ["min", "MIN"]];
   const [sortKey, setSortKey] = useState("min");
   const [open, setOpen] = useState(null);
   const color = teamColor(abbr);
@@ -2425,7 +2464,7 @@ function TeamTrends({ roster, abbr, onSelectPlayer }) {
 // ── Team Profile: each stat as a league-wide dot plot, this team highlighted ──
 // Team per-game numbers are the roster's per-game stats added up; percentages
 // are weighted by attempts. Shows rank AND distance from the pack.
-const PROFILE_STATS = [["pts", "PTS"], ["reb", "REB"], ["oreb", "OREB"], ["dreb", "DREB"], ["ast", "AST"], ["stl", "STL"], ["blk", "BLK"], ["tov", "TOV", true], ["fga", "FGA"], ["p3a", "3PA"], ["fta", "FTA"], ["fg", "FG%", false, "pct"], ["p3", "3P%", false, "pct"], ["ft", "FT%", false, "pct"]];
+const PROFILE_STATS = [["pts", "PTS"], ["reb", "REB"], ["oreb", "OREB"], ["dreb", "DREB"], ["ast", "AST"], ["stl", "STL"], ["blk", "BLK"], ["tov", "TO", true], ["fga", "FGA"], ["p3a", "3PA"], ["fta", "FTA"], ["fg", "FG%", false, "pct"], ["p3", "3P%", false, "pct"], ["ft", "FT%", false, "pct"]];
 function teamStatLine(roster, key, pct) {
   const rows = roster.map(latestStats).filter((s) => s && (s.gp ?? 0) > 0);
   if (!rows.length) return null;
@@ -2888,7 +2927,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
         {seg === "stats" && (
           <>
             <div className="grid grid-cols-4 gap-2 mt-3 mb-3">
-              {[["profile", "Profile"], ["table", "Matrix"], ["leaders", "Leaders"], ["volume", "Volume"], ["offense", "Offense"], ["playmaking", "Playmaking"], ["rebounds", "Rebounds"], ["defense", "Defense"]].map(([k, lbl]) => (
+              {[["profile", "Profile"], ["leaders", "Leaders"], ["offense", "Offense"], ["defense", "Defense"], ["rebounds", "Rebounds"], ["playmaking", "Playmaking"], ["volume", "Volume"]].map(([k, lbl]) => (
                 <button key={k} onClick={() => setStatsLayout(k)}
                   className={"flex items-center gap-1.5 pl-2 pr-1 py-1.5 rounded-lg text-[10px] font-extrabold border truncate " + (statsLayout === k ? "text-slate-900 dark:text-white" : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800")}
                   style={statsLayout === k ? { borderColor: teamColor(abbr), backgroundColor: teamColor(abbr) + "1A" } : undefined}>
@@ -3062,7 +3101,7 @@ const STAT_CATS = [
 const STAT_GROUPS = [
   { key: "scoring", label: "Scoring", cats: [["pts", "PTS"], ["fgm", "FGM"], ["p3m", "3PM"], ["ftm", "FTM"]] },
   { key: "rebounds", label: "Rebounds", cats: [["reb", "Total"], ["oreb", "Offensive"], ["dreb", "Defensive"]] },
-  { key: "playmaking", label: "Playmaking", cats: [["ast", "AST"], ["tov", "TOV"]] },
+  { key: "playmaking", label: "Playmaking", cats: [["ast", "AST"], ["tov", "TO"]] },
   { key: "defense", label: "Defense", cats: [["stl", "STL"], ["blk", "BLK"]] },
   { key: "shooting", label: "Shooting", cats: [["fg", "FG%"], ["p3", "3P%"], ["ft", "FT%"]], pct: true },
   { key: "minutes", label: "Minutes", cats: [["min", "MIN"]] },
@@ -3556,7 +3595,7 @@ export default function App() {
             if (isFaTeam(t)) return t;
             const a = t.abbr || toAbbr(t.name); const e = by[String(a).toUpperCase()] || by[modernAbbr(a)] || sd.teams.find((x) => String(x.name).toLowerCase() === String(t.name).toLowerCase());
             // once the live table is in, every team is live — a team ESPN didn't match shows 0-0 rather than last year's Airtable numbers
-            return e ? { ...t, wins: e.wins ?? 0, losses: e.losses ?? 0, ppg: e.ppg ?? null, oppPpg: e.oppPpg ?? null, streak: e.streak || null, live: true }
+            return e ? { ...t, wins: e.wins ?? 0, losses: e.losses ?? 0, ppg: e.ppg ?? null, oppPpg: e.oppPpg ?? null, streak: e.streak || null, gb: e.gb ?? null, l10: e.l10 || null, home: e.home || null, road: e.road || null, live: true }
                      : { ...t, wins: 0, losses: 0, ppg: null, oppPpg: null, live: true };
           }));
         }).catch(() => {});
