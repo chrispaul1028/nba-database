@@ -258,7 +258,13 @@ function faDeadline(c) {
 // drives the card — unless it's been closed out (Expired / Terminated / Waived /
 // Bought out / Declined), in which case there is no active contract.
 const CLOSED = /expired|terminated|waived|bought|declined|void|released/i;
-const activeOf = (p) => p.contracts.find((c) => c.status === "Active") || (p.contracts[0] && !CLOSED.test(String(p.contracts[0].status || "")) ? p.contracts[0] : null);
+const activeOf = (p) => {
+  const cs = p.contracts || [];
+  const open = cs.filter((c) => !CLOSED.test(String(c.status || "")));
+  return cs.find((c) => /^active$/i.test(String(c.status || "")))
+    || open.find((c) => (c.years || []).some((y) => y.season === CURRENT_SEASON && y.salary != null))   // no "Active" flag, but it covers this season
+    || open[0] || null;
+};
 
 // Years in the league, computed from Draft Year vs the current season.
 function latestStats(p) {
@@ -360,9 +366,13 @@ function outForSeason(p) {
   const txt = [injOf(p)?.comment, injOf(p)?.longComment, espnOf(p)?.injuryComment].filter(Boolean).join(" ");
   return SEASON_RE.test(txt);
 }
+const SEVERITY = (st) => { const s = String(st || "").toLowerCase(); if (!s || /active|available/.test(s)) return 0; if (/season/.test(s)) return 6; if (/\bout\b|^ir$|injured reserve|suspend/.test(s)) return 5; if (/doubt/.test(s)) return 4; if (/quest|gtd|game.time/.test(s)) return 3; if (/day/.test(s)) return 2; if (/prob/.test(s)) return 1; return 2; };
 function effectiveStatus(p) {
   const e = INJ_LOADED ? injOf(p)?.status : (espnOf(p)?.injury || injOf(p)?.status);
-  const base = (e && !/active|available/i.test(String(e))) ? String(e) : (p.status || "");
+  const feed = (e && !/active|available/i.test(String(e))) ? String(e) : "";
+  const mine = String(p.status || "");
+  // Feed drives availability; your Airtable can only make it MORE severe (Doubtful over Day-To-Day), never clear it
+  const base = feed ? (SEVERITY(mine) > SEVERITY(feed) && !/active|available/i.test(mine) ? mine : feed) : mine;
   if (base && /out|ir/i.test(base) && outForSeason(p)) return "Out for Season";
   return base;
 }
@@ -1452,7 +1462,7 @@ function PlayersTab({ players, onSelect, pills, forceInj, title, tonight }) {
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
           {list.map((p) => (
             <button key={p.id} onClick={() => onSelect(p)} className="w-full flex items-start gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
-              <span className="self-start shrink-0 w-12 flex justify-center"><TeamPill team={teamOfPlayer(p) || p.teamName || activeOf(p)?.team} /></span>
+              <span className={"shrink-0 w-12 flex justify-center " + (teamOfPlayer(p) ? "self-start" : "self-center")}><TeamPill team={teamOfPlayer(p) || p.teamName || activeOf(p)?.team} /></span>
               <Avatar p={p} />
               <span className="flex-1 min-w-0">
                 <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
