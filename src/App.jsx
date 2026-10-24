@@ -57,7 +57,7 @@ function mixHex(a, b, t) {
 const teamColor2 = (abbr) => TEAM_COLORS2[String(abbr || "").toUpperCase()] || "#F59E0B";
 // Border color for headline tiles: the secondary color, unless it's too light to
 // show against a white card (Brooklyn, Spurs…) — then the primary.
-const tileBorder = (abbr) => { const c = teamColor2(abbr); const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(c); if (!m) return c; const lum = (0.299 * parseInt(m[1], 16) + 0.587 * parseInt(m[2], 16) + 0.114 * parseInt(m[3], 16)) / 255; return lum > 0.85 ? teamColor(abbr) : c; };
+const tileBorder = (abbr) => teamColor(abbr);
 // Teams whose logo is mostly the primary color — the center circle uses the
 // secondary color for them so the logo doesn't disappear into it.
 const FLIP_CENTER = new Set(["HOU", "CHI", "MIA", "TOR", "ATL", "POR", "WSH", "IND", "NOP", "NO", "DAL", "ORL", "MEM", "CLE", "LAC", "DET", "MIN", "UTAH", "UTA", "BKN", "SAS", "SA"]);
@@ -745,7 +745,7 @@ function GameLogTable({ espnId, color }) {
           <table className="min-w-full text-[11px] tabular-nums">
             <thead><tr className="text-white" style={{ backgroundColor: color }}>
               <th className="text-left px-3 py-2 font-extrabold sticky left-0" style={{ backgroundColor: color }}>GAME</th>
-              {cols.map((c) => <th key={c} className="px-2 py-2 font-extrabold text-center">{c}</th>)}
+              {cols.map((c) => <th key={c} className="px-2 py-2 font-extrabold text-center whitespace-nowrap">{c}</th>)}
             </tr></thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {log.map((g) => (
@@ -755,7 +755,7 @@ function GameLogTable({ espnId, color }) {
                     <span className="ml-1.5 text-[10px] text-slate-400">{g.date ? new Date(g.date).toLocaleDateString([], { month: "numeric", day: "numeric" }) : ""}</span>
                     {g.result && <span className={"ml-1.5 text-[10px] font-extrabold " + (g.result === "W" ? "text-green-600" : "text-red-500")}>{g.result}</span>}
                   </td>
-                  {cols.map((c) => <td key={c} className={"px-2 py-2 text-center " + (c === "PTS" ? "font-extrabold" : "font-medium")}>{cell(g, c)}</td>)}
+                  {cols.map((c) => <td key={c} className={"px-2 py-2 text-center whitespace-nowrap " + (c === "PTS" ? "font-extrabold" : "font-medium")}>{cell(g, c)}</td>)}
                 </tr>
               ))}
             </tbody>
@@ -2457,11 +2457,13 @@ const STAT_SETS = {
 };
 // ── Team Schedule: every game with results, plus opponent-strength tiles ──
 // Opponent strength = net rating (PPG − Opp PPG) from live standings.
-function TeamSchedule({ team, abbr, teams, onSelectTeam, onOpenGame }) {
-  const [d, setD] = useState(null);
+const SCHED_CACHE = {};
+function TeamSchedule({ team, abbr, teams, onSelectTeam, onOpenGame, tilesOnly }) {
+  const [d, setD] = useState(SCHED_CACHE[abbr] || null);
   useEffect(() => {
     let alive = true;
-    fetch("/api/lineups?schedule=" + encodeURIComponent(modernAbbr(abbr))).then((r) => r.json()).then((x) => alive && setD(x)).catch(() => alive && setD({ games: [], error: "unreachable" }));
+    if (SCHED_CACHE[abbr] && Date.now() - (SCHED_CACHE[abbr].at || 0) < 5 * 60 * 1000) { setD(SCHED_CACHE[abbr]); return; }
+    fetch("/api/lineups?schedule=" + encodeURIComponent(modernAbbr(abbr))).then((r) => r.json()).then((x) => { const v = { ...x, at: Date.now() }; SCHED_CACHE[abbr] = v; if (alive) setD(v); }).catch(() => alive && setD({ games: [], error: "unreachable" }));
     return () => { alive = false; };
   }, [abbr]);
   const byAbbr = (ab) => (teams || []).find((t) => modernAbbr(t.abbr || toAbbr(t.name)) === modernAbbr(ab));
@@ -2487,9 +2489,20 @@ function TeamSchedule({ team, abbr, teams, onSelectTeam, onOpenGame }) {
     { lbl: "Away", big: roadP.length ? rec(roadP) : "—", bigCls: margin(roadP) == null ? "text-slate-400" : margin(roadP) > 0 ? "text-green-600" : margin(roadP) < 0 ? "text-red-500" : "text-amber-600", sub: roadP.length ? `${fmtNet(margin(roadP))} margin` : "no road games yet" },
   ];
   let w = 0, l = 0;
+  if (tilesOnly) return (
+      <div className="grid grid-cols-4 gap-1.5">
+        {tiles.map((t) => (
+          <div key={t.lbl} className="bg-white dark:bg-slate-900 rounded-2xl border-2 px-1 py-2.5 text-center shadow-sm flex flex-col items-center justify-center" style={{ borderColor: tileBorder(abbr) }}>
+            <div className="text-[8px] font-extrabold tracking-widest uppercase leading-tight" style={{ color: teamColor(abbr) }}>{t.lbl}</div>
+            <div className={"text-base font-extrabold mt-1 tabular-nums whitespace-nowrap " + t.bigCls}>{t.big}</div>
+            <div className="text-[8px] font-semibold text-slate-400 mt-0.5 leading-tight">{t.sub}</div>
+          </div>
+        ))}
+      </div>
+  );
   return (
     <div className="mt-2">
-      <div className="grid grid-cols-4 gap-1.5">
+      <div className="grid grid-cols-4 gap-1.5 hidden">
         {tiles.map((t) => (
           <div key={t.lbl} className="bg-white dark:bg-slate-900 rounded-2xl border-2 px-1 py-2.5 text-center shadow-sm flex flex-col items-center justify-center" style={{ borderColor: tileBorder(abbr) }}>
             <div className="text-[8px] font-extrabold tracking-widest uppercase leading-tight" style={{ color: teamColor(abbr) }}>{t.lbl}</div>
@@ -2535,7 +2548,7 @@ function TeamSchedule({ team, abbr, teams, onSelectTeam, onOpenGame }) {
                     {oppT && oppT.oppPpg != null && <span className="shrink-0 px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">{oppT.oppPpg.toFixed(1)} allowed</span>}
                   </span>
                 </span>
-                <span className="text-right shrink-0 self-center">
+                <span className="text-right shrink-0 self-end pb-0.5">
                   {g.completed ? (
                     <>
                       <span className="block text-sm font-extrabold tabular-nums"><span className={g.win ? "text-green-600" : "text-red-500"}>{g.win ? "W" : "L"}</span> <span className="text-slate-900 dark:text-white">{g.my}-{g.their}</span></span>
@@ -2901,6 +2914,7 @@ function bucketColor(b, color, fallback) {
   return fallback;
 }
 function CapOutlook({ roster, color, onSelectPlayer }) {
+  const tileBorder = () => color, teamColor = () => color, abbr = "";
   const y0 = startYear(CURRENT_SEASON);
   const years = [y0, y0 + 1, y0 + 2, y0 + 3];
   const [sel, setSel] = useState(y0);
@@ -3138,7 +3152,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
             <span className="text-3xl">🏀</span>
           )}
           <div className="min-w-0">
-            <div className="text-2xl font-extrabold leading-tight truncate">{team.name}</div>
+            <div className="text-2xl font-extrabold leading-tight">{team.name} {!faTeam && team.wins != null && <span className="text-base font-bold text-white/80 whitespace-nowrap">({team.wins ?? 0}-{team.losses ?? 0})</span>}</div>
             <div className="text-sm opacity-80 font-medium mt-0.5 truncate">
               {(() => {
                 if (!team.division) return [team.conference].filter(Boolean).join(" · ") || "—";
@@ -3155,6 +3169,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
       </div>
 
       <div className="px-4 -mt-3">
+        {seg === "schedule" && <TeamSchedule team={team} abbr={abbr} teams={teams} tilesOnly />}
         <div className={"grid grid-cols-3 gap-2" + ((faTeam && seg !== "contracts") || seg === "schedule" ? " hidden" : "")}>
           {seg === "contracts" ? (() => {
             // Contracts view tiles: payroll · free agents next offseason · avg age (ranked youngest → oldest)
@@ -3179,9 +3194,10 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
             );
           })() : (
             <>
-              <Tile value={(team.wins ?? 0) + "-" + (team.losses ?? 0)} label="Record" borderColor={tileBorder(abbr)} labelColor={teamColor(abbr)} />
+
               <Tile value={team.ppg != null ? team.ppg.toFixed(1) : "—"} label={STANDINGS_PHASE.v === "preseason" ? "PPG · Pre" : "PPG"} sub={rankOf(teams, team, "ppg", "desc")} borderColor={tileBorder(abbr)} labelColor={teamColor(abbr)} onClick={onJumpToTeamStats ? () => onJumpToTeamStats(team, "ppg") : undefined} />
               <Tile value={team.oppPpg != null ? team.oppPpg.toFixed(1) : "—"} label={STANDINGS_PHASE.v === "preseason" ? "Opp PPG · Pre" : "Opp PPG"} sub={rankOf(teams, team, "oppPpg", "asc")} borderColor={tileBorder(abbr)} labelColor={teamColor(abbr)} onClick={onJumpToTeamStats ? () => onJumpToTeamStats(team, "oppPpg") : undefined} />
+              <Tile value={team.ppg != null && team.oppPpg != null ? ((team.ppg - team.oppPpg) > 0 ? "+" : "") + (team.ppg - team.oppPpg).toFixed(1) : "—"} label="Net" valueClass={team.ppg != null && team.oppPpg != null ? ((team.ppg - team.oppPpg) > 0 ? "text-green-600 dark:text-green-400" : (team.ppg - team.oppPpg) < 0 ? "text-red-500" : "text-slate-900 dark:text-white") : undefined} sub={rankOf(teams.map((t) => ({ ...t, net: t.ppg != null && t.oppPpg != null ? t.ppg - t.oppPpg : null })), { ...team, net: team.ppg != null && team.oppPpg != null ? team.ppg - team.oppPpg : null }, "net", "desc")} borderColor={tileBorder(abbr)} labelColor={teamColor(abbr)} onClick={onJumpToTeamStats ? () => onJumpToTeamStats(team, "net") : undefined} />
             </>
           )}
         </div>
