@@ -1069,11 +1069,14 @@ function Badge({ n }) {
 function TransactionsFeed({ players, teams, onSelect, pills, onlyTeam, embedded }) {
   const [q, setQ] = useState("");
   const [feed, setFeed] = useState(null);
+  const [year, setYear] = useState(null);                         // null = recent; a year = that calendar year's history
+  const thisYear = new Date().getFullYear();
   useEffect(() => {
-    let alive = true;
-    fetch("/api/transactions" + (onlyTeam ? "?team=" + encodeURIComponent(modernAbbr(onlyTeam)) : "")).then((r) => r.json()).then((d) => alive && setFeed(d && d.records ? d : { records: [], error: d?.error || "unavailable" })).catch(() => alive && setFeed({ records: [], error: "unreachable" }));
+    let alive = true; setFeed(null);
+    const qs = [onlyTeam ? "team=" + encodeURIComponent(modernAbbr(onlyTeam)) : "", year ? "year=" + year : ""].filter(Boolean).join("&");
+    fetch("/api/transactions" + (qs ? "?" + qs : "")).then((r) => r.json()).then((d) => alive && setFeed(d && d.records ? d : { records: [], error: d?.error || "unavailable" })).catch(() => alive && setFeed({ records: [], error: "unreachable" }));
     return () => { alive = false; };
-  }, [onlyTeam]);
+  }, [onlyTeam, year]);
   const KIND_CLS = { "Signing": "bg-green-600 text-white", "Option exercised": "bg-green-600 text-white", "Option declined": "bg-red-600 text-white", "Waived": "bg-red-600 text-white", "Trade": "bg-blue-600 text-white", "Two-way": "bg-purple-600 text-white", "G League": "bg-slate-500 text-white", "Transaction": "bg-slate-500 text-white" };
   const s0 = q.toLowerCase().trim();
   const same = (a, b) => modernAbbr(a) === modernAbbr(b) || (ABBR_VARIANTS[modernAbbr(a)] || []).includes(String(b).toUpperCase()) || (ABBR_VARIANTS[modernAbbr(b)] || []).includes(String(a).toUpperCase());
@@ -1093,7 +1096,14 @@ function TransactionsFeed({ players, teams, onSelect, pills, onlyTeam, embedded 
       <div className={embedded ? "px-4 pb-6 mt-4" : "px-4 pb-28 mt-4"}>
         {!feed && <div className="text-center text-xs text-slate-400 py-10">Loading ESPN feed…</div>}
         {feed && feed.error && <div className="text-center text-xs text-slate-400 py-10">Couldn't reach ESPN's transactions feed. Try again in a minute.</div>}
-        {feed && !feed.error && <div className="text-[11px] font-semibold text-slate-400 mb-3">ESPN feed · {recs.length} transactions · newest first</div>}
+        {onlyTeam && (
+          <div className="flex gap-1.5 overflow-x-auto pb-2 mb-1" style={{ scrollbarWidth: "none" }}>
+            {[[null, "Recent"], ...[0, 1, 2, 3, 4].map((i) => [thisYear - i, String(thisYear - i)])].map(([y, lbl]) => (
+              <button key={lbl} onClick={() => setYear(y)} className={"shrink-0 px-3 py-1 rounded-full text-[10px] font-extrabold border " + (year === y ? "text-white border-transparent" : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800")} style={year === y ? { backgroundColor: teamColor(onlyTeam) } : undefined}>{lbl}</button>
+            ))}
+          </div>
+        )}
+        {feed && !feed.error && <div className="text-[11px] font-semibold text-slate-400 mb-3">ESPN feed · {recs.length} transactions{year ? " in " + year : ""} · newest first</div>}
         {groups.map((g) => (
           <div key={g.key}>
             <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mb-2 px-1">{g.key}</div>
@@ -2258,7 +2268,7 @@ function TeamBars({ roster, abbr, set, onSelectPlayer }) {
         const teamTotal = rows.reduce((a, x) => a + (x.s[k] || 0), 0) || 1;
         return (
           <div key={k}>
-            <div className="text-[11px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mb-2 px-1">{seasonTick({ season: CURRENT_SEASON })} {lbl}{set.share ? " · share of team" : " per game"}</div>
+            <div className="text-[11px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mb-2 px-1">{seasonTick({ season: CURRENT_SEASON })} {lbl}{set.share ? " · share of team" : (set.pct || []).includes(k) ? "" : " · season total"}</div>
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm px-4 py-2">
               {list.map(({ p, s: st }) => {
                 const share = (st[k] / teamTotal) * 100;
@@ -2266,7 +2276,10 @@ function TeamBars({ roster, abbr, set, onSelectPlayer }) {
                   <button key={p.id} onClick={() => onSelectPlayer(p)} className="w-full py-2 text-left">
                     <span className="flex items-baseline justify-between">
                       <span className="text-[12px] font-bold text-slate-900 dark:text-white truncate">{p.name} <span className="text-[9px] font-semibold text-slate-400 ml-1">{courtPos(p)}</span></span>
-                      <span className="text-[12px] font-extrabold text-slate-900 dark:text-white tabular-nums ml-2">{set.share ? Math.round(share) + "%" : isPct ? Number(st[k]).toFixed(1) + "%" : fmt1(st[k])}{set.share && <span className="text-[10px] font-semibold text-slate-400 ml-1">({fmt1(st[k])})</span>}</span>
+                      <span className="text-[12px] font-extrabold text-slate-900 dark:text-white tabular-nums ml-2">
+                        {set.share ? Math.round(share) + "%" : isPct ? Number(st[k]).toFixed(1) + "%" : Math.round(st[k] * (st.gp || 1)).toLocaleString()}
+                        <span className="text-[10px] font-semibold text-slate-400 ml-1">{set.share ? `(${fmt1(st[k])}/g)` : isPct ? "" : `(${fmt1(st[k])}/g)`}</span>
+                      </span>
                     </span>
                     <span className="block h-2 rounded-full bg-slate-100 dark:bg-slate-800 mt-1 overflow-hidden">
                       <span className="block h-full rounded-full" style={{ width: Math.max(3, (set.share ? share / ((list[0].s[k] / teamTotal) * 100) : st[k] / max) * 100) + "%", backgroundColor: color }} />
@@ -2898,7 +2911,7 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
         {seg === "schedule" && <TeamSchedule team={team} abbr={abbr} teams={teams} onSelectTeam={onSelectTeam} />}
         {seg === "contracts" && (
           <div className="flex gap-2 mt-3">
-            {[["list", "Contracts"], ["moves", "Moves"]].map(([k, lbl]) => (
+            {[["list", "Contracts"], ["moves", "Transactions"]].map(([k, lbl]) => (
               <button key={k} onClick={() => setCView(k)}
                 className={"flex-1 py-1.5 rounded-full text-[11px] font-extrabold border " + ((cView === k || (k === "list" && cView !== "moves")) ? "text-white border-transparent" : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800")}
                 style={(cView === k || (k === "list" && cView !== "moves")) ? { backgroundColor: teamColor(abbr) } : undefined}>{lbl}</button>
