@@ -348,12 +348,16 @@ function injuryLine(p) {
 //         ESPN's estimate. Always shown as "Estimated Return Date: Oct 2".
 // Freshest source first: the live injury feed (5-min cache, re-polled on wake).
 // The roster feed is only a stopgap before the live feed has loaded.
-// Season-ending language in the injury write-up, or Airtable's own IR / "season" status
-const SEASON_RE = /season[- ]ending|out for the (rest of the |remainder of the )?season|for the season|miss(es|ing)? the (entire |rest of the |remainder of the )?season|year (is )?(already )?(over|finished|done)|remainder of the (season|year)|rest of the (season|year)|out for the year/i;
+// Out for the season only when (a) the injury return date lands past the end of
+// the regular season, or (b) the write-up says so in plain words. A status of IR
+// or Out on its own never promotes — an illness isn't season-ending.
+const SEASON_RE = /season[- ]ending|out for the (rest of the |remainder of the )?season|out for the year|miss(es|ing)? the (entire |rest of the |remainder of the )season|year (is )?(already )?(over|finished|done)|remainder of the season|rest of the season/i;
 function outForSeason(p) {
   const st = String(p?.status || "").toLowerCase();
-  if (st === "ir" || st.includes("injured reserve") || st.includes("season")) return true;
-  const txt = [injOf(p)?.comment, injOf(p)?.longComment, espnOf(p)?.injuryComment, p?.injuryNotes].filter(Boolean).join(" ");
+  if (st.includes("season")) return true;
+  const raw = injOf(p)?.returnDate || espnOf(p)?.injuryReturn || p?.returnDate;
+  if (raw) { const d = new Date(raw); const endYear = Number(String(CURRENT_SEASON).slice(-4)); if (!isNaN(d) && d > new Date(endYear, 3, 15)) return true; }   // after Apr 15 of the season's end year
+  const txt = [injOf(p)?.comment, injOf(p)?.longComment, espnOf(p)?.injuryComment].filter(Boolean).join(" ");
   return SEASON_RE.test(txt);
 }
 function effectiveStatus(p) {
@@ -815,13 +819,13 @@ function PlayerDetail({ p, onBack, backLabel, mode = "full", teams, players, onJ
             </div>
             <div className="mt-1.5"><StatusBadge status={effectiveStatus(p)} /></div>
             {!isActiveStatus(p) && injuryDetailOf(p) && (
-              <div className="mt-1.5"><span className="inline-block text-[11px] font-extrabold text-red-600 bg-white/95 rounded-md px-1.5 py-0.5">({injuryDetailOf(p)})</span></div>
+              <div className="mt-1.5"><span className="inline-block text-[11px] font-extrabold text-white bg-red-600 rounded-md px-1.5 py-0.5">({injuryDetailOf(p)})</span></div>
             )}
             {!isActiveStatus(p) && injuryReturnOf(p) && (
               <div className="text-[11px] font-extrabold text-white mt-0.5">Estimated Return Date: {injuryReturnOf(p)}</div>
             )}
             {!isActiveStatus(p) && injuryCommentOf(p) && (
-              <div className="mt-1.5"><span className="inline-block text-[11px] font-semibold text-red-600 bg-white/95 rounded-md px-2 py-1 leading-snug">{injuryCommentOf(p)}</span></div>
+              <div className="mt-1.5"><span className="inline-block text-[11px] font-semibold text-white bg-red-600 rounded-md px-2 py-1 leading-snug">{injuryCommentOf(p)}</span></div>
             )}
           </div>
         </div>
