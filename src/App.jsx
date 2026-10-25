@@ -1535,7 +1535,7 @@ function startYear(s) {
 function nextEvent(p) {
   let best = null;
   for (const c of p.contracts || []) {
-    if (String(c.status).toLowerCase() === "expired") continue; // blank status still counts
+    if (CLOSED.test(String(c.status || ""))) continue;          // waived / expired / terminated deals have no next event; blank status still counts
     for (const y of c.years || []) {
       if (startYear(y.season) != null && startYear(y.season) < startYear(CURRENT_SEASON)) continue;
       const t = String(y.type || "").toUpperCase();
