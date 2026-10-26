@@ -335,6 +335,7 @@ function espnOf(p) {
   return team ? ESPN_BY_NAME[String(team).toUpperCase() + "|" + espnNrm(p.name).split(" ").pop()] || null : null;
 }
 const photoOf = (p) => p.photo || espnOf(p)?.headshot || null;
+const ringClsOf = (p) => { if (!p) return "border-white/40"; const h = healthOf(p); return h === "ok" ? "border-white" : h === "q" ? "border-amber-400 hrb-pulse-q" : "border-red-500 hrb-pulse-out"; };
 // Injury write-up for a player: the Airtable Injury Notes field, else ESPN's
 // description; plus ESPN's estimated return date when it publishes one.
 function injuryLine(p) {
@@ -753,6 +754,79 @@ function CompareView({ a, b, color, onSwap }) {
   );
 }
 
+// ── Full court (pregame): away starters on top, home starters on the bottom ──
+function FullCourt({ game, teams, players, onSelect }) {
+  const teamBy = (ab) => (teams || []).find((t) => modernAbbr(t.abbr || toAbbr(t.name)) === modernAbbr(ab));
+  const homeT = teamBy(game.home.abbr), awayT = teamBy(game.away.abbr);
+  if (!homeT || !awayT) return null;
+  const hAb = homeT.abbr || toAbbr(homeT.name), aAb = awayT.abbr || toAbbr(awayT.name);
+  const hRoster = rosterOf(homeT, players), aRoster = rosterOf(awayT, players);
+  const hLu = lineupOf(hRoster, hAb), aLu = lineupOf(aRoster, aAb);
+  const th = COURT_THEMES[String(hAb).toUpperCase()] || {};
+  const color = teamColor(hAb), paint = th.paint || color, lines = th.lines || "rgba(255,255,255,0.85)";
+  // 50 × 94 court; home basket at the bottom
+  const W = 50, H = 94;
+  const Half = ({ flip }) => {
+    // draws the half whose baseline is at y = 94 (flip mirrors it to the top)
+    const g = (y) => (flip ? H - y : y);
+    return (
+      <g>
+        <rect x="17" y={flip ? 0 : 75} width="16" height="19" fill={paint} stroke={lines} strokeWidth="0.35" />
+        <path d={flip ? "M17 19 A8 8 0 0 0 33 19" : "M17 75 A8 8 0 0 1 33 75"} fill="none" stroke={lines} strokeWidth="0.35" />
+        <path d={flip ? "M17 19 A8 8 0 0 1 33 19" : "M17 75 A8 8 0 0 0 33 75"} fill="none" stroke={lines} strokeWidth="0.35" strokeDasharray="1 1" />
+        <path d={flip ? "M3 0 V14 A22 22 0 0 0 47 14 V0" : "M3 94 V80 A22 22 0 0 1 47 80 V94"} fill="none" stroke={th.threePt || lines} strokeWidth="0.35" />
+        <path d={flip ? "M21 5.25 A4 4 0 0 0 29 5.25" : "M21 88.75 A4 4 0 0 1 29 88.75"} fill="none" stroke={lines} strokeWidth="0.3" />
+        <circle cx="25" cy={g(88.75)} r="0.75" fill="none" stroke="#f97316" strokeWidth="0.35" />
+        <line x1="22" x2="28" y1={g(90)} y2={g(90)} stroke="white" strokeWidth="0.3" />
+      </g>
+    );
+  };
+  // slot.y is feet from the half-court line toward the basket; home attacks the bottom basket, away the top
+  const slotPos = (slot, top) => { const yFt = ((slot.y / 100) * COURT_FT) - COURT_TOP_FT; const y = top ? 47 - yFt : 47 + yFt; return { left: slot.x + "%", top: (y / H) * 100 + "%" }; };
+  const Tag = ({ lu, ab, top }) => {
+    const lineup = lineupFor(ab);
+    const auto = lu.automated && lineup;
+    return (
+      <span className={"absolute rounded-md bg-black/45 backdrop-blur-sm px-2 py-1 text-[9px] font-extrabold shadow-sm leading-tight " + (auto ? "text-emerald-300" : "text-amber-300") + (top ? " left-2 top-2" : " right-2 bottom-2 text-right")}>
+        {auto ? <><span className="block">Confirmed · last game {(lineup.home ? "vs " : "@ ") + lineup.opp}</span><span className="block text-[8px] font-bold opacity-80">{new Date(lineup.date).toLocaleDateString([], { month: "numeric", day: "numeric" })}</span></> : "Projected lineup"}
+      </span>
+    );
+  };
+  const Player = ({ x, slot, top }) => {
+    const p = x.p; if (!p) return null;
+    const h = healthOf(p);
+    return (
+      <button onClick={() => onSelect && onSelect(p)} className="absolute flex flex-col items-center" style={{ ...slotPos(slot, top), transform: "translate(-50%, -50%)" }}>
+        <span className="relative">
+          <img src={photoOf(p)} alt="" className={"w-12 h-12 rounded-full object-cover object-top bg-white border-[3px] shadow-md " + ringClsOf(p)} />
+          <span className="absolute -left-2 top-1/2 -translate-y-1/2 -translate-x-full text-[8px] font-extrabold text-slate-700 bg-white/90 rounded px-1">{slot.lbl}</span>
+          {h !== "ok" && <span className="absolute -top-2 left-1/2 -translate-x-1/2"><StatusBadge status={effectiveStatus(p)} /></span>}
+        </span>
+        <span className="mt-0.5 text-[10px] font-extrabold text-white drop-shadow">{cleanNo(p.no) ? "#" + cleanNo(p.no) + " " : ""}{lastNameOf(p)}</span>
+      </button>
+    );
+  };
+  return (
+    <div className="mb-4">
+      <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mb-2 px-1">Starting lineups</div>
+      <div className="relative rounded-2xl overflow-hidden shadow-md" style={{ aspectRatio: "50 / 94", background: th.floor || "linear-gradient(180deg,#d9b27c,#cfa36d)" }}>
+        <svg viewBox="0 0 50 94" className="absolute inset-0 w-full h-full">
+          <rect x="0.2" y="0.2" width="49.6" height="93.6" fill="none" stroke={th.side === "none" ? "transparent" : th.side || "rgba(255,255,255,0.7)"} strokeWidth="0.35" />
+          <line x1="0" x2="50" y1="47" y2="47" stroke={th.half || lines} strokeWidth="0.35" />
+          <circle cx="25" cy="47" r="6" fill={th.center && th.center !== "none" ? th.center : color} fillOpacity={th.center === "none" ? 0 : 1} stroke={th.centerStroke && th.centerStroke !== "none" ? th.centerStroke : lines} strokeWidth="0.35" />
+          <Half flip={false} /><Half flip />
+        </svg>
+        {logoFor(hAb) && <img src={logoFor(hAb)} alt="" className="absolute left-1/2 top-1/2 w-[18%] -translate-x-1/2 -translate-y-1/2 opacity-90" style={logoTrim(hAb)} />}
+        {aLu.starters.map((x, i) => <Player key={"a" + i} x={x} slot={COURT_SLOTS.find((c) => c.lbl === x.slot) || COURT_SLOTS[i]} top />)}
+        {hLu.starters.map((x, i) => <Player key={"h" + i} x={x} slot={COURT_SLOTS.find((c) => c.lbl === x.slot) || COURT_SLOTS[i]} />)}
+        <Tag lu={aLu} ab={aAb} top /><Tag lu={hLu} ab={hAb} />
+        <span className="absolute right-2 top-2 flex items-center gap-1 text-[10px] font-extrabold text-white drop-shadow"><img src={logoFor(aAb) || ""} alt="" className="w-5 h-5 object-contain" />{aAb}</span>
+        <span className="absolute left-2 bottom-2 flex items-center gap-1 text-[10px] font-extrabold text-white drop-shadow"><img src={logoFor(hAb) || ""} alt="" className="w-5 h-5 object-contain" />{hAb}</span>
+      </div>
+    </div>
+  );
+}
+
 // Game-by-game table (ESPN game log)
 function GameLogTable({ espnId, color }) {
   const [log, setLog] = useState(null);
@@ -1038,7 +1112,7 @@ function PlayersHub({ players, teams, onSelect, injury }) {
 // ═══════════════ GAME VIEW (live) ════════════════════════════════
 // Opened from a matchup card. Polls /api/game every 30s while the game is
 // live: score + clock, scoring by quarter, each team's leaders, latest plays.
-function GameView({ game, teams, players, onBack, onSelectTeam }) {
+function GameView({ game, teams, players, onBack, onSelectTeam, onSelectPlayer }) {
   const [d, setD] = useState(null);
   const [boxTeam, setBoxTeam] = useState(game.away.abbr);
   const swipe = useSwipe(null, onBack);
@@ -1129,6 +1203,7 @@ function GameView({ game, teams, players, onBack, onSelectTeam }) {
             </div>
           </div>
         )}
+        {game.state === "pre" && <FullCourt game={game} teams={teams} players={players} onSelect={onSelectPlayer} />}
         {g && g.box && (g.box[away.abbr] || g.box[home.abbr]) && (() => {
           const t = boxTeam === home.abbr ? home : away;
           const bx = g.box[t.abbr] || { cols: [], rows: [] };
@@ -2193,11 +2268,7 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
     const rank = all.findIndex(([id]) => id === team.id) + 1;
     return { value: team.ppg - team.oppPpg, rank: rank || null };
   }, [team, teams]);
-  const ringCls = (p) => {
-    if (!p) return "border-white/40";
-    const h = healthOf(p);
-    return h === "ok" ? "border-white" : h === "q" ? "border-amber-400 hrb-pulse-q" : "border-red-500 hrb-pulse-out";
-  };
+  const ringCls = ringClsOf;
   const HealthBadge = ({ p, small }) => {
     const h = healthOf(p);
     if (h === "ok") return null;
@@ -2605,7 +2676,7 @@ function TeamInjuries({ roster, abbr, onSelectPlayer }) {
     <div className="mt-2">
       <div className="flex items-center justify-between mb-2 px-1">
         <span className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase">Injury report</span>
-        <span className="text-[11px] font-semibold text-slate-400 text-right">{hurt.length ? `${counts.out} out · ${counts.gtd} questionable` : "everyone available"}{INJ_UPDATED.at && <span className="block text-[10px]">updated {new Date(INJ_UPDATED.at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>}</span>
+        <span className="text-[11px] font-semibold text-slate-400 text-right">{hurt.length ? `${counts.out} out · ${counts.gtd} questionable` : "everyone available"}</span>
       </div>
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
         {hurt.map((p) => (
@@ -3281,14 +3352,14 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
               {(faTeam ? members.slice().sort((a, b) => currentSalary(b) - currentSalary(a)) : members)
                 .map((p) => (
                   <button key={p.id} onClick={() => onSelectPlayer(p)} className="w-full flex items-start gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
-                    <span className="w-7 text-center text-[12px] font-extrabold uppercase shrink-0 text-slate-900 dark:text-white self-center">{p._slot || courtPos(p) || "—"}</span>
+                    <span className="w-8 h-8 shrink-0 self-center rounded-lg flex items-center justify-center text-[10px] font-extrabold uppercase text-white" style={{ backgroundColor: teamColor(abbr) }}>{p._slot || courtPos(p) || "—"}</span>
                     <Avatar p={p} size="md" />
                     <span className="flex-1 min-w-0">
                       <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
                         {cleanNo(p.no) && <span className="text-slate-400 font-semibold mr-1.5">#{cleanNo(p.no)}</span>}{p.name}
                       </span>
-                      <span className="flex items-center gap-1.5 mt-0.5 min-w-0">
-                        {!isActiveStatus(p) && <StatusBadge status={/game\s*time|gtd/i.test(effectiveStatus(p)) ? "GTD" : effectiveStatus(p)} />}
+                      <span className="flex items-start gap-1.5 mt-0.5 min-w-0">
+                        {!isActiveStatus(p) && <span className="mt-0.5"><StatusBadge status={/game\s*time|gtd/i.test(effectiveStatus(p)) ? "GTD" : effectiveStatus(p)} /></span>}
                         <span className="flex-1" />
                         {(() => {
                           const st = curStats(p); const pv = (p.stats || []).find((x) => startYear(x.season) === startYear(CURRENT_SEASON) - 1) || null;   // arrows: vs last season
@@ -3313,11 +3384,12 @@ function TeamDetail({ team, teams, players, onBack, onSelectPlayer, onSelectTeam
                           );
                         })()}
                       </span>
-                      {!isActiveStatus(p) && injuryDetailOf(p) && (
-                        <span className="block text-[11px] font-semibold text-red-500 mt-1 leading-snug">({injuryDetailOf(p)})</span>
-                      )}
-                      {!isActiveStatus(p) && injuryReturnOf(p) && (
-                        <span className="block text-[11px] font-semibold text-slate-900 dark:text-white mt-0.5 leading-snug">Estimated Return Date: {injuryReturnOf(p)}</span>
+                      {!isActiveStatus(p) && (injuryDetailOf(p) || injuryReturnOf(p)) && (
+                        <span className="block text-[11px] mt-1 leading-snug truncate">
+                          {injuryDetailOf(p) && <span className="font-semibold text-red-500">({injuryDetailOf(p)})</span>}
+                          {injuryDetailOf(p) && injuryReturnOf(p) && <span className="text-slate-300 dark:text-slate-600"> · </span>}
+                          {injuryReturnOf(p) && <span className="font-semibold text-slate-500 dark:text-slate-400">Returns {injuryReturnOf(p)}</span>}
+                        </span>
                       )}
                     </span>
                   </button>
@@ -3977,13 +4049,13 @@ export default function App() {
         <TonightTab players={players} teams={teams} onSelect={setSel} onSelectTeam={setSelTeam} onOpenGame={setSelGame} />
       )}
       {players && tab === "tonight" && selGame && !selTeam && (
-        <GameView game={selGame} teams={teams} players={players} onBack={() => setSelGame(null)} onSelectTeam={setSelTeam} />
+        <GameView game={selGame} teams={teams} players={players} onBack={() => setSelGame(null)} onSelectTeam={setSelTeam} onSelectPlayer={setSel} />
       )}
       {players && tab === "teams" && !selTeam && (
         <TeamsTab teams={teams} players={players} onSelect={(t) => { SWIPE_DEPTH.n = 0; setSelTeam(t); }} />
       )}
       {players && (tab === "teams" || tab === "tonight") && selTeam && selGame && (
-        <GameView game={selGame} teams={teams} players={players} onBack={() => setSelGame(null)} onSelectTeam={(t) => { setSelGame(null); setSelTeam(t); }} />
+        <GameView game={selGame} teams={teams} players={players} onBack={() => setSelGame(null)} onSelectTeam={(t) => { setSelGame(null); setSelTeam(t); }} onSelectPlayer={setSel} />
       )}
       {players && (tab === "teams" || tab === "tonight") && selTeam && !selGame && (
         <TeamDetail
