@@ -754,74 +754,70 @@ function CompareView({ a, b, color, onSwap }) {
   );
 }
 
-// ── Full court (pregame): away starters on top, home starters on the bottom ──
+// ── Full court (pregame): away starters on top, home starters on the bottom,
+//    drawn with the home team's real floor (same renderer as the team court) ──
 function FullCourt({ game, teams, players, onSelect }) {
   const teamBy = (ab) => (teams || []).find((t) => modernAbbr(t.abbr || toAbbr(t.name)) === modernAbbr(ab));
   const homeT = teamBy(game.home.abbr), awayT = teamBy(game.away.abbr);
   if (!homeT || !awayT) return null;
   const hAb = homeT.abbr || toAbbr(homeT.name), aAb = awayT.abbr || toAbbr(awayT.name);
-  const hRoster = rosterOf(homeT, players), aRoster = rosterOf(awayT, players);
-  const hLu = lineupOf(hRoster, hAb), aLu = lineupOf(aRoster, aAb);
-  const th = COURT_THEMES[String(hAb).toUpperCase()] || {};
-  const color = teamColor(hAb), paint = th.paint || color, lines = th.lines || "rgba(255,255,255,0.85)";
-  // 50 × 94 court; home basket at the bottom
-  const W = 50, H = 94;
-  const Half = ({ flip }) => {
-    // draws the half whose baseline is at y = 94 (flip mirrors it to the top)
-    const g = (y) => (flip ? H - y : y);
-    return (
-      <g>
-        <rect x="17" y={flip ? 0 : 75} width="16" height="19" fill={paint} stroke={lines} strokeWidth="0.35" />
-        <path d={flip ? "M17 19 A8 8 0 0 0 33 19" : "M17 75 A8 8 0 0 1 33 75"} fill="none" stroke={lines} strokeWidth="0.35" />
-        <path d={flip ? "M17 19 A8 8 0 0 1 33 19" : "M17 75 A8 8 0 0 0 33 75"} fill="none" stroke={lines} strokeWidth="0.35" strokeDasharray="1 1" />
-        <path d={flip ? "M3 0 V14 A22 22 0 0 0 47 14 V0" : "M3 94 V80 A22 22 0 0 1 47 80 V94"} fill="none" stroke={th.threePt || lines} strokeWidth="0.35" />
-        <path d={flip ? "M21 5.25 A4 4 0 0 0 29 5.25" : "M21 88.75 A4 4 0 0 1 29 88.75"} fill="none" stroke={lines} strokeWidth="0.3" />
-        <circle cx="25" cy={g(88.75)} r="0.75" fill="none" stroke="#f97316" strokeWidth="0.35" />
-        <line x1="22" x2="28" y1={g(90)} y2={g(90)} stroke="white" strokeWidth="0.3" />
-      </g>
-    );
-  };
-  // slot.y is feet from the half-court line toward the basket; home attacks the bottom basket, away the top
-  const slotPos = (slot, top) => { const yFt = ((slot.y / 100) * COURT_FT) - COURT_TOP_FT; const y = top ? 47 - yFt : 47 + yFt; return { left: slot.x + "%", top: (y / H) * 100 + "%" }; };
+  const hLu = lineupOf(rosterOf(homeT, players), hAb), aLu = lineupOf(rosterOf(awayT, players), aAb);
+  const th = courtTheme(hAb), color = teamColor(hAb);
+  const nick = homeT.name ? String(homeT.name).trim().split(" ").pop() : hAb;
+  const HALF = 47 + COURT_TOP_FT;                       // one half as the team view draws it (court + apron above the half line)
+  const TOTAL = 2 * 47;                                  // full playing surface
+  // vertical % for a slot: slot.y is % of the half-court view; convert to feet from the half line
+  const yFt = (slot) => ((slot.y / 100) * COURT_FT) - COURT_TOP_FT;
+  const posOf = (slot, top) => ({ left: slot.x + "%", top: ((top ? 47 - yFt(slot) : 47 + yFt(slot)) / TOTAL) * 100 + "%" });
   const Tag = ({ lu, ab, top }) => {
     const lineup = lineupFor(ab);
-    const auto = lu.automated && lineup;
+    const isToday = lu.automated && lineup && lineup.date && (() => { const et = (x) => new Date(new Date(x).toLocaleString("en-US", { timeZone: "America/New_York" })); const a = et(lineup.date), b = et(new Date()); b.setHours(b.getHours() - 3); return a.toDateString() === b.toDateString(); })();
+    const when = lineup && lineup.date ? new Date(lineup.date).toLocaleDateString([], { month: "numeric", day: "numeric" }) : "";
     return (
-      <span className={"absolute rounded-md bg-black/45 backdrop-blur-sm px-2 py-1 text-[9px] font-extrabold shadow-sm leading-tight " + (auto ? "text-emerald-300" : "text-amber-300") + (top ? " left-2 top-2" : " right-2 bottom-2 text-right")}>
-        {auto ? <><span className="block">Confirmed · last game {(lineup.home ? "vs " : "@ ") + lineup.opp}</span><span className="block text-[8px] font-bold opacity-80">{new Date(lineup.date).toLocaleDateString([], { month: "numeric", day: "numeric" })}</span></> : "Projected lineup"}
+      <span className={"absolute rounded-md bg-black/45 backdrop-blur-sm px-2 py-1 text-[9px] font-extrabold shadow-sm leading-tight " + (isToday ? "text-emerald-300" : "text-amber-300") + (top ? " left-2 top-2" : " right-2 bottom-2 text-right")}>
+        {lu.automated && lineup
+          ? (isToday ? <><span className="block">Confirmed lineup</span><span className="block text-[8px] font-bold opacity-80">{when}</span></>
+                     : <><span className="block">Projected lineup</span><span className="block text-[8px] font-bold opacity-80">last game {(lineup.home ? "vs " : "@ ") + lineup.opp} · {when}</span></>)
+          : "Projected lineup"}
       </span>
     );
   };
   const Player = ({ x, slot, top }) => {
     const p = x.p; if (!p) return null;
-    const h = healthOf(p);
+    const h = healthOf(p); const st = effectiveStatus(p);
+    const short = /game\s*time|gtd/i.test(st) ? "GTD" : /quest/i.test(st) ? "GTD" : /doubt/i.test(st) ? "DOUBTFUL" : /season/i.test(st) ? "OUT" : /out|ir/i.test(st) ? "OUT" : /prob/i.test(st) ? "PROB" : st;
     return (
-      <button onClick={() => onSelect && onSelect(p)} className="absolute flex flex-col items-center" style={{ ...slotPos(slot, top), transform: "translate(-50%, -50%)" }}>
-        <span className="relative">
-          <img src={photoOf(p)} alt="" className={"w-12 h-12 rounded-full object-cover object-top bg-white border-[3px] shadow-md " + ringClsOf(p)} />
-          <span className="absolute -left-2 top-1/2 -translate-y-1/2 -translate-x-full text-[8px] font-extrabold text-slate-700 bg-white/90 rounded px-1">{slot.lbl}</span>
-          {h !== "ok" && <span className="absolute -top-2 left-1/2 -translate-x-1/2"><StatusBadge status={effectiveStatus(p)} /></span>}
+      <button onClick={() => onSelect && onSelect(p)} className="absolute flex flex-col items-center" style={{ ...posOf(slot, top), transform: "translate(-50%, -50%)", width: "22%" }}>
+        <span className="relative w-full" style={{ aspectRatio: "1 / 1" }}>
+          <img src={photoOf(p)} alt="" className={"w-full h-full rounded-full object-cover object-top bg-white border-[3px] shadow-lg " + ringClsOf(p)} />
+          <span className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-[110%] text-[8px] font-extrabold text-slate-700 bg-white/90 rounded px-1">{slot.lbl}</span>
+          {h !== "ok" && <span className={"absolute -top-1.5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded-full text-[8px] font-extrabold text-white whitespace-nowrap " + (h === "q" ? "bg-amber-500" : "bg-red-600")}>{short}</span>}
         </span>
-        <span className="mt-0.5 text-[10px] font-extrabold text-white drop-shadow">{cleanNo(p.no) ? "#" + cleanNo(p.no) + " " : ""}{lastNameOf(p)}</span>
+        <span className="mt-0.5 text-[10px] font-extrabold text-white whitespace-nowrap" style={{ textShadow: "0 1px 2px rgba(0,0,0,0.8)" }}>{cleanNo(p.no) ? "#" + cleanNo(p.no) + " " : ""}{lastNameOf(p)}</span>
       </button>
     );
   };
   return (
     <div className="mb-4">
       <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mb-2 px-1">Starting lineups</div>
-      <div className="relative rounded-2xl overflow-hidden shadow-md" style={{ aspectRatio: "50 / 94", background: th.floor || "linear-gradient(180deg,#d9b27c,#cfa36d)" }}>
-        <svg viewBox="0 0 50 94" className="absolute inset-0 w-full h-full">
-          <rect x="0.2" y="0.2" width="49.6" height="93.6" fill="none" stroke={th.side === "none" ? "transparent" : th.side || "rgba(255,255,255,0.7)"} strokeWidth="0.35" />
-          <line x1="0" x2="50" y1="47" y2="47" stroke={th.half || lines} strokeWidth="0.35" />
-          <circle cx="25" cy="47" r="6" fill={th.center && th.center !== "none" ? th.center : color} fillOpacity={th.center === "none" ? 0 : 1} stroke={th.centerStroke && th.centerStroke !== "none" ? th.centerStroke : lines} strokeWidth="0.35" />
-          <Half flip={false} /><Half flip />
+      <div className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-md" style={{ paddingBottom: (TOTAL / 50 * 100).toFixed(1) + "%", background: th.floor || "repeating-linear-gradient(90deg,#e3b77c 0 6.5%,#dbad70 6.5% 13%)" }}>
+        <div className="absolute inset-0" style={{ background: "repeating-linear-gradient(0deg, rgba(0,0,0,0.045) 0 1px, transparent 1px 22px)" }} />
+        {/* bottom half: the home court exactly as the team view draws it (apron clipped off) */}
+        <svg viewBox={`0 0 50 47`} preserveAspectRatio="none" className="absolute left-0 bottom-0 w-full" style={{ height: "50%", pointerEvents: "none" }}>
+          <HalfCourtLines th={th} color={color} abbr={hAb} team={homeT} nick={nick} />
         </svg>
-        {logoFor(hAb) && <img src={logoFor(hAb)} alt="" className="absolute left-1/2 top-1/2 w-[18%] -translate-x-1/2 -translate-y-1/2 opacity-90" style={logoTrim(hAb)} />}
+        {/* top half: the same floor mirrored for the visiting end */}
+        <svg viewBox={`0 0 50 47`} preserveAspectRatio="none" className="absolute left-0 top-0 w-full" style={{ height: "50%", pointerEvents: "none", transform: "rotate(180deg)" }}>
+          <HalfCourtLines th={th} color={color} abbr={hAb} team={homeT} nick={nick} />
+        </svg>
+        {homeT && (homeT.courtLogo || th.courtLogo || homeT.logo) && (
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full overflow-hidden pointer-events-none select-none" style={{ width: Math.min(th.logoW || 26, 30) * 0.8 + "%", aspectRatio: "1 / 1", ...(th.logoRing ? { boxShadow: "0 0 0 2px " + th.logoRing } : {}) }}>
+            <img src={homeT.courtLogo || th.courtLogo || homeT.logo} alt="" className="absolute inset-[6%] w-[88%] h-[88%] object-contain" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.3))" }} />
+          </div>
+        )}
         {aLu.starters.map((x, i) => <Player key={"a" + i} x={x} slot={COURT_SLOTS.find((c) => c.lbl === x.slot) || COURT_SLOTS[i]} top />)}
         {hLu.starters.map((x, i) => <Player key={"h" + i} x={x} slot={COURT_SLOTS.find((c) => c.lbl === x.slot) || COURT_SLOTS[i]} />)}
         <Tag lu={aLu} ab={aAb} top /><Tag lu={hLu} ab={hAb} />
-        <span className="absolute right-2 top-2 flex items-center gap-1 text-[10px] font-extrabold text-white drop-shadow"><img src={logoFor(aAb) || ""} alt="" className="w-5 h-5 object-contain" />{aAb}</span>
-        <span className="absolute left-2 bottom-2 flex items-center gap-1 text-[10px] font-extrabold text-white drop-shadow"><img src={logoFor(hAb) || ""} alt="" className="w-5 h-5 object-contain" />{hAb}</span>
       </div>
     </div>
   );
@@ -1537,7 +1533,7 @@ function PlayersTab({ players, onSelect, pills, forceInj, title, tonight }) {
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
           {list.map((p) => (
             <button key={p.id} onClick={() => onSelect(p)} className="w-full flex items-start gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-800">
-              <span className={"shrink-0 w-12 flex justify-center " + (teamOfPlayer(p) ? "self-start" : "self-center")}><TeamPill team={teamOfPlayer(p) || p.teamName || activeOf(p)?.team} /></span>
+              {(() => { const ab = teamOfPlayer(p) || toAbbr(p.teamName) || toAbbr(activeOf(p)?.team); return <span className="w-8 h-8 shrink-0 self-center rounded-lg flex items-center justify-center text-[10px] font-extrabold uppercase text-white" style={{ backgroundColor: ab ? teamColor(ab) : "#64748b" }}>{courtPos(p) || "—"}</span>; })()}
               <Avatar p={p} />
               <span className="flex-1 min-w-0">
                 <span className="block text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
@@ -1553,9 +1549,7 @@ function PlayersTab({ players, onSelect, pills, forceInj, title, tonight }) {
                   </span>
                 )}
               </span>
-              {(() => { const ab = teamOfPlayer(p) || toAbbr(p.teamName) || toAbbr(activeOf(p)?.team); return courtPos(p)
-                ? <span className="self-center shrink-0 w-9 text-center text-sm font-extrabold" style={{ color: ab ? teamColor(ab) : "#64748b" }}>{courtPos(p)}</span>
-                : null; })()}
+              <span className={"shrink-0 w-12 flex justify-center " + (teamOfPlayer(p) ? "self-start" : "self-center")}><TeamPill team={teamOfPlayer(p) || p.teamName || activeOf(p)?.team} /></span>
             </button>
           ))}
           {list.length === 0 && forceInj && <div className="text-center text-sm text-slate-400 py-12 px-6">Nobody on the injury report{q ? ` matching "${q}"` : ""}. Everyone's Active.</div>}
@@ -2254,54 +2248,10 @@ function lineupOf(roster, abbr) {
   return { ...r, benchGroups, bench: notFive, starters };
 }
 
-function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
-  const { assigned, nextUp, used, automated, source, benchGroups, bench } = useMemo(() => lineupOf(roster, abbr), [roster, abbr, lineupFor(abbr)]);
-  const lineup = lineupFor(abbr);
-  const mpg = (p) => mpgOf(p);
-  const color = teamColor(abbr);
-  const th = courtTheme(abbr);
-  // Net rating (PPG − opp PPG) ranked against the league — the NBA version
-  // of the NFL app's offense/defense rank tags.
-  const netRating = useMemo(() => {
-    if (!team || team.ppg == null || team.oppPpg == null) return null;
-    const all = (teams || []).filter((t) => t.ppg != null && t.oppPpg != null && !isFaTeam(t)).map((t) => [t.id, t.ppg - t.oppPpg]).sort((a, b) => b[1] - a[1]);
-    const rank = all.findIndex(([id]) => id === team.id) + 1;
-    return { value: team.ppg - team.oppPpg, rank: rank || null };
-  }, [team, teams]);
-  const ringCls = ringClsOf;
-  const HealthBadge = ({ p, small }) => {
-    const h = healthOf(p);
-    if (h === "ok") return null;
-    const s = String(effectiveStatus(p) || "").toUpperCase();
-    const txt = h === "out" ? (s.includes("SEASON") ? "OUT · SEASON" : s === "IR" || s.includes("INJURED RESERVE") ? "IR" : "OUT") : (s.includes("GAME") ? "GTD" : s.includes("DOUBT") ? "DOUBTFUL" : s.includes("PROB") ? "PROBABLE" : "GTD");
-    return (
-      <span className={"absolute -top-2 left-1/2 -translate-x-1/2 px-1.5 rounded-full font-extrabold text-white border-2 border-white shadow whitespace-nowrap flex items-center justify-center " +
-        (h === "out" ? "bg-red-600 " : "bg-amber-500 ") + (small ? "h-[13px] text-[6px] " : "h-[15px] text-[7px] ")}>
-        {txt}
-      </span>
-    );
-  };
-  const RatingPill = ({ r, small }) => r == null ? null : (
-    <span className={"absolute left-1/2 -translate-x-1/2 rounded-full font-extrabold tabular-nums shadow " +
-      (small ? "-bottom-1 px-1 text-[8px] " : "-bottom-1.5 px-1.5 text-[9px] ") +
-      (Math.round(r) >= 90 ? "bg-amber-400 text-slate-900" : Math.round(r) >= 85 ? "bg-emerald-500 text-white" : Math.round(r) >= 70 ? "bg-slate-900/85 text-white" : "bg-rose-600 text-white")}>
-      {Math.round(r)}
-    </span>
-  );
-  const nick = team && team.name ? String(team.name).trim().split(" ").pop() : abbr;
-  const outCount = roster.filter((p) => healthOf(p) === "out").length;
-  const gtdCount = roster.filter((p) => healthOf(p) === "q").length;
-
+// ── Half-court line work, shared by the team court and the full-court matchup view ──
+function HalfCourtLines({ th, color, abbr, team, nick }) {
   return (
-    <div className="mt-4">
-      {/* Half court, hoop at the bottom. Aspect = 50ft × 47ft. Lines are an
-          SVG in real feet so the arcs stay true circles at any width. */}
-      <div className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-sm"
-        style={{ paddingBottom: (COURT_FT / 50 * 100).toFixed(1) + "%", background: th.floor || "repeating-linear-gradient(90deg,#e3b77c 0 6.5%,#dbad70 6.5% 13%)" }}>
-        {/* plank seams + top-down light so it reads as hardwood, not a flat panel */}
-        <div className="absolute inset-0" style={{ background: "repeating-linear-gradient(0deg, rgba(0,0,0,0.045) 0 1px, transparent 1px 22px)" }} />
-        <div className="absolute inset-0" style={{ background: "linear-gradient(180deg,rgba(255,255,255,0.14) 0%,rgba(0,0,0,0) 35%,rgba(0,0,0,0.16) 100%)" }} />
-        <svg viewBox={`0 ${-COURT_TOP_FT} 50 ${COURT_FT}`} preserveAspectRatio="none" className="absolute inset-0 w-full h-full" style={{ pointerEvents: "none" }}>
+    <>
           {/* painted key in the team color, with the paint texture the NFL end zone uses */}
           <defs>
             <pattern id="paintTex" width="1.2" height="1.2" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
@@ -2381,6 +2331,59 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
               });
             });
           })()}
+    </>
+  );
+}
+
+function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
+  const { assigned, nextUp, used, automated, source, benchGroups, bench } = useMemo(() => lineupOf(roster, abbr), [roster, abbr, lineupFor(abbr)]);
+  const lineup = lineupFor(abbr);
+  const mpg = (p) => mpgOf(p);
+  const color = teamColor(abbr);
+  const th = courtTheme(abbr);
+  // Net rating (PPG − opp PPG) ranked against the league — the NBA version
+  // of the NFL app's offense/defense rank tags.
+  const netRating = useMemo(() => {
+    if (!team || team.ppg == null || team.oppPpg == null) return null;
+    const all = (teams || []).filter((t) => t.ppg != null && t.oppPpg != null && !isFaTeam(t)).map((t) => [t.id, t.ppg - t.oppPpg]).sort((a, b) => b[1] - a[1]);
+    const rank = all.findIndex(([id]) => id === team.id) + 1;
+    return { value: team.ppg - team.oppPpg, rank: rank || null };
+  }, [team, teams]);
+  const ringCls = ringClsOf;
+  const HealthBadge = ({ p, small }) => {
+    const h = healthOf(p);
+    if (h === "ok") return null;
+    const s = String(effectiveStatus(p) || "").toUpperCase();
+    const txt = h === "out" ? (s.includes("SEASON") ? "OUT · SEASON" : s === "IR" || s.includes("INJURED RESERVE") ? "IR" : "OUT") : (s.includes("GAME") ? "GTD" : s.includes("DOUBT") ? "DOUBTFUL" : s.includes("PROB") ? "PROBABLE" : "GTD");
+    return (
+      <span className={"absolute -top-2 left-1/2 -translate-x-1/2 px-1.5 rounded-full font-extrabold text-white border-2 border-white shadow whitespace-nowrap flex items-center justify-center " +
+        (h === "out" ? "bg-red-600 " : "bg-amber-500 ") + (small ? "h-[13px] text-[6px] " : "h-[15px] text-[7px] ")}>
+        {txt}
+      </span>
+    );
+  };
+  const RatingPill = ({ r, small }) => r == null ? null : (
+    <span className={"absolute left-1/2 -translate-x-1/2 rounded-full font-extrabold tabular-nums shadow " +
+      (small ? "-bottom-1 px-1 text-[8px] " : "-bottom-1.5 px-1.5 text-[9px] ") +
+      (Math.round(r) >= 90 ? "bg-amber-400 text-slate-900" : Math.round(r) >= 85 ? "bg-emerald-500 text-white" : Math.round(r) >= 70 ? "bg-slate-900/85 text-white" : "bg-rose-600 text-white")}>
+      {Math.round(r)}
+    </span>
+  );
+  const nick = team && team.name ? String(team.name).trim().split(" ").pop() : abbr;
+  const outCount = roster.filter((p) => healthOf(p) === "out").length;
+  const gtdCount = roster.filter((p) => healthOf(p) === "q").length;
+
+  return (
+    <div className="mt-4">
+      {/* Half court, hoop at the bottom. Aspect = 50ft × 47ft. Lines are an
+          SVG in real feet so the arcs stay true circles at any width. */}
+      <div className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-sm"
+        style={{ paddingBottom: (COURT_FT / 50 * 100).toFixed(1) + "%", background: th.floor || "repeating-linear-gradient(90deg,#e3b77c 0 6.5%,#dbad70 6.5% 13%)" }}>
+        {/* plank seams + top-down light so it reads as hardwood, not a flat panel */}
+        <div className="absolute inset-0" style={{ background: "repeating-linear-gradient(0deg, rgba(0,0,0,0.045) 0 1px, transparent 1px 22px)" }} />
+        <div className="absolute inset-0" style={{ background: "linear-gradient(180deg,rgba(255,255,255,0.14) 0%,rgba(0,0,0,0) 35%,rgba(0,0,0,0.16) 100%)" }} />
+        <svg viewBox={`0 ${-COURT_TOP_FT} 50 ${COURT_FT}`} preserveAspectRatio="none" className="absolute inset-0 w-full h-full" style={{ pointerEvents: "none" }}>
+          <HalfCourtLines th={th} color={color} abbr={abbr} team={team} nick={nick} />
         </svg>
         {/* center-court logo, sitting inside the center circle the way a
             real floor has it — we see the bottom half of it on a half court */}
