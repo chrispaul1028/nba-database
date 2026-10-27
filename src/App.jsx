@@ -196,6 +196,13 @@ const HIST_ABBR = { VAN: "MEM", NJ: "BKN", NJN: "BKN", SEA: "OKC", NOH: "NOP", N
 const modernAbbr = (abbr) => { const u = String(abbr || "").toUpperCase(); return HIST_ABBR[u] || u; };
 // Same team, different spellings (ESPN vs Airtable vs Basketball-Reference)
 const ABBR_VARIANTS = { BKN: ["BKN", "BRK", "NJN", "NJ"], GSW: ["GSW", "GS"], NOP: ["NOP", "NO", "NOH", "NOK"], SAS: ["SAS", "SA"], UTAH: ["UTAH", "UTA"], WSH: ["WSH", "WAS"], PHX: ["PHX", "PHO"], NY: ["NY", "NYK"], CHA: ["CHA", "CHO", "CHH"], MEM: ["MEM", "VAN"], OKC: ["OKC", "SEA"], LAC: ["LAC", "SDC"], SAC: ["SAC", "KCK"] };
+// Same franchise under any spelling (SA/SAS, NO/NOP, GS/GSW, NY/NYK, UTA/UTAH, WAS/WSH, PHO/PHX, BRK/BKN…)
+function sameAbbr(a, b) {
+  const A = modernAbbr(a), B = modernAbbr(b);
+  if (A === B) return true;
+  const canon = (x) => Object.entries(ABBR_VARIANTS).find(([k, v]) => k === x || v.includes(x))?.[0] || x;
+  return canon(A) === canon(B);
+}
 function logoFor(abbr) {
   const m = modernAbbr(abbr);
   const tries = [String(abbr || "").toUpperCase(), m, ...(ABBR_VARIANTS[m] || []), ...Object.entries(ABBR_VARIANTS).filter(([, v]) => v.includes(m)).flatMap(([k, v]) => [k, ...v])];
@@ -757,7 +764,7 @@ function CompareView({ a, b, color, onSwap }) {
 // ── Full court (pregame): away starters on top, home starters on the bottom,
 //    drawn with the home team's real floor (same renderer as the team court) ──
 function FullCourt({ game, teams, players, onSelect }) {
-  const teamBy = (ab) => (teams || []).find((t) => modernAbbr(t.abbr || toAbbr(t.name)) === modernAbbr(ab));
+  const teamBy = (ab) => (teams || []).find((t) => sameAbbr(t.abbr || toAbbr(t.name), ab));
   const homeT = teamBy(game.home.abbr), awayT = teamBy(game.away.abbr);
   if (!homeT || !awayT) return null;
   const hAb = homeT.abbr || toAbbr(homeT.name), aAb = awayT.abbr || toAbbr(awayT.name);
@@ -1134,7 +1141,7 @@ function GameView({ game, teams, players, onBack, onSelectTeam, onSelectPlayer }
   const tip = new Date(game.date).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   const qs = Math.max(4, away.linescores?.length || 0, home.linescores?.length || 0);
   const qLabel = (i) => (i < 4 ? ["1ST", "2ND", "3RD", "4TH"][i] : "OT" + (i - 3 > 1 ? i - 3 : ""));
-  const teamByAbbr = (ab) => (teams || []).find((t) => (t.abbr || toAbbr(t.name)) === ab);
+  const teamByAbbr = (ab) => (teams || []).find((t) => sameAbbr(t.abbr || toAbbr(t.name), ab));
   const Side = ({ t, color, right }) => (
     <button onClick={() => { const tm = teamByAbbr(t.abbr); if (tm && onSelectTeam) onSelectTeam(tm); }} className={"flex flex-col items-center w-28 " + (right ? "items-end" : "items-start")}>
       <img src={t.logo || TEAM_LOGOS[t.abbr] || ""} alt="" className="w-24 h-24 object-contain" style={{ filter: "drop-shadow(0 3px 6px rgba(0,0,0,0.45))", ...logoOnColor(t.abbr) }} />
