@@ -768,11 +768,13 @@ function FullCourt({ game, teams, players, onSelect }) {
   const TOTAL = 2 * 47;                                  // full playing surface
   // vertical % for a slot: slot.y is % of the half-court view; convert to feet from the half line
   const yFt = (slot) => ((slot.y / 100) * COURT_FT) - COURT_TOP_FT;
-  // pulled ~20% toward half court so the bigs sit clear of the baseline tags
-  const posOf = (slot, top) => { const f = yFt(slot) * 0.8; return { left: slot.x + "%", top: ((top ? 47 - f : 47 + f) / TOTAL) * 100 + "%" }; };
+  // guards and wings pulled toward half court, bigs kept near the paint, so the three rows stay clear of each other
+  const FACTOR = { PG: 0.85, SG: 0.72, SF: 0.72, PF: 0.86, C: 0.86 };
+  const posOf = (slot, top) => { const f = yFt(slot) * (FACTOR[slot.lbl] || 0.8); return { left: slot.x + "%", top: ((top ? 47 - f : 47 + f) / TOTAL) * 100 + "%" }; };
   const Tag = ({ lu, ab, top }) => {
     const lineup = lineupFor(ab);
-    const isToday = lu.automated && lineup && lineup.date && (() => { const et = (x) => new Date(new Date(x).toLocaleString("en-US", { timeZone: "America/New_York" })); const a = et(lineup.date), b = et(new Date()); b.setHours(b.getHours() - 3); return a.toDateString() === b.toDateString(); })();
+    // Green only when the known lineup is from this very game (same ESPN event, or same day as this game's tip)
+    const isToday = lu.automated && lineup && lineup.date && (() => { if (lineup.eventId && String(lineup.eventId) === String(game.id)) return true; const et = (x) => new Date(new Date(x).toLocaleString("en-US", { timeZone: "America/New_York" })); const a = et(lineup.date), b = et(game.date); return a.toDateString() === b.toDateString(); })();
     const when = lineup && lineup.date ? new Date(lineup.date).toLocaleDateString([], { month: "numeric", day: "numeric" }) : "";
     return (
       <span className={"absolute rounded-md bg-black/45 backdrop-blur-sm px-2 py-1 text-[9px] font-extrabold shadow-sm leading-tight " + (isToday ? "text-emerald-300" : "text-amber-300") + (top ? " left-2 top-2" : " right-2 bottom-2 text-right")}>
@@ -788,7 +790,7 @@ function FullCourt({ game, teams, players, onSelect }) {
     const h = healthOf(p); const st = effectiveStatus(p);
     const short = /game\s*time|gtd/i.test(st) ? "GTD" : /quest/i.test(st) ? "GTD" : /doubt/i.test(st) ? "DOUBTFUL" : /season/i.test(st) ? "OUT" : /out|ir/i.test(st) ? "OUT" : /prob/i.test(st) ? "PROB" : st;
     return (
-      <button onClick={() => onSelect && onSelect(p)} className="absolute flex flex-col items-center" style={{ ...posOf(slot, top), transform: "translate(-50%, -50%)", width: "20%" }}>
+      <button onClick={() => onSelect && onSelect(p)} className="absolute flex flex-col items-center" style={{ ...posOf(slot, top), transform: "translate(-50%, -50%)", width: "18%" }}>
         <span className="relative w-full" style={{ aspectRatio: "1 / 1" }}>
           <img src={photoOf(p)} alt="" className={"w-full h-full rounded-full object-cover object-top bg-white border-[3px] shadow-lg " + ringClsOf(p)} />
           <span className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-[110%] text-[8px] font-extrabold text-slate-700 bg-white/90 rounded px-1">{slot.lbl}</span>
@@ -811,8 +813,12 @@ function FullCourt({ game, teams, players, onSelect }) {
         <svg viewBox={`0 0 50 47`} preserveAspectRatio="none" className="absolute left-0 top-0 w-full" style={{ height: "50%", pointerEvents: "none", transform: "rotate(180deg)" }}>
           <HalfCourtLines th={th} color={color} abbr={hAb} team={homeT} nick={nick} />
         </svg>
+        {/* out-of-bounds line around the whole floor */}
+        <svg viewBox="0 0 50 94" preserveAspectRatio="none" className="absolute inset-0 w-full h-full" style={{ pointerEvents: "none" }}>
+          <rect x="0.25" y="0.25" width="49.5" height="93.5" fill="none" stroke={th.side === "none" ? "transparent" : th.side || "rgba(255,255,255,0.8)"} strokeWidth="0.4" />
+        </svg>
         {homeT && (homeT.courtLogo || th.courtLogo || homeT.logo) && (
-          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full overflow-hidden pointer-events-none select-none" style={{ width: Math.min(th.logoW || 26, 30) * 0.8 + "%", aspectRatio: "1 / 1", ...(th.logoRing ? { boxShadow: "0 0 0 2px " + th.logoRing } : {}) }}>
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full overflow-hidden pointer-events-none select-none" style={{ width: Math.min((th.logoW || 26) * 1.15, 36) + "%", aspectRatio: "1 / 1", ...(th.logoRing ? { boxShadow: "0 0 0 2px " + th.logoRing } : {}) }}>
             <img src={homeT.courtLogo || th.courtLogo || homeT.logo} alt="" className="absolute inset-[6%] w-[88%] h-[88%] object-contain" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.3))" }} />
           </div>
         )}
@@ -1215,8 +1221,9 @@ function GameView({ game, teams, players, onBack, onSelectTeam, onSelectPlayer }
             const p = (players || []).find((q) => espnNrm(q.name) === nm) || (players || []).find((q) => { const qn = espnNrm(q.name); return qn.endsWith(" " + last) && qn[0] === nm[0]; });
             return (p && (Number(p.sort) || LBL[courtPos(p)])) || LBL[String(r.pos || "").toUpperCase()] || 3;
           };
-          const rows = [...bx.rows.filter((r) => !r.dnp && r.starter).sort((a, b) => posScore(a) - posScore(b)), ...bx.rows.filter((r) => !r.dnp && !r.starter).sort((a, b) => mins(b) - mins(a))];
-          const dnp = bx.rows.filter((r) => r.dnp);
+          const played = (r) => r.starter || mins(r) > 0;
+          const rows = [...bx.rows.filter((r) => !r.dnp && r.starter).sort((a, b) => posScore(a) - posScore(b)), ...bx.rows.filter((r) => !r.dnp && !r.starter && played(r)).sort((a, b) => mins(b) - mins(a))];
+          const dnp = [...bx.rows.filter((r) => r.dnp), ...bx.rows.filter((r) => !r.dnp && !played(r)).map((r) => ({ ...r, dnp: true, reason: r.reason || "DID NOT PLAY" }))];
           return (
             <div>
               <div className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase mb-2 px-1">Box score · tap a team to switch</div>
@@ -2390,7 +2397,7 @@ function CourtView({ roster, abbr, team, teams, onSelectPlayer }) {
             real floor has it — we see the bottom half of it on a half court */}
         {team && (team.courtLogo || th.courtLogo || team.logo) && (
           <div className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full overflow-hidden pointer-events-none select-none"
-            style={{ top: ftY(0) + "%", width: Math.min(th.logoW || 26, 34) + "%", aspectRatio: "1 / 1", animation: "hrbLogoIn .5s ease-out both",
+            style={{ top: ftY(0) + "%", width: Math.min((th.logoW || 26) * 1.2, 40) + "%", aspectRatio: "1 / 1", animation: "hrbLogoIn .5s ease-out both",
               ...(th.logoRing ? { boxShadow: "0 0 0 2px " + th.logoRing } : {}) }}>
             {th.logoRing && <span className="absolute inset-0 rounded-full" style={{ border: "0.35vw solid " + th.logoRing }} />}
             <img src={team.courtLogo || th.courtLogo || team.logo} alt="" className="absolute inset-[6%] w-[88%] h-[88%] object-contain" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.3))", transform: "rotate(-90deg)" + (logoTrim(abbr).transform ? " " + logoTrim(abbr).transform : ""), clipPath: logoTrim(abbr).clipPath }}
