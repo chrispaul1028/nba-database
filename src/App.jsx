@@ -768,7 +768,8 @@ function FullCourt({ game, teams, players, onSelect }) {
   const TOTAL = 2 * 47;                                  // full playing surface
   // vertical % for a slot: slot.y is % of the half-court view; convert to feet from the half line
   const yFt = (slot) => ((slot.y / 100) * COURT_FT) - COURT_TOP_FT;
-  const posOf = (slot, top) => ({ left: slot.x + "%", top: ((top ? 47 - yFt(slot) : 47 + yFt(slot)) / TOTAL) * 100 + "%" });
+  // pulled ~20% toward half court so the bigs sit clear of the baseline tags
+  const posOf = (slot, top) => { const f = yFt(slot) * 0.8; return { left: slot.x + "%", top: ((top ? 47 - f : 47 + f) / TOTAL) * 100 + "%" }; };
   const Tag = ({ lu, ab, top }) => {
     const lineup = lineupFor(ab);
     const isToday = lu.automated && lineup && lineup.date && (() => { const et = (x) => new Date(new Date(x).toLocaleString("en-US", { timeZone: "America/New_York" })); const a = et(lineup.date), b = et(new Date()); b.setHours(b.getHours() - 3); return a.toDateString() === b.toDateString(); })();
@@ -787,7 +788,7 @@ function FullCourt({ game, teams, players, onSelect }) {
     const h = healthOf(p); const st = effectiveStatus(p);
     const short = /game\s*time|gtd/i.test(st) ? "GTD" : /quest/i.test(st) ? "GTD" : /doubt/i.test(st) ? "DOUBTFUL" : /season/i.test(st) ? "OUT" : /out|ir/i.test(st) ? "OUT" : /prob/i.test(st) ? "PROB" : st;
     return (
-      <button onClick={() => onSelect && onSelect(p)} className="absolute flex flex-col items-center" style={{ ...posOf(slot, top), transform: "translate(-50%, -50%)", width: "22%" }}>
+      <button onClick={() => onSelect && onSelect(p)} className="absolute flex flex-col items-center" style={{ ...posOf(slot, top), transform: "translate(-50%, -50%)", width: "20%" }}>
         <span className="relative w-full" style={{ aspectRatio: "1 / 1" }}>
           <img src={photoOf(p)} alt="" className={"w-full h-full rounded-full object-cover object-top bg-white border-[3px] shadow-lg " + ringClsOf(p)} />
           <span className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-[110%] text-[8px] font-extrabold text-slate-700 bg-white/90 rounded px-1">{slot.lbl}</span>
