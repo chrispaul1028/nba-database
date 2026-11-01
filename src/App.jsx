@@ -761,6 +761,69 @@ function CompareView({ a, b, color, onSwap }) {
   );
 }
 
+// ── Cheat sheet: for each game, which defense gives up threes and who's shooting them ──
+function CheatSheet({ games, teams, players, onSelect }) {
+  const L = LIVE_STATS.teams || {};
+  const line = (ab) => L[modernAbbr(ab)] || Object.entries(L).find(([k]) => sameAbbr(k, ab))?.[1] || null;
+  const all = Object.values(L).filter((t) => t.gp > 0);
+  const rankDesc = (key, v) => (v == null ? null : all.filter((t) => (t[key] ?? -1) > v).length + 1);
+  const teamBy = (ab) => (teams || []).find((t) => sameAbbr(t.abbr || toAbbr(t.name), ab));
+  const shooters = (team) => rosterOf(team, players).map((p) => ({ p, s: curStats(p) })).filter((x) => x.s && x.s.gp > 0 && (x.s.p3a ?? 0) >= 2).sort((a, b) => (b.s.p3m ?? 0) - (a.s.p3m ?? 0)).slice(0, 2);
+  const tone = (rank) => (rank == null ? "text-slate-400" : rank <= 8 ? "text-red-500" : rank >= 23 ? "text-green-600" : "text-amber-600");   // high rank = gives up a lot = good for shooters
+  const label = (rank) => (rank == null ? "" : rank <= 8 ? "leaky" : rank >= 23 ? "stingy" : "average");
+  const upcoming = (games || []).filter((g) => g.state !== "post");
+  if (!all.length) return <div className="px-4 py-10 text-center text-xs text-slate-400">Season lines are still loading…</div>;
+  return (
+    <div className="px-4 pt-3 pb-28 space-y-4">
+      <div className="text-[10px] font-semibold text-slate-400 px-1">For each team: what tonight's opponent allows from three (league rank, 1 = most allowed), then that team's top two 3-point shooters. Volume = attempts per game.</div>
+      {upcoming.map((g) => (
+        <div key={g.id} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+          <div className="px-4 py-2 text-[11px] font-extrabold tracking-widest uppercase text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+            <span>{g.away.abbr} @ {g.home.abbr}</span><span className="text-slate-400 font-semibold normal-case tracking-normal">{new Date(g.date).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>
+          </div>
+          {[["away", "home"], ["home", "away"]].map(([me, them]) => {
+            const T = teamBy(g[me].abbr), O = line(g[them].abbr);
+            if (!T) return null;
+            const ab = T.abbr || toAbbr(T.name);
+            const r3 = O ? rankDesc("opp3pm", O.opp3pm) : null, rp = O ? rankDesc("oppPts", O.oppPts) : null;
+            return (
+              <div key={me} className="px-4 py-3 border-b last:border-0 border-slate-100 dark:border-slate-800" style={{ borderLeft: "4px solid " + teamColor(ab) }}>
+                <div className="flex items-center gap-2">
+                  <img src={logoFor(ab) || ""} alt="" className="w-7 h-7 object-contain" style={logoTrim(ab)} />
+                  <span className="text-sm font-extrabold text-slate-900 dark:text-white">{T.name}</span>
+                </div>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 px-3 py-2">
+                    <div className="text-[9px] font-extrabold tracking-widest uppercase text-slate-400">{g[them].abbr} allows from 3</div>
+                    <div className={"text-lg font-extrabold tabular-nums " + tone(r3)}>{O ? `${fmt1(O.opp3pm)}` : "—"}<span className="text-[11px] font-semibold text-slate-400"> 3PM/g</span></div>
+                    <div className="text-[10px] font-semibold text-slate-400">{O ? `${fmt1(O.opp3pa)} 3PA · ${O.opp3p != null ? O.opp3p + "%" : "—"} · ` : ""}{r3 ? <span className={tone(r3)}>{ordinal(r3)} · {label(r3)}</span> : ""}</div>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 px-3 py-2">
+                    <div className="text-[9px] font-extrabold tracking-widest uppercase text-slate-400">{g[them].abbr} allows</div>
+                    <div className={"text-lg font-extrabold tabular-nums " + tone(rp)}>{O ? fmt1(O.oppPts) : "—"}<span className="text-[11px] font-semibold text-slate-400"> PPG</span></div>
+                    <div className="text-[10px] font-semibold text-slate-400">{rp ? <span className={tone(rp)}>{ordinal(rp)} · {label(rp)}</span> : ""}</div>
+                  </div>
+                </div>
+                <div className="mt-2">
+                  {shooters(T).map(({ p, s: st }) => (
+                    <button key={p.id} onClick={() => onSelect(p)} className="w-full flex items-center gap-2 py-1.5 text-left">
+                      <Avatar p={p} />
+                      <span className="flex-1 min-w-0"><span className="block text-[12px] font-bold text-slate-900 dark:text-white truncate">{p.name}{isSidelined(p) && <span className="ml-1.5 align-middle"><StatusBadge status={effectiveStatus(p)} /></span>}</span><span className="block text-[10px] text-slate-400">{fmt1(st.p3a)} 3PA/g · {st.p3 != null ? Number(st.p3).toFixed(1) + "%" : "—"} · {fmt1(st.min)} min</span></span>
+                      <span className="text-right"><span className="block text-base font-extrabold text-slate-900 dark:text-white tabular-nums leading-none">{fmt1(st.p3m)}</span><span className="block text-[9px] font-semibold text-slate-400">3PM/g</span></span>
+                    </button>
+                  ))}
+                  {shooters(T).length === 0 && <div className="text-[10px] text-slate-400 py-1">No qualified shooters yet (2+ attempts per game).</div>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+      {upcoming.length === 0 && <div className="text-center text-xs text-slate-400 py-10">No games left on this day.</div>}
+    </div>
+  );
+}
+
 // ── Full court (pregame): away starters on top, home starters on the bottom,
 //    drawn with the home team's real floor (same renderer as the team court) ──
 function FullCourt({ game, teams, players, onSelect }) {
@@ -3766,6 +3829,7 @@ function dayLabel(d, today) {
 function TonightTab({ players, teams, onSelect, onSelectTeam, onOpenGame }) {
   const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
   const [dayOff, setDayOff] = useState(0);           // days from today
+  const [view, setView] = useState("games");         // games | cheat
   const [sb, setSb] = useState(null);
   const days = useMemo(() => Array.from({ length: 8 }, (_, i) => { const d = new Date(today); d.setDate(d.getDate() + i - 1); return d; }), [today]);
   const day = days[dayOff + 1];
@@ -3815,9 +3879,15 @@ function TonightTab({ players, teams, onSelect, onSelectTeam, onOpenGame }) {
             );
           })}
         </div>
+        <div className="flex gap-2 mt-2">
+          {[["games", "Games"], ["cheat", "Cheat Sheet"]].map(([k, lbl]) => (
+            <button key={k} onClick={() => setView(k)} className={"flex-1 py-1.5 rounded-full text-[11px] font-extrabold " + (view === k ? "bg-white text-blue-700" : "bg-blue-500/60 text-blue-100")}>{lbl}</button>
+          ))}
+        </div>
       </div>
 
-      <div className="px-4 pt-3 pb-28">
+      {view === "cheat" && <CheatSheet games={games} teams={teams} players={players} onSelect={onSelect} />}
+      <div className={"px-4 pt-3 pb-28" + (view === "cheat" ? " hidden" : "")}>
         <style>{`@keyframes hrbRise { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
 @keyframes hrbPing { 75%, 100% { transform: scale(2.2); opacity: 0; } }`}</style>
         {!sb && <div className="p-6 text-center text-xs text-slate-400">Loading games…</div>}
