@@ -761,65 +761,63 @@ function CompareView({ a, b, color, onSwap }) {
   );
 }
 
-// ── Cheat sheet: for each game, which defense gives up threes and who's shooting them ──
+// ── Cheat sheet: one ranked list of tonight's shooters, best spots first ──
+// Spot = the shooter's own 3PM/g, scaled by how many threes his opponent gives
+// up versus the league average. Volume (3PA/g) is shown so you can see who
+// gets there on attempts vs. accuracy.
 function CheatSheet({ games, teams, players, onSelect }) {
+  const [min3pa, setMin3pa] = useState(4);
   const L = LIVE_STATS.teams || {};
   const line = (ab) => L[modernAbbr(ab)] || Object.entries(L).find(([k]) => sameAbbr(k, ab))?.[1] || null;
-  const all = Object.values(L).filter((t) => t.gp > 0);
-  const rankDesc = (key, v) => (v == null ? null : all.filter((t) => (t[key] ?? -1) > v).length + 1);
+  const all = Object.values(L).filter((t) => t.gp > 0 && t.opp3pm != null);
+  const avgAllowed = all.length ? all.reduce((a, t) => a + t.opp3pm, 0) / all.length : null;
+  const rankDesc = (v) => (v == null ? null : all.filter((t) => t.opp3pm > v).length + 1);
   const teamBy = (ab) => (teams || []).find((t) => sameAbbr(t.abbr || toAbbr(t.name), ab));
-  const shooters = (team) => rosterOf(team, players).map((p) => ({ p, s: curStats(p) })).filter((x) => x.s && x.s.gp > 0 && (x.s.p3a ?? 0) >= 2).sort((a, b) => (b.s.p3m ?? 0) - (a.s.p3m ?? 0)).slice(0, 2);
-  const tone = (rank) => (rank == null ? "text-slate-400" : rank <= 8 ? "text-red-500" : rank >= 23 ? "text-green-600" : "text-amber-600");   // high rank = gives up a lot = good for shooters
-  const label = (rank) => (rank == null ? "" : rank <= 8 ? "leaky" : rank >= 23 ? "stingy" : "average");
   const upcoming = (games || []).filter((g) => g.state !== "post");
-  if (!all.length) return <div className="px-4 py-10 text-center text-xs text-slate-400">Season lines are still loading…</div>;
+  if (!all.length || avgAllowed == null) return <div className="px-4 py-10 text-center text-xs text-slate-400">Season lines are still loading…</div>;
+  const rows = [];
+  for (const g of upcoming) for (const [me, them] of [["away", "home"], ["home", "away"]]) {
+    const T = teamBy(g[me].abbr); if (!T) continue;
+    const O = line(g[them].abbr); const factor = O && O.opp3pm ? O.opp3pm / avgAllowed : 1; const rank = O ? rankDesc(O.opp3pm) : null;
+    for (const p of rosterOf(T, players)) {
+      const st = curStats(p); if (!st || !(st.gp > 0) || (st.p3a ?? 0) < min3pa) continue;
+      const h = healthOf(p); if (h === "out") continue;                 // no point listing someone who's out
+      rows.push({ p, st, T, g, opp: g[them].abbr, home: me === "home", factor, rank, proj: (st.p3m ?? 0) * factor });
+    }
+  }
+  rows.sort((a, b) => b.proj - a.proj);
+  const spot = (r) => (r.rank == null ? ["—", "text-slate-400", "bg-slate-100 dark:bg-slate-800"] : r.rank <= 8 ? ["Great spot", "text-green-700", "bg-green-100"] : r.rank >= 23 ? ["Tough spot", "text-red-600", "bg-red-100"] : ["Neutral", "text-amber-700", "bg-amber-100"]);
   return (
-    <div className="px-4 pt-3 pb-28 space-y-4">
-      <div className="text-[10px] font-semibold text-slate-400 px-1">For each team: what tonight's opponent allows from three (league rank, 1 = most allowed), then that team's top two 3-point shooters. Volume = attempts per game.</div>
-      {upcoming.map((g) => (
-        <div key={g.id} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-          <div className="px-4 py-2 text-[11px] font-extrabold tracking-widest uppercase text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-            <span>{g.away.abbr} @ {g.home.abbr}</span><span className="text-slate-400 font-semibold normal-case tracking-normal">{new Date(g.date).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>
-          </div>
-          {[["away", "home"], ["home", "away"]].map(([me, them]) => {
-            const T = teamBy(g[me].abbr), O = line(g[them].abbr);
-            if (!T) return null;
-            const ab = T.abbr || toAbbr(T.name);
-            const r3 = O ? rankDesc("opp3pm", O.opp3pm) : null, rp = O ? rankDesc("oppPts", O.oppPts) : null;
-            return (
-              <div key={me} className="px-4 py-3 border-b last:border-0 border-slate-100 dark:border-slate-800" style={{ borderLeft: "4px solid " + teamColor(ab) }}>
-                <div className="flex items-center gap-2">
-                  <img src={logoFor(ab) || ""} alt="" className="w-7 h-7 object-contain" style={logoTrim(ab)} />
-                  <span className="text-sm font-extrabold text-slate-900 dark:text-white">{T.name}</span>
-                </div>
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 px-3 py-2">
-                    <div className="text-[9px] font-extrabold tracking-widest uppercase text-slate-400">{g[them].abbr} allows from 3</div>
-                    <div className={"text-lg font-extrabold tabular-nums " + tone(r3)}>{O ? `${fmt1(O.opp3pm)}` : "—"}<span className="text-[11px] font-semibold text-slate-400"> 3PM/g</span></div>
-                    <div className="text-[10px] font-semibold text-slate-400">{O ? `${fmt1(O.opp3pa)} 3PA · ${O.opp3p != null ? O.opp3p + "%" : "—"} · ` : ""}{r3 ? <span className={tone(r3)}>{ordinal(r3)} · {label(r3)}</span> : ""}</div>
-                  </div>
-                  <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 px-3 py-2">
-                    <div className="text-[9px] font-extrabold tracking-widest uppercase text-slate-400">{g[them].abbr} allows</div>
-                    <div className={"text-lg font-extrabold tabular-nums " + tone(rp)}>{O ? fmt1(O.oppPts) : "—"}<span className="text-[11px] font-semibold text-slate-400"> PPG</span></div>
-                    <div className="text-[10px] font-semibold text-slate-400">{rp ? <span className={tone(rp)}>{ordinal(rp)} · {label(rp)}</span> : ""}</div>
-                  </div>
-                </div>
-                <div className="mt-2">
-                  {shooters(T).map(({ p, s: st }) => (
-                    <button key={p.id} onClick={() => onSelect(p)} className="w-full flex items-center gap-2 py-1.5 text-left">
-                      <Avatar p={p} />
-                      <span className="flex-1 min-w-0"><span className="block text-[12px] font-bold text-slate-900 dark:text-white truncate">{p.name}{isSidelined(p) && <span className="ml-1.5 align-middle"><StatusBadge status={effectiveStatus(p)} /></span>}</span><span className="block text-[10px] text-slate-400">{fmt1(st.p3a)} 3PA/g · {st.p3 != null ? Number(st.p3).toFixed(1) + "%" : "—"} · {fmt1(st.min)} min</span></span>
-                      <span className="text-right"><span className="block text-base font-extrabold text-slate-900 dark:text-white tabular-nums leading-none">{fmt1(st.p3m)}</span><span className="block text-[9px] font-semibold text-slate-400">3PM/g</span></span>
-                    </button>
-                  ))}
-                  {shooters(T).length === 0 && <div className="text-[10px] text-slate-400 py-1">No qualified shooters yet (2+ attempts per game).</div>}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ))}
-      {upcoming.length === 0 && <div className="text-center text-xs text-slate-400 py-10">No games left on this day.</div>}
+    <div className="px-4 pt-3 pb-28">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-[12px] font-extrabold tracking-widest text-slate-900 dark:text-white uppercase">3-point spots · best first</span>
+        <span className="flex gap-1">{[2, 4, 6].map((n) => <button key={n} onClick={() => setMin3pa(n)} className={"px-2 py-0.5 rounded-full text-[10px] font-extrabold border " + (min3pa === n ? "bg-blue-600 text-white border-transparent" : "bg-white dark:bg-slate-900 text-slate-500 border-slate-200 dark:border-slate-800")}>{n}+ 3PA</button>)}</span>
+      </div>
+      <div className="text-[10px] text-slate-400 mb-3 px-1">Projected = his 3PM per game × how leaky the defense is (league avg {fmt1(avgAllowed)} 3PM allowed = 1.00×). Out players are hidden.</div>
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
+        {rows.slice(0, 30).map((r, i) => {
+          const ab = r.T.abbr || toAbbr(r.T.name); const [lbl, cls, bg] = spot(r);
+          return (
+            <button key={r.p.id + r.g.id} onClick={() => onSelect(r.p)} className="w-full flex items-center gap-3 px-3 py-2.5 text-left active:bg-slate-50 dark:active:bg-slate-800" style={{ borderLeft: "4px solid " + teamColor(ab) }}>
+              <span className={"w-5 text-center text-[11px] font-extrabold tabular-nums " + (i < 3 ? "text-slate-900 dark:text-white" : "text-slate-400")}>{i + 1}</span>
+              <Avatar p={r.p} />
+              <span className="flex-1 min-w-0">
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-[13px] font-bold text-slate-900 dark:text-white truncate">{r.p.name}</span>
+                  {isSidelined(r.p) && <StatusBadge status={effectiveStatus(r.p)} />}
+                </span>
+                <span className="block text-[10px] text-slate-500 dark:text-slate-400 truncate">{ab} {r.home ? "vs" : "@"} {r.opp} · {fmt1(r.st.p3m)} 3PM on {fmt1(r.st.p3a)} 3PA · {r.st.p3 != null ? Number(r.st.p3).toFixed(1) + "%" : "—"}</span>
+                <span className={"inline-block mt-1 px-1.5 py-0.5 rounded-md text-[9px] font-extrabold " + bg + " " + cls}>{lbl}{r.rank ? ` · ${r.opp} ${ordinal(r.rank)} in 3s allowed · ${r.factor.toFixed(2)}×` : ""}</span>
+              </span>
+              <span className="text-right shrink-0">
+                <span className="block text-xl font-extrabold text-slate-900 dark:text-white tabular-nums leading-none">{fmt1(r.proj)}</span>
+                <span className="block text-[9px] font-semibold text-slate-400">proj 3PM</span>
+              </span>
+            </button>
+          );
+        })}
+        {rows.length === 0 && <div className="text-center text-xs text-slate-400 py-10">No qualified shooters for this day.</div>}
+      </div>
     </div>
   );
 }
